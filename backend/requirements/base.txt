@@ -1,0 +1,16 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+pydantic>=2.9,<3
+pydantic-settings>=2.5,<3
+SQLAlchemy[asyncio]>=2.0,<2.1
+asyncpg>=0.30,<1
+alembic>=1.14,<2
+GeoAlchemy2>=0.17,<1
+redis>=5,<8
+aiomqtt>=2.3,<3
+PyJWT[crypto]>=2.10,<3
+bcrypt>=4.2,<6
+httpx>=0.28,<1
+python-multipart>=0.0.20,<1
+email-validator>=2.2,<3
+python-json-logger>=3,<5
