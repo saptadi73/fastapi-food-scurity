@@ -11,6 +11,7 @@ from pythonjsonlogger.json import JsonFormatter
 from starlette.exceptions import HTTPException
 
 from app.core.config.settings import get_settings
+from app.core.database.readiness import check_readiness
 from app.core.database.session import close_database
 from app.core.responses.envelope import Envelope, envelope
 
@@ -112,6 +113,32 @@ def create_app() -> FastAPI:
     )
     async def health(request: Request):
         return envelope(request, data={"status": "ok", "service": settings.app_name})
+
+    @app.get(
+        f"{settings.api_prefix}/ready",
+        response_model=Envelope,
+        responses={503: {"model": Envelope, "description": "Dependensi belum siap"}},
+        tags=["System"],
+        summary="Periksa kesiapan database",
+        description=(
+            "Permission: publik, tanpa payload atau parameter. Memeriksa PostgreSQL 18, "
+            "PostGIS/pgcrypto, dan revisi database terhadap Alembic heads aplikasi. "
+            "200: data.status=ready; 503: data.status=not_ready dengan status pemeriksaan. "
+            "Timeout default 3 detik. Tidak menjalankan migrasi. Redis/MQTT belum menjadi "
+            "dependensi runtime; kesiapan ini tidak menyatakan modul bisnis sudah lengkap."
+        ),
+    )
+    async def ready(request: Request):
+        checks = await check_readiness()
+        is_ready = all(value == "ok" for value in checks.values())
+        code = 200 if is_ready else 503
+        return JSONResponse(
+            envelope(request, code=code, message="Ready" if is_ready else "Not Ready",
+                     data={"status": "ready" if is_ready else "not_ready", "checks": checks}
+                     ).model_dump(mode="json"),
+            status_code=code,
+            headers={"Cache-Control": "no-store"},
+        )
 
     return app
 

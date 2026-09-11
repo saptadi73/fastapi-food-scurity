@@ -2,7 +2,16 @@
 
 PostgreSQL 18 lokal berjalan di localhost:5432. Database `fsos` yang disediakan
 pengguna telah dihubungkan melalui `backend/.env`. Kredensial tidak dicatat di
-dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0008`.
+dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0016`.
+
+[Profil privilege fsos_runtime](runtime-database-role.md) sudah diprovisioning
+sebagai grup NOLOGIN. Koneksi lokal masih owner; login runtime dan pemisahan
+koneksi migrasi/maintenance belum dialihkan. Migrasi 0016 memperketat capture history
+aturan sehingga runtime tidak memerlukan INSERT langsung pada tabel history.
+
+[Seed development](development-seed.md) sudah diterapkan pada tenant FSOS_DEV:
+actor tanpa password login, role/permission service, tujuh master contoh, dan
+enam aset registry. Pengulangan tidak menimpa data atau menggandakan fixture.
 
 ## Schema awal
 
@@ -18,10 +27,214 @@ dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0008`.
   dipakai ulang. Validasi status/rule bisnis akan ditambahkan pada domain.
 - Composite unique `(tenant_id, kitchen_id)` disediakan untuk FK modul berikutnya.
   Ini belum menggantikan otorisasi tenant pada query/API.
-- Kolom version tersedia, tetapi optimistic locking dan soft-delete repository
-  belum diimplementasikan. Tidak ada endpoint CRUD publik pada tahap ini.
+- Optimistic locking, audit actor, scope tenant, dan soft delete sudah tersedia
+  melalui [KitchenRepository](repositories.md). Modul lain dan akses SQL langsung
+  belum memperoleh perlindungan otomatis. Tidak ada endpoint CRUD publik pada tahap ini.
 
 ## Memeriksa koneksi dan migrasi
+
+Migrasi 0015 menambahkan [riwayat revisi aturan](rule-versioning.md) alarm/holding
+yang dicatat otomatis pada INSERT/UPDATE. History tidak boleh dimutasi atau
+dihapus. Validator DSL sudah digunakan service simpan/aktivasi internal dengan
+scope actor/tenant, permission database, dan pemeriksaan version; belum jalur API.
+
+Endpoint `GET /api/v1/ready` melakukan pemeriksaan read-only PostgreSQL 18,
+extension PostGIS/pgcrypto, dan kesamaan seluruh revisi database dengan Alembic
+heads pada kode aplikasi. Respons 200 berarti semua pemeriksaan lulus; respons
+503 berarti belum siap, termasuk konfigurasi kosong, koneksi gagal, timeout,
+extension hilang, atau migrasi tidak sesuai. Respons menggunakan envelope API,
+request ID, dan `Cache-Control: no-store`, tanpa URL, password, SQL, atau detail
+exception. Endpoint tersedia di Swagger dan bersifat publik dengan status ringkas.
+
+`READINESS_TIMEOUT_SECONDS` membatasi probe database, default 3 detik (lebih dari
+0 hingga maksimal 30). Probe tidak menjalankan migrasi dan tidak menulis data.
+Daftar heads dibaca dari direktori Alembic aplikasi serta di-cache selama proses
+berjalan; restart aplikasi setelah memperbarui kode migrasi.
+
+`GET /api/v1/health` tetap memeriksa proses saja dan tidak mengakses database.
+Redis/MQTT belum menjadi dependensi runtime sehingga belum diperiksa. Readiness
+tidak menguji seluruh constraint, hak tulis, partisi bulan mendatang, atau
+kelengkapan fitur bisnis. Tambahkan pemeriksaan layanan saat integrasi diaktifkan.
+
+Saat API berjalan, periksa dari PowerShell:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/api/v1/ready
+```
+
+Tahap keempat belas melengkapi schema telemetry (docs/08):
+
+- `device_health_log`, `alarm_log`, `holding_log`, `signal_log`, `battery_log`,
+  dan `device_session` memakai UUID primary key, audit, waktu bertimezone,
+  referensi tenant/device/package/pesan, serta index timeline. Enam tabel ini
+  tidak dipartisi; docs/08 menetapkan partisi bulanan untuk empat sensor di bawah.
+- Kolom tambahan UUID, device sumber pada signal/battery, recorded_at, dan
+  mqtt_message_id memperjelas identitas serta asal bukti yang belum dirinci draft.
+  recorded_at adalah waktu observasi; created_at adalah waktu penyimpanan.
+- Asumsi satuan: signal wifi_signal/rssi dalam dBm, quality persen; battery dan
+  percentage persen, voltage volt. Nilai nullable berarti tidak dilaporkan,
+  bukan nol; setidaknya satu pengukuran signal/battery harus tersedia.
+  Pada health, sensor/wifi/mqtt/gps/battery berupa label status subsistem.
+  Kosakata status/severity dan pemetaan payload tetap perlu divalidasi parser/domain.
+- Holding menyimpan snapshot menit; elapsed tidak negatif, remaining boleh
+  negatif untuk paket melewati batas. Schema tidak menghitung holding time.
+- Semua tabel baru menolak UPDATE/DELETE/TRUNCATE, termasuk soft delete.
+  `alarm_log.acknowledged` merupakan snapshot awal. Acknowledgment setelahnya
+  ditambahkan ke `alarm_acknowledgment`, sekali per alarm, dengan actor satu tenant
+  dan acknowledged_at tidak sebelum recorded_at alarm. Status efektif adalah
+  snapshot acknowledged OR keberadaan acknowledgment. Snapshot awal true tidak
+  menerima acknowledgment tambahan.
+- `device_session.disconnected_at` boleh diisi saat mengimpor sesi lengkap.
+  Sesi terbuka ditutup dengan insert `device_session_end`, sekali per sesi;
+  trigger menolak waktu sebelum connected_at dan sesi yang sudah lengkap sejak
+  insert awal. Waktu akhir efektif adalah COALESCE(snapshot, session_end).
+  IP memakai tipe INET (IPv4/IPv6). Reconnect membuat session_id baru.
+- API pembacaan status efektif, acknowledgment, ingestion, pengelolaan reconnect,
+  serta publisher event belum dibuat. Kedua tabel pendukung menjaga perubahan
+  status sebagai bukti tambahan tanpa memperbarui bukti awal.
+  [Service internal lifecycle](telemetry-lifecycle.md) sudah menyediakan pembacaan
+  status efektif, acknowledgment dan close session dengan permission serta retry;
+  belum tersedia sebagai endpoint HTTP.
+
+Tahap ketiga belas menambahkan telemetry sensor berpartisi (docs/08):
+
+- `temperature_log`, `humidity_log`, `gps_log`, `heartbeat_log` dipartisi RANGE
+  berdasarkan `recorded_at` per bulan UTC. Partisi awal September–November 2026.
+  Tidak ada default partition: timestamp di luar rentang yang disiapkan ditolak
+  sampai partisi bulan tersebut dibuat, termasuk data backfill.
+- Primary key setiap log adalah `(UUID log, recorded_at)` karena PostgreSQL
+  mengharuskan kolom partition key tercakup pada primary/unique key. UUID tetap
+  dibuat aplikasi; database hanya menolak pasangan UUID/waktu yang sama, bukan
+  UUID sama pada waktu berbeda. Deduplikasi global/event retry tetap tugas ingestion.
+- Device memakai `device.device_uuid` publik dengan FK gabungan tenant; GPS
+  memakai vehicle_id, suhu dapat menunjuk storage_id. Semua referensi harus dalam
+  tenant yang sama. Validasi penempatan aktual sensor/storage/vehicle masih TODO.
+- GPS memiliki generated Point SRID 4326 dan index GiST. Index waktu, perangkat,
+  storage/vehicle, dan referensi pesan tersedia untuk pencarian time series.
+- Suhu menyimpan unit C/F/K tanpa ambang keamanan pangan bawaan. Humidity/battery
+  adalah persen 0..100; GPS speed dalam km/jam, altitude meter, heading derajat,
+  uptime detik, heap byte, wifi_signal dBm. Pemetaan unit ini perlu diikuti parser.
+- `mqtt_message_log` menyimpan UUID internal pesan, tenant, topic, QoS 0..2,
+  payload byte asli, received_at, dan snapshot processed. mqtt_message_id pada
+  sensor merujuk UUID internal ini, bukan packet identifier MQTT yang bisa dipakai ulang.
+- Seluruh bukti sensor/pesan append-only dengan trigger UPDATE/DELETE/TRUNCATE.
+  Trigger row diwariskan ke partisi; trigger TRUNCATE dipasang juga di tiap child.
+  processed adalah snapshot saat pencatatan, bukan flag antrean yang boleh diubah;
+  status retry/worker memerlukan tabel terpisah pada tahap ingestion.
+- Belum ada koneksi Mosquitto, parser ingestion, retention/archive, atau jadwal
+  pembuatan partisi production. Maintenance development sudah dijadwalkan melalui
+  [task Windows dan rolling check/ensure](telemetry-maintenance.md); fsos kini
+  mencakup September 2026–Februari 2027. Tidak ada data yang dihapus otomatis.
+
+Untuk menambah partisi, jalankan dari root proyek (aman diulang):
+
+```powershell
+.\venv\Scripts\python.exe backend\scripts\create_telemetry_partitions.py --start 2026-12 --months 3
+```
+
+Fungsi maintenance hanya membuat partisi empat tabel sensor dalam public schema,
+memakai advisory lock, dan memasang guard TRUNCATE. Rentang dibatasi 1–24 bulan
+per pemanggilan. Jalankan dengan role migrasi; API runtime tidak membutuhkan hak DDL.
+Child partition dikecualikan dari Alembic autogenerate melalui introspeksi pg_inherits
+agar tidak dianggap tabel aplikasi yang harus dihapus. Objek induk tetap diperiksa.
+
+Referensi batasan PK dan partisi:
+[PostgreSQL 18 table partitioning](https://www.postgresql.org/docs/18/ddl-partitioning.html).
+
+Tahap kedua belas melengkapi operational event (docs/04 bagian 14, docs/08 bagian 14):
+
+- `event_log`: event_uuid, tenant_id, event_type, entity_type, entity_uuid, payload
+  JSONB objek, created_at bertimezone serta kolom audit standar. Index tersedia
+  untuk timeline entity dan jenis event per tenant.
+- event_uuid adalah identitas event global: pengulangan UUID ditolak. Ini belum
+  menyediakan retry idempotent, deduplikasi payload, atau dispatch exactly-once;
+  producer harus mempertahankan UUID yang sama untuk retry dan menangani konflik.
+- entity_uuid menunjuk identitas entity sumber (bukan UUID registry). Referensi
+  polimorfik ini belum memiliki FK sumber; validasi keberadaan/type/tenant entity
+  wajib pada publisher aplikasi. Payload baru divalidasi bentuk objek JSON,
+  bukan schema semantik tiap event.
+- Trigger menolak UPDATE/DELETE/TRUNCATE dan insert soft-deleted ditolak constraint.
+  Koreksi dicatat sebagai event baru. Pemilik database tetap dapat mengubah DDL;
+  gunakan role runtime terbatas pada deployment.
+- created_at mencatat waktu pencatatan event. Event bus, transactional outbox,
+  worker, retry, validasi payload, serta pencatatan otomatis dari transaksi belum
+  diimplementasikan. Penambahan schema tidak berarti semua transaksi sudah menerbitkan event.
+- Uji mencakup UUID duplikat, tenant invalid, bentuk payload, trigger riwayat,
+  beberapa event untuk satu entity, dan rollback yang mempertahankan graph/movement.
+
+Tahap kesebelas menambahkan registry dan graph (docs/07, 12, 13):
+
+- `digital_asset`: asset_uuid, tenant, asset_type, entity_uuid sumber, code, name,
+  status, audit/version. Satu representasi per tenant/type/entity dan kode unik
+  per tenant/type. UUID registry berbeda dari UUID entity sumber.
+- `entity_uuid` merupakan referensi polimorfik, belum memiliki FK ke tabel sumber.
+  [Adapter sumber dan backfill](asset-registry.md) sudah memvalidasi tenant/type
+  serta menyinkronkan registry dalam transaksi caller. KitchenRepository sudah
+  terhubung; jalur tulis modul lain/SQL langsung belum otomatis menyinkronkan.
+  Backfill tenant development FSOS_DEV sudah dijalankan melalui seed;
+  tenant lain memerlukan provisioning dan backfill tersendiri.
+- `asset_relationship`: parent/child adalah UUID registry, relationship_type
+  mengikuti docs/13. FK menolak relasi lintas tenant; self-edge dan edge duplikat
+  ditolak. Graph traversal, deteksi siklus multilangkah, dan aturan pasangan jenis
+  aset belum diimplementasikan.
+- `asset_movement`: referensi registry dan asset_type harus cocok dalam tenant;
+  movement_type mengikuti docs/07. from/to_location adalah UUID registry lokasi,
+  boleh NULL untuk asal/tujuan yang belum diketahui. Operator opsional mendukung
+  event sistem; jika diisi harus user dalam tenant yang sama.
+- Riwayat movement append-only: trigger PostgreSQL menolak UPDATE, DELETE,
+  soft-delete, dan TRUNCATE dengan SQLSTATE 55000. Insert dengan deleted_at/deleted_by
+  juga ditolak. Koreksi perlu event baru. AuditMixin tetap menyediakan kolom standar,
+  tetapi updated_at/version tidak diperbarui setelah insert pada tabel ini.
+- Trigger berlaku pada SQL normal, bukan batas terhadap administrator yang dapat
+  menonaktifkan trigger atau menghapus tabel. Role runtime terbatas tetap diperlukan.
+  Downgrade oleh administrator menghapus trigger dan tabel khusus rollback migrasi.
+- Index timeline tersedia pada tenant/asset/movement_time. Event producer,
+  idempotency berbasis event ID, pembatasan tipe lokasi, dan history perubahan
+  relationship masih TODO. Tabel ini belum menjalankan traceability engine.
+
+Tahap kesepuluh menambahkan konsumsi, keluhan, dan recall (docs/07):
+
+- `consumption`: UUID, tenant, paket, consumed_at bertimezone, snapshot sisa menit,
+  safe nullable, audit/version. Pemetaan draft memakai satu catatan konsumsi final
+  per paket. Konsumsi parsial/multi-porsi memerlukan model tambahan pada tahap domain.
+- Nilai safe tidak otomatis true dan tidak dihitung database. NULL berarti belum
+  dinilai; remaining_minutes bisa negatif untuk merekam kejadian setelah expiry.
+  Riwayat aktual tidak ditolak hanya karena hasil akhirnya tidak aman.
+- `complaint`: UUID, tenant, paket, sekolah pelapor, description wajib tidak kosong,
+  reported_at, audit/version. Paket dan sekolah harus dalam tenant yang sama.
+  Beberapa laporan terhadap satu paket diperbolehkan.
+- Sekolah pada complaint belum diwajibkan memiliki school_receiving: laporan dapat
+  dicatat sebelum dokumen penerimaan tersedia. Verifikasi pelapor dan kecocokan
+  bukti penerimaan adalah workflow investigasi, bukan klaim yang dijamin FK saat ini.
+- `recall`: UUID, tenant, batch produksi, reason wajib, started_at, completed_at
+  opsional, audit/version. Waktu selesai tidak boleh mendahului mulai. Beberapa
+  kasus recall per batch dapat dicatat; aturan kasus aktif ditangani domain nanti.
+- Penyimpanan recall belum mengubah status paket, menghitung dampak, mengirim
+  notifikasi, atau menjalankan penarikan. Permission Recall.Execute, workflow,
+  daftar paket terdampak, dan audit immutable masih TODO.
+- Tes memastikan referensi valid, satu consumption final per paket, waktu/alasan
+  wajib, serta rollback tahap kesepuluh yang mempertahankan tabel pengiriman.
+
+Tahap kesembilan menambahkan pengiriman dan penerimaan sekolah (docs/07):
+
+- `delivery`: UUID, tenant, vehicle/driver (UUID sesuai nama field draft), waktu
+  berangkat/tiba bertimezone, status awal CREATED, audit/version. Waktu tiba
+  memerlukan waktu berangkat dan tidak boleh lebih awal.
+- `delivery_item`: UUID, tenant, delivery, package, serta sekolah tujuan. Paket
+  hanya muncul sekali dalam satu delivery. FK memastikan semua referensi satu tenant.
+- `school_receiving`: UUID, tenant, delivery, school, package, received_time,
+  temperature, accepted, photo, audit/version. FK gabungan mengharuskan paket dan
+  sekolah cocok dengan manifest delivery. Satu hasil penerimaan per paket/delivery.
+- Sekolah tujuan dan delivery pada penerimaan merupakan penambahan terhadap
+  draft untuk menjamin konsistensi manifest. Nama school/package mengikuti docs/07.
+- Driver pada delivery merupakan penugasan perjalanan; tidak harus sama dengan
+  driver default master vehicle. Ketersediaan driver/armada tetap validasi domain.
+- `accepted=NULL` berarti belum diperiksa, bukan diterima otomatis. Photo adalah
+  referensi file/URL, bukan isi gambar; upload, validasi, dan akses file belum dibuat.
+- Pengiriman ulang paket pada perjalanan berbeda tidak diblokir schema. Pencegahan
+  pengiriman aktif bersamaan, status/expiry paket, kronologi penerimaan terhadap
+  perjalanan, otorisasi penerima, dan event movement tetap tugas application/domain.
+- Verifikasi rollback hanya pada database uji; tabel produksi dan paket tetap ada.
 
 Tahap kedelapan menambahkan produksi dan paket (docs/07):
 

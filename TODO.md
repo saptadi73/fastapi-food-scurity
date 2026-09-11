@@ -50,16 +50,46 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 - [x] Uji username/email unik tanpa membedakan case/spasi tepi per tenant,
   FK tenant, relasi RBAC lintas tenant, pasangan duplikat, status awal akun,
   penghapusan master yang direferensikan, dan rollback tahap keenam.
-- [ ] Lengkapi history revisi aturan immutable dan validasi DSL condition/action
+- [x] Lengkapi history revisi aturan immutable dan validasi DSL condition/action
   sebelum menyediakan perubahan/aktivasi aturan melalui API.
+  **Selesai pada jalur service internal:** history, DSL v1, validasi holding,
+  permission database dan version terintegrasi. Endpoint/JWT serta evaluator
+  tetap dilacak terpisah; bukan klaim API manajemen aturan sudah tersedia.
+- [x] Terapkan `20260911_0015`: snapshot awal aturan lama, pencatatan revisi atomik,
+  version bertambah, identitas tetap, dan penolakan mutasi/penghapusan history.
+- [x] Implementasikan validator DSL v1 dengan allowlist field/operator/action,
+  batas kompleksitas, dan penolakan input tidak valid; grammar didokumentasikan.
+- [x] Verifikasi 42 tes (API, readiness, repository, DSL, migrasi/constraint),
+  termasuk rollback history bersama transaksi dan downgrade yang mempertahankan aturan.
+- [x] Hubungkan validator DSL ke service aturan dengan scope tenant/actor,
+  permission Read/Write/Activate, expected_version, audit dan history atomik.
+- [x] Uji service aturan pada PostgreSQL: permission terpisah/dicabut, actor/tenant
+  nonaktif, referensi lintas tenant, payload invalid, lifecycle, version dan rollback.
+- [ ] Integrasikan autentikasi HTTP, seed permission dan endpoint manajemen aturan;
+  validasi semantik executor (template/target/transisi) sebelum menjalankan action.
 - [x] Uji upgrade/downgrade/upgrade pada database uji terpisah; periksa FK tenant,
   kode kitchen unik per tenant, koordinat, dan pelestarian extension saat downgrade.
 - [ ] Siapkan role aplikasi dengan hak terbatas sebelum production (akun lokal saat ini superuser).
+  **Sebagian selesai:** grup NOLOGIN fsos_runtime sudah diprovisioning di fsos,
+  dengan grant terpilih dan tanpa DDL/hard delete/truncate. Login/secret runtime
+  serta pemisahan koneksi API dari migrasi/maintenance belum diterapkan.
+- [x] Terapkan migrasi `20260911_0016` untuk capture history aturan SECURITY DEFINER
+  dengan target tetap/search_path terbatas, tanpa INSERT history langsung untuk runtime.
+- [x] Uji runtime role pada database terpisah: service kitchen/registry/aturan berjalan;
+  DDL, TEMP, hard delete, perubahan grant, disable trigger dan maintenance ditolak.
+  Seluruh 53 tes lulus; Ruff dan Alembic check bersih.
 - [x] Buat ORM dan migrasi master data: tenant, kitchen, storage/zone, device,
   vehicle/driver, school, supplier, material, food item, recipe, packaging,
   alarm/holding rule, user/role/permission (docs/06).
-- [ ] Buat migrasi digital asset, asset relationship, movement, operational
+- [x] Buat migrasi digital asset, asset relationship, movement, operational
   event, produksi, paket, pengiriman, receiving, complaint, dan recall (docs/07).
+  **Status: schema selesai.** Receiving hingga recall melalui revisi 0007–0010;
+  digital asset/relationship/movement melalui 0011; operational event melalui 0012.
+  Implementasi API/engine/publisher tetap dilacak terpisah di bawah.
+- [x] Buat dan uji migrasi operational event/event_log (`20260911_0012`, docs/08
+  bagian 14); terapkan pada fsos dan verifikasi Alembic check tanpa perbedaan.
+- [x] Uji event UUID unik, tenant/payload, perlindungan UPDATE/DELETE/TRUNCATE,
+  dan rollback event_log yang mempertahankan graph/movement.
 - [x] Tahap penerimaan: receiving, raw_material_batch, receiving_item melalui
   `20260911_0007`; terapkan pada fsos dan verifikasi Alembic check.
 - [x] Uji konsistensi header/supplier/batch, referensi tenant/operator/material,
@@ -69,13 +99,87 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 - [x] Uji relasi kitchen/menu/bahan/kemasan dalam tenant, jumlah bahan positif,
   kode/nomor paket unik, waktu produksi/holding, snapshot remaining negatif,
   serta rollback yang mempertahankan penerimaan bahan.
-- [ ] Buat migrasi telemetry, index, dan partisi bulanan (docs/08).
+- [x] Tahap pengiriman: delivery, delivery_item, school_receiving melalui
+  `20260911_0009`; terapkan pada fsos dan verifikasi Alembic check.
+- [x] Uji referensi tenant kendaraan/driver/paket, tujuan sekolah sesuai manifest,
+  duplikasi item/penerimaan, urutan waktu perjalanan, serta rollback yang mempertahankan produksi/paket.
+- [x] Tahap konsumsi/keluhan/recall: consumption, complaint, recall melalui
+  `20260911_0010`; terapkan pada fsos dan verifikasi Alembic check.
+- [x] Uji referensi tenant/paket/batch, satu konsumsi final, alasan/waktu wajib,
+  urutan waktu recall, nilai safe awal kosong, dan rollback yang mempertahankan pengiriman.
+- [x] Digital asset, asset_relationship, asset_movement melalui `20260911_0011`;
+  terapkan pada fsos dan verifikasi Alembic check.
+- [x] Uji relasi/self-edge/duplikasi, tipe aset, lokasi/operator tenant,
+  trigger penolakan UPDATE/DELETE/TRUNCATE movement, serta rollback yang mempertahankan recall.
+- [x] Implementasikan adapter validasi sumber untuk 15 tipe aset serta service
+  sync/backfill registry dengan scope tenant, permission dan transaksi caller.
+- [x] Hubungkan create/update/soft delete KitchenRepository ke registry secara
+  atomik; sync identik mempertahankan UUID/version, backfill memakai cursor UUID.
+- [x] Uji seluruh adapter, tenant/type salah, permission, pengulangan, pagination,
+  perubahan sumber, soft delete dan rollback; sediakan CLI backfill per tipe/tenant.
+- [x] Jalankan seed actor/permission development dan backfill FSOS_DEV pada fsos:
+  enam aset registry tersedia, pengulangan tidak menggandakan data.
+- [ ] Hubungkan service tulis modul lain ke sync, backfill tenant tambahan bila ada,
+  dan implementasikan rekonsiliasi sumber yang hilang.
+- [ ] Implementasikan event idempotency, pembangunan relationship dan traversal graph.
+- [x] Buat migrasi telemetry, index, dan partisi bulanan (docs/08).
+  **Status: schema selesai** melalui revisi 0013–0014, termasuk health/alarm/holding/
+  signal/battery/device_session. Ingestion dan engine tetap dilacak terpisah.
+- [x] Terapkan `20260911_0013`: empat sensor log berpartisi bulanan UTC serta
+  mqtt_message_log; index timeline/GIS, FK tenant/device/pesan, dan bukti append-only.
+- [x] Siapkan 12 partisi awal (September–November 2026) dan script maintenance
+  create_telemetry_partitions.py untuk menambah bulan secara idempotent.
+- [x] Uji batas bulan, timestamp tanpa partisi, FK tenant, GPS Point, duplicate key,
+  penolakan UPDATE/DELETE/TRUNCATE pada parent/child, partisi baru, dan rollback.
+- [x] Lengkapi device_health_log, alarm_log, holding_log, signal_log, battery_log,
+  dan device_session melalui `20260911_0014`; diterapkan pada fsos, Alembic check bersih.
+- [x] Tambahkan alarm_acknowledgment dan device_session_end append-only; uji tenant/actor,
+  nilai sensor, waktu/duplikasi finalisasi, snapshot awal tetap utuh, trigger bukti,
+  serta downgrade yang mempertahankan sensor berpartisi. Lima tes lulus.
+- [ ] Implementasikan pembacaan status efektif alarm/sesi dan API finalisasi
+  memakai tabel bukti tambahan, termasuk validasi payload/status serta reconnect.
+  **Sebagian selesai:** service baca/acknowledge/close tersedia dengan scope tenant,
+  permission, validasi waktu serta retry tanpa mengubah bukti pertama.
+- [x] Implementasikan dan uji status efektif alarm/sesi, snapshot impor, actor audit,
+  penolakan tenant lain, permission mutasi terpisah, konflik waktu dan rollback.
+- [ ] Tambahkan API finalisasi berautentikasi, provisioning permission telemetry,
+  daftar/pagination, serta ingestion/reconnect yang membuka session_id baru.
+- [ ] Jadwalkan pembuatan partisi ke depan, tentukan backfill/archive/retention,
+  dan implementasikan ingestion MQTT/idempotency; belum ada penghapusan data otomatis.
+- [x] Buat rolling check/ensure bulanan UTC, verifikasi batas partisi serta guard,
+  exit code/laporan JSON; uji cakupan hilang, tahun kabisat dan guard invalid.
+- [x] Siapkan enam bulan partisi fsos (September 2026–Februari 2027, 24 partisi);
+  Alembic check bersih, task maintenance development harian/logon terdaftar.
+- [x] Dokumentasikan runbook backfill dan target retensi draft; kebijakan saat ini
+  mempertahankan semua bukti tanpa penghapusan otomatis.
+- [ ] Implementasikan scheduler production/alert kegagalan, ekspor arsip dan uji restore;
+  putuskan kebijakan pelepasan bukti serta retensi tipe yang belum ditentukan.
 - [ ] Terapkan UUID, audit columns, version, soft delete, dan isolasi tenant.
-- [ ] Uji upgrade/downgrade migrasi dan seed data development.
-- [ ] Tambahkan readiness terpisah yang memeriksa layanan pendukung.
+  **Sebagian selesai:** repository kitchen memiliki scope tenant/actor, audit,
+  soft delete dan update atomik berdasarkan expected_version. Modul lain,
+  kebijakan query global/RLS serta integrasi autentikasi belum diterapkan.
+- [x] Implementasikan dan uji KitchenRepository: actor/tenant aktif, penolakan
+  akses lintas tenant, field audit dilindungi, version conflict, soft delete,
+  pagination terbatas, dan rollback transaksi yang dikelola caller.
+- [x] Uji upgrade/downgrade migrasi dan seed data development.
+  Seed FSOS_DEV: 23 record fixture, tujuh master contoh dan enam aset registry;
+  dua kali dijalankan pada fsos dengan created=23 lalu 0. Tes penolakan konflik,
+  pencabutan izin, environment production, dan rollback lulus.
+- [x] Tambahkan `/api/v1/ready`: PostgreSQL 18, PostGIS/pgcrypto, dan Alembic heads;
+  timeout, respons 503 tersanitasi, serta liveness terpisah. Diverifikasi pada fsos.
+- [x] Uji readiness berhasil/gagal, timeout, extension hilang, revisi tidak cocok,
+  envelope, dan dokumentasi 503; 15 tes API/readiness lulus.
+- [ ] Perluas readiness dengan Redis/MQTT ketika menjadi dependensi runtime.
 
 ## P2 — Framework dan keamanan (docs/02, 10, 11, 16, 17)
 
+- [x] Buat panduan frontend `backend/docs/frontend-api.md`: endpoint aktif,
+  payload, response, error, header, auth/status, dan contoh integrasi.
+- [x] Buat `backend/docs/event-catalog.md` dan `frontend-changelog.md`;
+  bedakan event rencana dengan event runtime yang belum tersedia.
+- [x] Simpan aturan pembaruan dokumentasi API/event pada `AGENTS.md`.
+- [ ] Berkelanjutan: perbarui panduan frontend, OpenAPI, event catalog, dan changelog
+  dalam setiap perubahan kontrak API/event; wajib sebelum menandai fitur selesai.
 - [ ] Buat BaseEntity domain, interface repository, BaseService, pagination/filter/sort.
 - [ ] Buat event bus dan worker dengan retry, idempotency, serta penanganan gagal.
 - [ ] Implementasikan login JWT: access 15 menit, refresh 7 hari.
@@ -83,6 +187,8 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 - [ ] Implementasikan bcrypt cost 12 dan kebijakan panjang password.
 - [ ] Implementasikan RBAC/permission serta validasi tenant setiap akses.
 - [ ] Buat seed role/permission dan bootstrap admin tanpa password bawaan.
+  Seed role/permission development selesai; bootstrap admin manusia/production
+  dan credential autentikasi tetap belum dibuat. Actor maintenance tidak punya password.
 - [ ] Tambahkan FK/validasi actor audit sesuai tenant; kolom created_by/updated_by/deleted_by
   saat ini masih UUID tanpa FK.
 - [ ] Implementasikan API key device, OAuth2 client credentials, dan service identity.
@@ -149,9 +255,12 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   tenant/kitchen/storage/zone/device/vehicle/driver/school/supplier/material/food/recipe
   beserta relasi supplier_material serta packaging_type/alarm_rule/holding_rule
   dan identity/RBAC; transaksi penerimaan serta produksi/paket tersedia
-  pada revisi `20260911_0008`.
-  Lima tes lulus (empat API dan satu integrasi database). Migrasi master data lainnya,
-  pembatasan query per tenant, optimistic locking, serta seed masih belum selesai.
+  serta pengiriman/penerimaan sekolah/konsumsi/keluhan/recall tersedia
+  serta registry/relationship/movement dan operational event tersedia; empat sensor
+  log berpartisi serta pesan MQTT ditambahkan pada revisi `20260911_0013`;
+  seluruh schema telemetry docs/08 dilengkapi pada `20260911_0014`.
+  Lima tes lulus (empat API dan satu integrasi database). Pembatasan query per tenant,
+  optimistic locking, serta seed masih belum selesai.
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.

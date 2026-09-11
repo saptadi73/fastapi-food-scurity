@@ -2,13 +2,15 @@
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from registry_checks import verify_registry
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -109,6 +111,63 @@ async def test_migration_roundtrip_and_constraints():
             await verify_identity(c, tenant_a, tenant_b)
             await verify_receiving(c, tenant_a, tenant_b, kitchen_id)
             await verify_production(c, tenant_a, tenant_b, kitchen_id)
+            await verify_delivery(c, tenant_a, tenant_b, kitchen_id)
+            await verify_consumption_recall(c, tenant_a, tenant_b)
+            await verify_asset_graph(c, tenant_a, tenant_b)
+            await verify_event_log(c, tenant_a)
+            await verify_telemetry(c, tenant_a, tenant_b)
+            await verify_remaining_telemetry(c, tenant_a, tenant_b)
+            await verify_rule_history(c, tenant_a, tenant_b)
+            await verify_registry(c, tenant_a, tenant_b)
+        migrate(("downgrade", "20260911_0015"))
+        async with engine.connect() as c:
+            assert await c.scalar(text("SELECT prosecdef FROM pg_proc WHERE oid='public.fsos_capture_rule_revision()'::regprocedure")) is False
+        migrate(("downgrade", "20260911_0014"))
+        async with engine.connect() as c:
+            assert await c.scalar(text("SELECT to_regclass('public.alarm_rule_revision')")) is None
+            assert await c.scalar(text("SELECT to_regclass('public.holding_rule_revision')")) is None
+            assert await c.scalar(text("SELECT count(*) FROM alarm_rule")) == 2
+            assert await c.scalar(text("SELECT max(version) FROM alarm_rule")) == 2
+        migrate(("downgrade", "20260911_0013"))
+        async with engine.connect() as c:
+            for table in ('device_health_log', 'alarm_log', 'holding_log', 'signal_log',
+                          'battery_log', 'device_session', 'alarm_acknowledgment', 'device_session_end'):
+                assert await c.scalar(text("SELECT to_regclass(:name)"), {'name': table}) is None
+            assert await c.scalar(text("SELECT count(*) FROM humidity_log")) == 3
+            assert await c.scalar(text("SELECT to_regprocedure('public.fsos_validate_telemetry_completion()')")) is None
+        migrate(("downgrade", "20260911_0012"))
+        async with engine.connect() as c:
+            for table in ('temperature_log', 'humidity_log', 'gps_log', 'heartbeat_log', 'mqtt_message_log'):
+                assert await c.scalar(text("SELECT to_regclass(:name)"), {'name': table}) is None
+            assert await c.scalar(text("SELECT count(*) FROM event_log")) == 2
+        migrate(("downgrade", "20260911_0011"))
+        async with engine.connect() as c:
+            assert await c.scalar(text("SELECT to_regclass('public.event_log')")) is None
+            assert await c.scalar(text("SELECT count(*) FROM digital_asset")) == 3
+            assert await c.scalar(text("SELECT count(*) FROM asset_relationship")) == 1
+            assert await c.scalar(text("SELECT count(*) FROM asset_movement")) == 1
+            assert await c.scalar(text("SELECT to_regprocedure('public.fsos_reject_event_mutation()')")) is None
+        migrate(("downgrade", "20260911_0010"))
+        async with engine.connect() as c:
+            for table in ("digital_asset", "asset_relationship", "asset_movement"):
+                assert await c.scalar(text("SELECT to_regclass(:name)"), {"name": table}) is None
+            assert await c.scalar(text("SELECT count(*) FROM recall")) == 2
+            assert await c.scalar(text("SELECT count(*) FROM complaint")) == 2
+            assert await c.scalar(text("SELECT count(*) FROM consumption")) == 1
+        migrate(("downgrade", "20260911_0009"))
+        async with engine.connect() as c:
+            for table in ("consumption", "complaint", "recall"):
+                assert await c.scalar(text("SELECT to_regclass(:name)"), {"name": table}) is None
+            assert await c.scalar(text("SELECT count(*) FROM delivery")) == 3
+            assert await c.scalar(text("SELECT count(*) FROM delivery_item")) == 1
+            assert await c.scalar(text("SELECT count(*) FROM school_receiving")) == 1
+        migrate(("downgrade", "20260911_0008"))
+        async with engine.connect() as c:
+            for table in ("delivery", "delivery_item", "school_receiving"):
+                assert await c.scalar(text("SELECT to_regclass(:name)"), {"name": table}) is None
+            assert await c.scalar(text("SELECT count(*) FROM production_batch")) == 2
+            assert await c.scalar(text("SELECT count(*) FROM production_item")) == 1
+            assert await c.scalar(text("SELECT count(*) FROM package")) == 1
         migrate(("downgrade", "20260911_0007"))
         async with engine.connect() as c:
             for table in ("production_batch", "production_item", "package"):
@@ -116,14 +175,12 @@ async def test_migration_roundtrip_and_constraints():
             assert await c.scalar(text("SELECT count(*) FROM receiving")) == 2
             assert await c.scalar(text("SELECT count(*) FROM raw_material_batch")) == 1
             assert await c.scalar(text("SELECT count(*) FROM receiving_item")) == 1
-        migrate(("upgrade", "head"))
         migrate(("downgrade", "20260911_0006"))
         async with engine.connect() as c:
             for table in ("receiving", "raw_material_batch", "receiving_item"):
                 assert await c.scalar(text("SELECT to_regclass(:name)"), {"name": table}) is None
             assert await c.scalar(text("SELECT count(*) FROM app_user")) == 2
             assert await c.scalar(text("SELECT count(*) FROM supplier")) == 3
-        migrate(("upgrade", "head"))
         migrate(("downgrade", "20260911_0005"))
         async with engine.connect() as c:
             for table in ("app_user", "role", "permission", "user_role", "role_permission"):
@@ -131,7 +188,6 @@ async def test_migration_roundtrip_and_constraints():
             assert await c.scalar(text("SELECT count(*) FROM alarm_rule")) == 2
             assert await c.scalar(text("SELECT count(*) FROM holding_rule")) == 2
             assert await c.scalar(text("SELECT count(*) FROM packaging_type")) == 2
-        migrate(("upgrade", "head"))
         migrate(("downgrade", "20260911_0004"))
         async with engine.connect() as c:
             for table in ("packaging_type", "alarm_rule", "holding_rule"):
@@ -139,7 +195,6 @@ async def test_migration_roundtrip_and_constraints():
             assert await c.scalar(text("SELECT count(*) FROM supplier")) == 3
             assert await c.scalar(text("SELECT count(*) FROM recipe")) == 1
             assert await c.scalar(text("SELECT count(*) FROM supplier_material")) == 2
-        migrate(("upgrade", "head"))
         migrate(("downgrade", "20260911_0003"))
         async with engine.connect() as c:
             for table in ("supplier", "raw_material", "food_item", "recipe", "supplier_material"):
@@ -147,7 +202,6 @@ async def test_migration_roundtrip_and_constraints():
             assert await c.scalar(text("SELECT count(*) FROM vehicle")) == 2
             assert await c.scalar(text("SELECT count(*) FROM school")) == 1
             assert await c.scalar(text("SELECT count(*) FROM driver")) == 2
-        migrate(("upgrade", "head"))
         migrate(("downgrade", "20260911_0002"))
         async with engine.connect() as c:
             for table in ("driver", "vehicle", "school"):
@@ -155,7 +209,6 @@ async def test_migration_roundtrip_and_constraints():
             assert await c.scalar(text("SELECT count(*) FROM device")) == 2
             assert await c.scalar(text("SELECT count(*) FROM storage")) == 1
             assert await c.scalar(text("SELECT count(*) FROM storage_zone")) == 1
-        migrate(("upgrade", "head"))
         # Rollback tahap kedua mempertahankan data tenant/kitchen tahap pertama.
         migrate(("downgrade", "20260911_0001"))
         async with engine.connect() as c:
@@ -163,7 +216,6 @@ async def test_migration_roundtrip_and_constraints():
                 assert await c.scalar(text("SELECT to_regclass(:name)"), {"name": table}) is None
             assert await c.scalar(text("SELECT count(*) FROM tenant")) == 2
             assert await c.scalar(text("SELECT count(*) FROM kitchen")) == 2
-        migrate(("upgrade", "head"))
         migrate(("downgrade", "base"))
         async with engine.connect() as c:
             assert await c.scalar(text("SELECT to_regclass('public.kitchen')")) is None
@@ -513,3 +565,352 @@ async def verify_production(c, tenant_a, tenant_b, kitchen_id):
         with pytest.raises(IntegrityError):
             async with c.begin_nested():
                 await c.execute(text(query), {"id": identifier})
+
+
+async def verify_delivery(c, tenant_a, tenant_b, kitchen_id):
+    refs = {}
+    for table, pk in (('vehicle', 'vehicle_id'), ('driver', 'driver_id')):
+        for tenant in (tenant_a, tenant_b):
+            refs[table, tenant] = await c.scalar(text(f"SELECT {pk} FROM {table} WHERE tenant_id=:t"), {"t": tenant})
+    package = await c.scalar(text("SELECT package_id FROM package WHERE tenant_id=:t"), {"t": tenant_a})
+    school = await c.scalar(text("SELECT school_id FROM school WHERE tenant_id=:t"), {"t": tenant_a})
+    delivery_a, delivery_b, extra_delivery, item_id, receipt_id, other_school = (uuid4() for _ in range(6))
+    header_sql = text("INSERT INTO delivery (delivery_id, tenant_id, vehicle, driver) VALUES (:id, :t, :vehicle, :driver)")
+    header = {"id": delivery_a, "t": tenant_a, "vehicle": refs['vehicle', tenant_a], "driver": refs['driver', tenant_a]}
+    await c.execute(header_sql, header)
+    await c.execute(header_sql, {**header, "id": extra_delivery})
+    await c.execute(header_sql, {"id": delivery_b, "t": tenant_b,
+                               "vehicle": refs['vehicle', tenant_b], "driver": refs['driver', tenant_b]})
+    for invalid in ({**header, "id": uuid4(), "vehicle": refs['vehicle', tenant_b]},
+                    {**header, "id": uuid4(), "driver": refs['driver', tenant_b]}):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(header_sql, invalid)
+    item_sql = text("INSERT INTO delivery_item (delivery_item_id, tenant_id, delivery_id, package_id, school_id) "
+                    "VALUES (:id, :t, :delivery, :package, :school)")
+    item = {"id": item_id, "t": tenant_a, "delivery": delivery_a, "package": package, "school": school}
+    for invalid in ({**item, "delivery": delivery_b}, {**item, "t": tenant_b, "delivery": delivery_b}):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(item_sql, invalid)
+    await c.execute(item_sql, item)
+    with pytest.raises(IntegrityError):
+        async with c.begin_nested():
+            await c.execute(item_sql, {**item, "id": uuid4()})
+    await c.execute(text("INSERT INTO school (school_id, tenant_id, kitchen_id, school_code, school_name) "
+                         "VALUES (:id, :t, :k, 'WRONG_DEST', 'Other school')"),
+                    {"id": other_school, "t": tenant_a, "k": kitchen_id})
+    receipt_sql = text("INSERT INTO school_receiving (school_receiving_id, tenant_id, delivery_id, package, school, received_time) "
+                       "VALUES (:id, :t, :delivery, :package, :school, now())")
+    receipt = {**item, "id": receipt_id}
+    for invalid in ({**receipt, "school": other_school}, {**receipt, "delivery": extra_delivery},
+                    {**receipt, "t": tenant_b}):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(receipt_sql, invalid)
+    await c.execute(receipt_sql, receipt)
+    assert await c.scalar(text("SELECT accepted FROM school_receiving WHERE school_receiving_id=:id"), {"id": receipt_id}) is None
+    with pytest.raises(IntegrityError):
+        async with c.begin_nested():
+            await c.execute(receipt_sql, {**receipt, "id": uuid4()})
+    for query, identifier in (
+        ("UPDATE delivery SET arrival_time=now() WHERE delivery_id=:id", delivery_a),
+        ("UPDATE delivery SET departure_time=now(), arrival_time=now()-interval '1 hour' WHERE delivery_id=:id", delivery_a),
+        ("UPDATE school_receiving SET temperature='NaN' WHERE school_receiving_id=:id", receipt_id),
+        ("DELETE FROM delivery_item WHERE delivery_item_id=:id", item_id),
+        ("DELETE FROM delivery WHERE delivery_id=:id", delivery_a),
+    ):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(text(query), {"id": identifier})
+    await c.execute(text("DELETE FROM school WHERE school_id=:id"), {"id": other_school})
+
+
+async def verify_consumption_recall(c, tenant_a, tenant_b):
+    package = await c.scalar(text("SELECT package_id FROM package WHERE tenant_id=:t"), {"t": tenant_a})
+    school = await c.scalar(text("SELECT school_id FROM school WHERE tenant_id=:t"), {"t": tenant_a})
+    production = await c.scalar(text("SELECT production_batch_id FROM production_batch WHERE tenant_id=:t"), {"t": tenant_a})
+    statements = {
+        'consumption': text("INSERT INTO consumption (consumption_id, tenant_id, package_id, consumed_at, remaining_minutes) "
+                            "VALUES (:id, :t, :package, now(), -10)"),
+        'complaint': text("INSERT INTO complaint (complaint_id, tenant_id, package_id, school_id, description, reported_at) "
+                         "VALUES (:id, :t, :package, :school, 'Reported issue', now())"),
+        'recall': text("INSERT INTO recall (recall_id, tenant_id, production_batch_id, reason, started_at) "
+                      "VALUES (:id, :t, :production, 'Investigation', now())"),
+    }
+    params = {'id': uuid4(), 't': tenant_a, 'package': package, 'school': school, 'production': production}
+    ids = {}
+    for table, statement in statements.items():
+        for invalid in ({**params, 't': tenant_b},
+                        {**params, 'package': uuid4(), 'production': uuid4()}):
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(statement, invalid)
+        ids[table] = uuid4()
+        await c.execute(statement, {**params, 'id': ids[table]})
+    assert (await c.execute(text("SELECT remaining_minutes, safe FROM consumption WHERE consumption_id=:id"),
+                            {'id': ids['consumption']})).one() == (-10, None)
+    with pytest.raises(IntegrityError):
+        async with c.begin_nested():
+            await c.execute(statements['consumption'], {**params, 'id': uuid4()})
+    # Beberapa laporan/recall dapat disimpan untuk paket/batch yang sama.
+    for table in ('complaint', 'recall'):
+        await c.execute(statements[table], {**params, 'id': uuid4()})
+    for query, identifier in (
+        ("UPDATE complaint SET description=' ' WHERE complaint_id=:id", ids['complaint']),
+        ("UPDATE recall SET reason=' ' WHERE recall_id=:id", ids['recall']),
+        ("UPDATE recall SET completed_at=started_at-interval '1 minute' WHERE recall_id=:id", ids['recall']),
+        ("UPDATE consumption SET consumed_at=NULL WHERE consumption_id=:id", ids['consumption']),
+        ("UPDATE complaint SET reported_at=NULL WHERE complaint_id=:id", ids['complaint']),
+        ("UPDATE recall SET started_at=NULL WHERE recall_id=:id", ids['recall']),
+        ("DELETE FROM package WHERE package_id=:id", package),
+        ("DELETE FROM production_batch WHERE production_batch_id=:id", production),
+    ):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(text(query), {'id': identifier})
+
+
+async def verify_asset_graph(c, tenant_a, tenant_b):
+    package = await c.scalar(text("SELECT package_id FROM package WHERE tenant_id=:t"), {'t': tenant_a})
+    school = await c.scalar(text("SELECT school_id FROM school WHERE tenant_id=:t"), {'t': tenant_a})
+    operator_b = await c.scalar(text("SELECT user_id FROM app_user WHERE tenant_id=:t"), {'t': tenant_b})
+    asset_a, asset_b, location, movement = (uuid4() for _ in range(4))
+    asset_sql = text("INSERT INTO digital_asset (asset_uuid, tenant_id, asset_type, entity_uuid, code, name) "
+                     "VALUES (:id, :t, :type, :entity, :code, 'Asset')")
+    params = {'id': asset_a, 't': tenant_a, 'type': 'PACKAGE', 'entity': package, 'code': 'PKG01'}
+    await c.execute(asset_sql, params)
+    await c.execute(asset_sql, {**params, 'id': location, 'entity': school, 'type': 'SCHOOL', 'code': 'S01'})
+    vehicle_b = await c.scalar(text("SELECT vehicle_id FROM vehicle WHERE tenant_id=:t"), {'t': tenant_b})
+    await c.execute(asset_sql, {**params, 'id': asset_b, 't': tenant_b, 'entity': vehicle_b, 'type': 'VEHICLE'})
+    with pytest.raises(IntegrityError):
+        async with c.begin_nested():
+            await c.execute(asset_sql, {**params, 'id': uuid4(), 'code': 'OTHER'})
+    edge_sql = text("INSERT INTO asset_relationship (relationship_uuid, tenant_id, parent_uuid, child_uuid, relationship_type) "
+                    "VALUES (:id, :t, :parent, :child, 'DELIVERED')")
+    edge = {'id': uuid4(), 't': tenant_a, 'parent': asset_a, 'child': location}
+    await c.execute(edge_sql, edge)
+    for invalid in ({**edge, 'id': uuid4()}, {**edge, 'id': uuid4(), 'child': asset_a},
+                    {**edge, 'id': uuid4(), 'child': asset_b}):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(edge_sql, invalid)
+    movement_sql = text("INSERT INTO asset_movement (movement_id, tenant_id, asset_type, asset_uuid, "
+                        "movement_type, to_location, operator, movement_time) "
+                        "VALUES (:id, :t, :type, :asset, 'DELIVERY', :location, :operator, now())")
+    event = {'id': movement, 't': tenant_a, 'type': 'PACKAGE', 'asset': asset_a,
+             'location': location, 'operator': None}
+    for invalid in ({**event, 'type': 'VEHICLE'}, {**event, 'location': asset_b},
+                    {**event, 'operator': operator_b}, {**event, 'asset': uuid4()}):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(movement_sql, invalid)
+    await c.execute(movement_sql, event)
+    for statement in (
+        "UPDATE asset_movement SET remarks='edited'",
+        "UPDATE asset_movement SET deleted_at=now()",
+        "DELETE FROM asset_movement", "TRUNCATE asset_movement",
+    ):
+        with pytest.raises(DBAPIError) as error:
+            async with c.begin_nested():
+                await c.execute(text(statement))
+        assert error.value.orig.sqlstate == '55000'
+    assert await c.scalar(text("SELECT count(*) FROM asset_movement")) == 1
+
+
+async def verify_event_log(c, tenant):
+    package = await c.scalar(text("SELECT package_id FROM package WHERE tenant_id=:t"), {'t': tenant})
+    statement = text("INSERT INTO event_log (event_uuid, tenant_id, event_type, entity_type, entity_uuid, payload) "
+                     "VALUES (:id, :t, :event, :type, :entity, CAST(:payload AS jsonb))")
+    event = {'id': uuid4(), 't': tenant, 'event': 'package.created', 'type': 'PACKAGE',
+             'entity': package, 'payload': '{"status": "CREATED", "context": {"source": "test"}}'}
+    await c.execute(statement, event)
+    body = (await c.execute(text("SELECT payload, created_at IS NOT NULL FROM event_log WHERE event_uuid=:id"),
+                           {'id': event['id']})).one()
+    assert body == ({'status': 'CREATED', 'context': {'source': 'test'}}, True)
+    for invalid in (
+        event, {**event, 'id': uuid4(), 't': uuid4()},
+        {**event, 'id': uuid4(), 'event': ' '}, {**event, 'id': uuid4(), 'type': ' '},
+        {**event, 'id': uuid4(), 'payload': '[]'}, {**event, 'id': uuid4(), 'payload': 'null'},
+    ):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(statement, invalid)
+    for mutation in ("UPDATE event_log SET payload='{}'", "UPDATE event_log SET deleted_at=now()",
+                     "DELETE FROM event_log", "TRUNCATE event_log"):
+        with pytest.raises(DBAPIError) as error:
+            async with c.begin_nested():
+                await c.execute(text(mutation))
+        assert error.value.orig.sqlstate == '55000'
+    # Satu entity dapat menghasilkan beberapa event dengan UUID berbeda.
+    await c.execute(statement, {**event, 'id': uuid4(), 'event': 'package.updated'})
+    assert await c.scalar(text("SELECT count(*) FROM event_log")) == 2
+
+
+async def verify_telemetry(c, tenant, other_tenant):
+    device = await c.scalar(text("SELECT device_uuid FROM device WHERE tenant_id=:t"), {'t': tenant})
+    other_device = await c.scalar(text("SELECT device_uuid FROM device WHERE tenant_id=:t"), {'t': other_tenant})
+    storage = await c.scalar(text("SELECT storage_id FROM storage WHERE tenant_id=:t"), {'t': tenant})
+    vehicle = await c.scalar(text("SELECT vehicle_id FROM vehicle WHERE tenant_id=:t"), {'t': tenant})
+    message, other_message = uuid4(), uuid4()
+    for message_id, tenant_id in ((message, tenant), (other_message, other_tenant)):
+        await c.execute(text("INSERT INTO mqtt_message_log (message_uuid, tenant_id, topic, qos, payload, received_at) "
+                             "VALUES (:id, :t, 'fsos/test', 1, :payload, now())"),
+                        {'id': message_id, 't': tenant_id, 'payload': b'original bytes'})
+    statements = {
+        'temperature_log': ("temperature_log_id, device_uuid, storage_uuid, temperature, unit",
+                            ":id, :device, :storage, 4.125, 'C'"),
+        'humidity_log': ("humidity_log_id, device_uuid, humidity", ":id, :device, 60"),
+        'gps_log': ("gps_log_id, vehicle_uuid, latitude, longitude", ":id, :vehicle, -6.2, 106.8"),
+        'heartbeat_log': ("heartbeat_log_id, device_uuid, uptime", ":id, :device, 100"),
+    }
+    params = {'id': uuid4(), 't': tenant, 'device': device, 'storage': storage,
+              'vehicle': vehicle, 'message': message, 'time': datetime.fromisoformat('2026-09-30T23:59:59+00:00')}
+    for table, (columns, values) in statements.items():
+        statement = text(f"INSERT INTO {table} (tenant_id, mqtt_message_id, recorded_at, {columns}) "
+                         f"VALUES (:t, :message, CAST(:time AS timestamptz), {values}) RETURNING tableoid::regclass::text")
+        first = {**params, 'id': uuid4()}
+        assert await c.scalar(statement, first) == table + '_202609'
+        assert await c.scalar(statement, {**first, 'id': uuid4(), 'time': datetime.fromisoformat('2026-10-01T00:00:00+00:00')}) == table + '_202610'
+        for invalid in (first, {**first, 'id': uuid4(), 'message': other_message},
+                        {**first, 'id': uuid4(), 'time': datetime.fromisoformat('2030-01-01T00:00:00+00:00')}):
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(statement, invalid)
+        if table != 'gps_log':
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(statement, {**first, 'id': uuid4(), 'device': other_device})
+        for target in (table, table + '_202609'):
+            for mutation in (f"UPDATE {target} SET version=2", f"DELETE FROM {target}", f"TRUNCATE {target}"):
+                with pytest.raises(DBAPIError) as error:
+                    async with c.begin_nested():
+                        await c.execute(text(mutation))
+                assert error.value.orig.sqlstate == '55000'
+    assert (await c.execute(text("SELECT ST_X(location), ST_Y(location) FROM gps_log LIMIT 1"))).one() == (106.8, -6.2)
+    # Partisi tambahan dibuat idempotent, row trigger diwariskan dan truncate guard dibuat pada child.
+    for _ in range(2):
+        await c.execute(text("SELECT public.fsos_create_telemetry_partitions(DATE '2026-12-01', 1)"))
+    assert await c.scalar(text("SELECT count(*) FROM pg_inherits i JOIN pg_class p ON p.oid=i.inhparent "
+                              "WHERE p.relname IN ('temperature_log','humidity_log','gps_log','heartbeat_log')")) == 16
+    await c.execute(text("INSERT INTO humidity_log (humidity_log_id, tenant_id, device_uuid, recorded_at, humidity) "
+                         "VALUES (:id, :t, :device, '2026-12-01T00:00:00+00', 50)"), params)
+    with pytest.raises(DBAPIError) as error:
+        async with c.begin_nested():
+            await c.execute(text("TRUNCATE humidity_log_202612"))
+    assert error.value.orig.sqlstate == '55000'
+    with pytest.raises(DBAPIError):
+        async with c.begin_nested():
+            await c.execute(text("SELECT public.fsos_create_telemetry_partitions(DATE '2026-12-02', 1)"))
+
+
+async def verify_remaining_telemetry(c, tenant, other_tenant):
+    device = await c.scalar(text("SELECT device_uuid FROM device WHERE tenant_id=:t"), {'t': tenant})
+    package = await c.scalar(text("SELECT package_id FROM package WHERE tenant_id=:t"), {'t': tenant})
+    actor = await c.scalar(text("SELECT user_id FROM app_user WHERE tenant_id=:t"), {'t': tenant})
+    other_actor = await c.scalar(text("SELECT user_id FROM app_user WHERE tenant_id=:t"), {'t': other_tenant})
+    message = await c.scalar(text("SELECT message_uuid FROM mqtt_message_log WHERE tenant_id=:t"), {'t': other_tenant})
+    rows = {
+        'device_health_log': ('device_health_log_id, device_uuid, health', ":id, :device, 'OK'", "health", "' '"),
+        'alarm_log': ('alarm_id, device_uuid, alarm_code, severity', ":id, :device, 'TEMP_HIGH', 'HIGH'", "alarm_code", "' '"),
+        'holding_log': ('holding_id, package_uuid, status, elapsed_minutes, remaining_minutes, warning_level',
+                        ":id, :package, 'EXPIRED', 120, -10, 'HIGH'", "elapsed_minutes", '-1'),
+        'signal_log': ('signal_log_id, device_uuid, rssi, quality', ':id, :device, -60, 80', 'quality', '101'),
+        'battery_log': ('battery_log_id, device_uuid, voltage, percentage, charging', ':id, :device, 3.7, 80, false', 'voltage', "'NaN'"),
+        'device_session': ('session_id, device_uuid, connected_at, ip_address', ":id, :device, now(), '::1'", 'disconnected_at', "now()-interval '1 second'"),
+    }
+    params = {'t': tenant, 'device': device, 'package': package, 'message': None}
+    ids = {}
+    for table, (columns, values, bad_column, bad_value) in rows.items():
+        statement = text(f'INSERT INTO {table} (tenant_id, recorded_at, mqtt_message_id, {columns}) '
+                         f'VALUES (:t, now(), :message, {values})')
+        ids[table] = uuid4()
+        valid = {**params, 'id': ids[table]}
+        await c.execute(statement, valid)
+        for invalid in (valid, {**valid, 'id': uuid4(), 't': other_tenant},
+                        {**valid, 'id': uuid4(), 'message': message}):
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(statement, invalid)
+        # INSERT SELECT changes only the value under test; immutable UPDATE would hide a missing CHECK.
+        key = columns.split(',')[0]
+        selected = ['gen_random_uuid()' if col == key else bad_value if col == bad_column else col
+                    for col in ['tenant_id', 'recorded_at', 'mqtt_message_id', *columns.split(', ')]]
+        insert_columns = f'tenant_id, recorded_at, mqtt_message_id, {columns}'
+        if bad_column not in columns.split(', '):
+            insert_columns += ', ' + bad_column
+            selected.append(bad_value)
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(text(f'INSERT INTO {table} ({insert_columns}) SELECT {", ".join(selected)} FROM {table}'))
+    assert await c.scalar(text('SELECT remaining_minutes FROM holding_log')) == -10
+    ack_sql = text('INSERT INTO alarm_acknowledgment (acknowledgment_id, tenant_id, alarm_id, acknowledged_by, '
+                   'acknowledged_at, recorded_at) VALUES (:id, :t, :parent, :actor, :time, now())')
+    end_sql = text('INSERT INTO device_session_end (session_end_id, tenant_id, session_id, disconnected_at, recorded_at) '
+                   'VALUES (:id, :t, :parent, :time, now())')
+    now = await c.scalar(text('SELECT now()'))
+    early = datetime.fromisoformat('2000-01-01T00:00:00+00:00')
+    for statement, parent_table in ((ack_sql, 'alarm_log'), (end_sql, 'device_session')):
+        event = {'id': uuid4(), 't': tenant, 'parent': ids[parent_table], 'actor': actor, 'time': now}
+        for invalid in ({**event, 'time': early}, {**event, 't': other_tenant}, {**event, 'parent': uuid4()}):
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(statement, invalid)
+        if parent_table == 'alarm_log':
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(statement, {**event, 'actor': other_actor})
+        await c.execute(statement, event)
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(statement, {**event, 'id': uuid4()})
+    assert await c.scalar(text('SELECT acknowledged FROM alarm_log')) is False
+    assert await c.scalar(text('SELECT disconnected_at FROM device_session')) is None
+    assert await c.scalar(text('SELECT a.acknowledged OR k.alarm_id IS NOT NULL FROM alarm_log a '
+                              'LEFT JOIN alarm_acknowledgment k USING (tenant_id, alarm_id)')) is True
+    assert await c.scalar(text('SELECT coalesce(s.disconnected_at, e.disconnected_at) FROM device_session s '
+                              'LEFT JOIN device_session_end e USING (tenant_id, session_id)')) == now
+    # Imported final snapshots cannot be finalized again.
+    final_alarm, final_session = uuid4(), uuid4()
+    await c.execute(text("INSERT INTO alarm_log (alarm_id, tenant_id, device_uuid, alarm_code, severity, recorded_at, acknowledged) "
+                         "VALUES (:id, :t, :device, 'IMPORTED', 'HIGH', now(), true)"), {**params, 'id': final_alarm})
+    await c.execute(text('INSERT INTO device_session (session_id, tenant_id, device_uuid, connected_at, disconnected_at, recorded_at) '
+                         'VALUES (:id, :t, :device, now(), now(), now())'), {**params, 'id': final_session})
+    for statement, parent in ((ack_sql, final_alarm), (end_sql, final_session)):
+        with pytest.raises(IntegrityError):
+            async with c.begin_nested():
+                await c.execute(statement, {'id': uuid4(), 't': tenant, 'parent': parent, 'actor': actor, 'time': now})
+    for table in (*rows, 'alarm_acknowledgment', 'device_session_end'):
+        for mutation in (f'UPDATE {table} SET version=2', f'DELETE FROM {table}', f'TRUNCATE {table} CASCADE'):
+            with pytest.raises(DBAPIError) as error:
+                async with c.begin_nested():
+                    await c.execute(text(mutation))
+            assert error.value.orig.sqlstate == '55000'
+
+
+async def verify_rule_history(c, tenant, other_tenant):
+    for kind, assignment in (('alarm', "rule_name='New name'"), ('holding', 'maximum_minutes=110')):
+        parent, history, pk = f'{kind}_rule', f'{kind}_rule_revision', f'{kind}_rule_id'
+        original = await c.scalar(text(f'SELECT snapshot FROM {history} WHERE tenant_id=:t'), {'t': tenant})
+        assert original['version'] == 1
+        await c.execute(text(f'UPDATE {parent} SET {assignment} WHERE tenant_id=:t AND version=1'), {'t': tenant})
+        snapshots = (await c.execute(text(f'SELECT snapshot FROM {history} WHERE tenant_id=:t ORDER BY version'), {'t': tenant})).scalars().all()
+        assert len(snapshots) == 2 and snapshots[0] == original and snapshots[1]['version'] == 2
+        # Version predicate prevents a stale writer from creating a third revision.
+        result = await c.execute(text(f'UPDATE {parent} SET {assignment} WHERE tenant_id=:t AND version=1'), {'t': tenant})
+        assert result.rowcount == 0
+        async with c.begin_nested() as savepoint:
+            await c.execute(text(f'UPDATE {parent} SET {assignment} WHERE tenant_id=:t'), {'t': tenant})
+            assert await c.scalar(text(f'SELECT count(*) FROM {history} WHERE tenant_id=:t'), {'t': tenant}) == 3
+            await savepoint.rollback()
+        assert await c.scalar(text(f'SELECT count(*) FROM {history} WHERE tenant_id=:t'), {'t': tenant}) == 2
+        for change in ('version=0', f'{pk}=gen_random_uuid()', 'tenant_id=:other'):
+            with pytest.raises(IntegrityError):
+                async with c.begin_nested():
+                    await c.execute(text(f'UPDATE {parent} SET {change} WHERE tenant_id=:t'), {'t': tenant, 'other': other_tenant})
+        for mutation in (f"UPDATE {history} SET snapshot='{{}}'", f'DELETE FROM {history}',
+                         f'TRUNCATE {history}', f'DELETE FROM {parent}', f'TRUNCATE {parent} CASCADE'):
+            with pytest.raises(DBAPIError) as error:
+                async with c.begin_nested():
+                    await c.execute(text(mutation))
+            assert error.value.orig.sqlstate == '55000'

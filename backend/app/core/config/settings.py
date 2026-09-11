@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: list[str] = []
     database_url: SecretStr = SecretStr("")
+    readiness_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883

@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -89,6 +90,7 @@ class Device(AuditMixin, Base):
                              ["storage_zone.tenant_id", "storage_zone.zone_id"],
                              name="fk_device_tenant_zone", ondelete="RESTRICT"),
         UniqueConstraint("device_uuid", name="uq_device_uuid"),
+        UniqueConstraint("tenant_id", "device_uuid", name="uq_device_tenant_uuid"),
         UniqueConstraint("tenant_id", "device_id", name="uq_device_tenant_id"),
         CheckConstraint("version >= 1", name="ck_device_version"),
         Index("ix_device_tenant_zone", "tenant_id", "zone_id"),
@@ -206,6 +208,35 @@ class HoldingRule(AuditMixin, Base):
     maximum_minutes: Mapped[int]
     warning_minutes: Mapped[int]
     discard_minutes: Mapped[int]
+
+
+class RuleRevision:
+    revision_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID]
+    rule_id: Mapped[UUID]
+    version: Mapped[int]
+    snapshot: Mapped[dict] = mapped_column(JSONB)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+def rule_revision_constraints(kind):
+    return (
+        UniqueConstraint("tenant_id", "rule_id", "version", name=f"uq_{kind}_revision_version"),
+        ForeignKeyConstraint(["tenant_id", "rule_id"], [f"{kind}_rule.tenant_id", f"{kind}_rule.{kind}_rule_id"],
+                             name=f"fk_{kind}_revision_rule", ondelete="RESTRICT"),
+        CheckConstraint("version >= 1", name=f"ck_{kind}_revision_version"),
+        CheckConstraint("jsonb_typeof(snapshot) = 'object'", name=f"ck_{kind}_revision_snapshot"),
+    )
+
+
+class AlarmRuleRevision(RuleRevision, Base):
+    __tablename__ = "alarm_rule_revision"
+    __table_args__ = rule_revision_constraints("alarm")
+
+
+class HoldingRuleRevision(RuleRevision, Base):
+    __tablename__ = "holding_rule_revision"
+    __table_args__ = rule_revision_constraints("holding")
 
 
 class Supplier(AuditMixin, Base):

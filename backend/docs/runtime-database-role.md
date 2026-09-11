@@ -1,0 +1,106 @@
+# Role database runtime
+
+Profil `fsos_runtime` adalah grup privilege PostgreSQL **NOLOGIN**, bukan user
+frontend atau role RBAC aplikasi. Profil disiapkan untuk service yang sudah
+diimplementasikan. Koneksi lokal DATABASE_URL masih menggunakan akun owner lama;
+provisioning ini tidak mengganti password/URL atau mengubah task maintenance.
+
+Sudah diterapkan pada fsos bersama migrasi 0016 pada 2026-09-11. Seluruh 53 tes
+lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema.
+
+## Hak yang diberikan
+
+| Objek | Privilege |
+| --- | --- |
+| Database/schema | CONNECT database, USAGE schema public |
+| Tabel aplikasi yang dikenal ORM | SELECT |
+| alembic_version | SELECT saja |
+| kitchen, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
+| alarm_acknowledgment, device_session_end | INSERT |
+| Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
+| History revisi aturan | SELECT; INSERT hanya melalui fungsi trigger yang diperketat |
+
+Tidak ada hak CREATE schema/tabel, TEMP, ALTER/DROP, TRUNCATE, DELETE, TRIGGER,
+pengelolaan role, superuser, replication, atau BYPASSRLS. Runtime tidak dapat
+mengeksekusi fungsi pembuat partisi. Raw telemetry ingestion belum mendapat
+INSERT; perlu tinjauan grant saat modul ingestion siap. Hak baru tidak diwariskan
+otomatis ke tabel masa depan melalui ALTER DEFAULT PRIVILEGES.
+
+PostgreSQL memerlukan UPDATE setidaknya satu kolom untuk locking reads. Karena
+itu UPDATE(version) diberikan tanpa mengizinkan perubahan role_id, permission_id,
+status user, password, atau identitas tenant melalui UPDATE. Pada bukti immutable,
+trigger tetap menolak UPDATE apa pun. Pada tabel mutable, SQL langsung bisa
+mengubah version; ini konsekuensi izin locking, bukan permission bisnis.
+[Referensi SELECT PostgreSQL 18](https://www.postgresql.org/docs/18/sql-select.html).
+
+## Fungsi history yang diperketat
+
+Migrasi 0016 mengubah fsos_capture_rule_revision menjadi SECURITY DEFINER dengan
+search_path `pg_catalog, pg_temp`. Target INSERT ditulis eksplisit untuk
+alarm_rule_revision dan holding_rule_revision. Fungsi menolak sumber selain tabel
+public.alarm_rule/public.holding_rule dan operasi selain INSERT/UPDATE; tidak lagi
+memilih tabel berdasarkan argumen trigger dinamis. Hak EXECUTE PUBLIC dicabut.
+
+Fungsi berjalan sebagai owner migrasi agar service tidak perlu INSERT history
+langsung. Owner lokal saat ini superuser; production harus memakai owner migrasi
+terpisah yang hanya memiliki objek aplikasi. SQL fungsi tidak menjalankan payload
+DSL atau input pengguna. Profil runtime tidak mendapat hak membuat/mengganti trigger.
+[Panduan keamanan SECURITY DEFINER](https://www.postgresql.org/docs/18/sql-createfunction.html).
+
+## Provisioning
+
+Setelah migrasi 0016, jalankan dengan koneksi administratif dari root proyek:
+
+```powershell
+.\venv\Scripts\python.exe -m alembic upgrade head
+.\venv\Scripts\python.exe backend\scripts\provision_runtime_role.py
+```
+
+Provisioning dalam satu transaksi, aman diulang untuk role yang ditandai
+`FSOS managed runtime role v1`. Role nama sama yang tidak memiliki marker, atribut
+berlebihan, LOGIN, atau keanggotaan ke role lain akan ditolak. Profil mengatur
+ulang grant langsung pada tabel yang dikenal termasuk grant per kolom. Jangan
+memberi privilege tambahan manual pada grup ini; gunakan profil yang ditinjau.
+
+Untuk memastikan pembatasan efektif, CREATE public schema dan CREATE/TEMP database
+dicabut dari PUBLIC, dan EXECUTE fungsi maintenance dicabut dari PUBLIC. Ini
+berlaku pada database target, sehingga login lain yang bergantung pada grant PUBLIC
+tersebut memerlukan grant administratif eksplisit. Owner/superuser lokal tetap
+bisa menjalankan migrasi dan maintenance.
+
+Script mensyaratkan head tepat 0016 sebagai pagar peninjauan. Saat schema/service
+berubah, tinjau serta perbarui profil dan tes sebelum provisioning ulang. Script
+tidak memberikan LOGIN, mengubah password, mengubah ownership objek, memberi
+membership kepada user existing, atau mengalihkan DATABASE_URL.
+
+## Pemisahan koneksi sebelum production
+
+Masih harus diselesaikan: buat login aplikasi khusus dengan secret yang dikelola
+secara aman, berikan membership hanya ke fsos_runtime, lalu gunakan login itu untuk
+pool API. Login tidak boleh menjadi owner database/tabel, superuser, atau mewarisi
+role administratif lain. Gunakan koneksi berbeda untuk migrasi, seed, provisioning,
+dan maintenance partisi. Jangan mengganti DATABASE_URL bersama saat ini tanpa
+memisahkan konfigurasi skrip/task maintenance; runtime memang tidak memiliki hak DDL.
+
+NOLOGIN membuat grup ini tidak dapat dipakai sebagai username koneksi langsung.
+Pengujian memakai SET LOCAL ROLE pada database terpisah untuk memverifikasi grant,
+bukan uji password/TLS/login baru. Pengujian autentikasi koneksi tetap diperlukan
+setelah login runtime dan pengelolaan secret disiapkan.
+
+## Batas keamanan dan frontend
+
+Ini pembatasan capability koneksi database, bukan isolasi row antar-tenant.
+SELECT pada tabel aplikasi tetap lintas tenant dari SQL langsung. Service harus
+menjalankan scope dan permission; PostgreSQL RLS serta audit actor menyeluruh
+masih TODO. Role tidak melindungi database dari owner/admin yang bisa mengubah DDL.
+
+Tidak ada endpoint, payload, respons, token atau event baru untuk frontend.
+Nama fsos_runtime tidak dipakai pada header Authorization atau form login.
+Frontend tidak boleh menerima connection string PostgreSQL. Endpoint health/ready
+tetap memakai kontrak yang sudah didokumentasikan.
+
+Tes membuktikan service kitchen/registry/aturan berjalan dengan role runtime,
+history tercatat meskipun INSERT history langsung ditolak, serta penolakan DDL,
+TEMP, disable trigger, truncate, hard delete, perubahan user/grant dan maintenance.
+Upgrade/downgrade fungsi diuji pada database terpisah. Profil belum menyatakan
+seluruh konfigurasi production sudah selesai.
