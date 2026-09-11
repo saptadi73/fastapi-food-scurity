@@ -235,3 +235,20 @@ tambahan. Tidak membuat edge atau transaksi school receiving.
 CRUD vehicle menyinkronkan VEHICLE pada create/update/soft delete secara atomik;
 label registry mengikuti plate_number. Driver bukan tipe registry. Perubahan tautan
 driver/GPS tidak membuat edge atau menulis ulang riwayat delivery.
+
+
+## Integrasi transaksi receiving
+
+Create /receivings menyinkronkan SUPPLIER, KITCHEN, RECEIVING dan setiap
+RAW_MATERIAL_BATCH secara atomik. Complete/cancel menyinkronkan status header/batch.
+Complete menambah dua edge per accepted batch: SUPPLIER -> RAW_MATERIAL_BATCH
+(SUPPLIED), RECEIVING -> RAW_MATERIAL_BATCH (RECEIVED). Movement RECEIVING memakai
+asset batch, to_location asset kitchen, from_location null, movement_time received_at,
+operator actor yang menyelesaikan inspeksi. Rejected/cancelled tidak menambah bukti
+penerimaan. expected_version/status mencegah finalisasi/movement ganda. Registry
+master yang hilang pada data receiving lama menghasilkan konflik finalisasi;
+rekonsiliasi administratif diperlukan, bukan pembuatan relasi berdasarkan UUID asing.
+
+Event receiving disimpan internal dalam transaksi yang sama, belum ada publisher.
+Lihat [kontrak receiving](frontend-api.md#kontrak-receiving-dan-batch-bahan).
+Traversal/timeline API dan saldo stok tetap belum diimplementasikan.

@@ -2,7 +2,7 @@
 
 Terakhir diperbarui: 2026-09-11. Versi aplikasi: 0.1.0.
 Status: dua endpoint sistem, empat endpoint autentikasi, lima endpoint
-holding rule, enam endpoint alarm rule, tiga endpoint alarm telemetry dan tiga endpoint sesi perangkat tersedia; 15 operasi master kitchen/storage/zone dan 15 operasi supplier/bahan/relasi tersedia, termasuk soft delete; lima operasi CRUD sekolah serta sepuluh operasi kendaraan/driver juga tersedia. Modul bisnis lain masih bertahap.
+holding rule, enam endpoint alarm rule, tiga endpoint alarm telemetry dan tiga endpoint sesi perangkat tersedia; 15 operasi master kitchen/storage/zone dan 15 operasi supplier/bahan/relasi tersedia, termasuk soft delete; lima operasi CRUD sekolah serta sepuluh operasi kendaraan/driver juga tersedia. Tujuh operasi transaksi receiving/batch bahan tersedia. Modul bisnis lain masih bertahap.
 
 Dokumen ini menjelaskan implementasi yang dapat dipanggil sekarang.
 [Desain API](../../docs/16_API_design.md) adalah roadmap draft, bukan daftar
@@ -39,7 +39,7 @@ Perbedaan host atau port berarti origin berbeda. CORS bukan autentikasi.
 | `X-Correlation-ID` | Request opsional | Menghubungkan request satu aktivitas; dipotong maksimal 128 karakter |
 | `X-Request-ID` | Response | UUID baru setiap request; tersedia untuk JavaScript melalui CORS |
 | `Content-Type: application/json` | Response API | Format envelope |
-| `Cache-Control: no-store` | Response `/ready`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*` | Respons tidak boleh disimpan cache |
+| `Cache-Control: no-store` | Response `/ready`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*`, `/receivings*`, `/raw-material-batches*` | Respons tidak boleh disimpan cache |
 | `Content-Type: application/json` | Request POST autentikasi | Body JSON wajib; bukan form OAuth |
 | `Authorization: Bearer <access_token>` | Request `/auth/me` | Access JWT dengan sesi aktif |
 | `Retry-After` | Response 429 autentikasi | Detik sebelum mencoba lagi; diekspos lewat CORS |
@@ -69,7 +69,7 @@ error dari proxy/jaringan dapat berada di luar envelope aplikasi.
 
 ## Cakupan CRUD dan status modul
 
-Status berikut diperiksa dari router yang terdaftar dan OpenAPI aplikasi: **68
+Status berikut diperiksa dari router yang terdaftar dan OpenAPI aplikasi: **75
 operasi HTTP aktif**, termasuk 45 operasi CRUD untuk sembilan master. Angka ini adalah
 kombinasi method/path, bukan jumlah modul. Schema database, fixture development,
 service internal atau adapter registry tidak berarti endpoint sudah tersedia.
@@ -107,7 +107,8 @@ Modul lain yang memiliki HTTP hanya untuk operasi tertentu:
 | Sesi perangkat | Daftar/detail dan akhir sesi | Berbeda dari CRUD device; tidak menyediakan create/delete sesi atau reconnect |
 | Sistem | Health dan readiness | Bukan indikator seluruh modul bisnis telah selesai |
 
-Receiving/item/batch bahan, produksi, paket, pengiriman, penerimaan sekolah,
+Receiving/item/batch bahan tersedia melalui [kontrak receiving](#kontrak-receiving-dan-batch-bahan).
+Produksi, paket, pengiriman, penerimaan sekolah,
 konsumsi, complaint dan recall masih memiliki schema tanpa API transaksi aktif.
 **Master sekolah sudah memiliki CRUD; transaksi penerimaan sekolah belum memiliki API.** Traceability traversal, dashboard dan subscription realtime
 juga belum tersedia. Penghapusan kitchen tetap diblokir bila sekolah nondeleted masih merujuknya.
@@ -188,6 +189,13 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/vehicles/{identifier}` | Detail kendaraan | Tidak ada | 200 |
 | PUT | `/api/v1/vehicles/{identifier}` | Ganti kendaraan | Definisi + expected_version | 200 |
 | DELETE | `/api/v1/vehicles/{identifier}` | Soft delete kendaraan | Tidak ada; expected_version query | 200 |
+| POST | `/api/v1/receivings` | Buat penerimaan + item/batch | Header + items | 201 |
+| GET | `/api/v1/receivings` | Daftar header penerimaan | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/receivings/{identifier}` | Detail penerimaan + item/batch | Tidak ada | 200 |
+| POST | `/api/v1/receivings/{identifier}/complete` | Selesaikan inspeksi | expected_version + seluruh keputusan item | 200 |
+| POST | `/api/v1/receivings/{identifier}/cancel` | Batalkan CREATED | expected_version | 200 |
+| GET | `/api/v1/raw-material-batches` | Daftar batch bahan | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/raw-material-batches/{identifier}` | Detail batch bahan | Tidak ada | 200 |
 
 ### GET /api/v1/health
 
@@ -437,7 +445,7 @@ DSL v1 menjadi kontrak input alarm; evaluator, simulasi dan executor masih TODO.
 API kitchen, storage dan storage zone kini tersedia dengan tenant/actor dari bearer,
 permission Read/Write dan expected_version. Lihat [kontrak master lokasi](#kontrak-master-kitchen-storage-zone).
 
-Master data selain kitchen/storage/zone/sekolah/kendaraan/driver/supplier/bahan/relasi pemasok/holding/alarm rule, device, telemetry selain alarm/sesi, receiving, production, package, holding engine,
+Master data selain kitchen/storage/zone/sekolah/kendaraan/driver/supplier/bahan/relasi pemasok/holding/alarm rule, device, telemetry selain alarm/sesi, stok lanjutan, production, package, holding engine,
 traceability, fleet, school receiving, complaint, recall, dashboard, analytics, dan QR
 belum memiliki endpoint aktif. Filter dan pagination tersedia untuk aturan/alarm/sesi
 sesuai kontrak masing-masing; sort kustom dan upload belum tersedia melalui HTTP. Payloadnya belum menjadi
@@ -3559,3 +3567,314 @@ label registry berasal dari plate_number. Driver bukan tipe registry dan tidak m
 digital_asset. Rollback membatalkan mutasi; tidak membuat delivery, gps_log, movement,
 relationship, event_log atau notifikasi. Tidak ada realtime/event runtime baru.
 POST tanpa idempotency key: retry kode/plat yang sudah disimpan memberi 409.
+
+
+## Kontrak receiving dan batch bahan
+
+Status: **7 operasi aktif**, bagian penerimaan bahan. Prefix semua path `/api/v1`.
+Tidak tersedia PUT/PATCH/DELETE receiving/item/batch. Item dan batch dibuat atomik
+melalui receiving; kesalahan draft diselesaikan dengan cancel lalu create baru
+menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibatalkan.
+
+| Method/path | Tujuan dan permission independen | Payload | Sukses |
+| --- | --- | --- | --- |
+| POST `/receivings` | Mulai penerimaan, `Receiving.Write` | ReceivingInput wajib | 201, ReceivingDetail |
+| GET `/receivings` | Daftar header, `Receiving.Read` | Tidak ada | 200, ReceivingPage |
+| GET `/receivings/{identifier}` | Detail dengan item/batch, `Receiving.Read` | Tidak ada | 200, ReceivingDetail |
+| POST `/receivings/{identifier}/complete` | Simpan seluruh keputusan inspeksi, `Receiving.Complete` | CompleteInput wajib | 200, ReceivingDetail |
+| POST `/receivings/{identifier}/cancel` | Batalkan CREATED, `Receiving.Cancel` | CancelInput wajib | 200, ReceivingDetail |
+| GET `/raw-material-batches` | Daftar batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchPage |
+| GET `/raw-material-batches/{identifier}` | Detail batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchData |
+
+Seluruh endpoint memakai `Authorization: Bearer <access_token>` dari sesi aktif.
+POST wajib `Content-Type: application/json`; `Accept: application/json` dianjurkan.
+`X-Correlation-ID` opsional, maksimum yang dicatat 128 karakter. Respons memakai
+JSON envelope umum, `X-Request-ID`, `Cache-Control: no-store`, `Pragma: no-cache`.
+Tenant/operator/audit diturunkan dari sesi, tidak boleh dikirim sebagai payload.
+Receiving.Read mengizinkan nested batch pada detail tanpa RawMaterialBatch.Read;
+permission batch terpisah diperlukan untuk endpoint batch. Write/Complete/Cancel
+mengembalikan hasil mutasi tanpa otomatis memberikan akses GET.
+
+### Parameter dan pagination
+
+`identifier` wajib UUID pada setiap path detail/aksi. Tidak ada query untuk POST
+atau GET detail. Parameter GET daftar berikut opsional dan tidak nullable bila
+dikirim: UUID berbentuk string; status peka huruf besar/kecil; string kosong invalid.
+
+| Endpoint daftar | Query | Tipe/default/validasi |
+| --- | --- | --- |
+| Keduanya | offset | integer 0..2147483647, default 0 |
+| Keduanya | limit | integer 1..100, default 20 |
+| Keduanya | supplier_id | UUID, default tidak difilter |
+| Receivings | kitchen_id | UUID, default tidak difilter |
+| Receivings | status | CREATED, COMPLETED, CANCELLED; default semua |
+| Batches | receiving_id, raw_material_id | UUID, default tidak difilter |
+| Batches | status | CREATED, ACCEPTED, REJECTED, CANCELLED; default semua |
+
+Filter digabung AND dalam tenant sesi. UUID filter milik tenant lain/tidak ada
+menghasilkan daftar kosong. Urutan `created_at DESC, primary UUID DESC`; pagination
+bukan snapshot stabil jika transaksi baru masuk. `next_offset` integer atau null
+bila tidak ada halaman selanjutnya, tanpa total. Detail receiving mengembalikan
+semua item urut `receiving_item_id ASC`; daftar receiving tidak menyertakan items.
+
+### Payload create
+
+| Field | Tipe | Required / nullable / default | Validasi dan makna |
+| --- | --- | --- | --- |
+| supplier_id | UUID | Ya / tidak | Supplier aktif, nondeleted, tenant sesi |
+| kitchen_id | UUID | Ya / tidak | Kitchen aktif, nondeleted, tenant sesi |
+| received_at | ISO datetime timezone | Ya / tidak | Tidak di masa depan; disimpan/dikirim UTC |
+| items | array ItemInput | Ya / tidak | 1..100 elemen |
+| items[].raw_material_id | UUID | Ya / tidak | Bahan aktif, nondeleted, tenant sesi; relasi supplier-material nondeleted wajib |
+| items[].batch_code | string | Ya / tidak | Trim, 1..100; unik per tenant dan dalam request |
+| items[].quantity | decimal number/string | Ya / tidak | >0; maksimum 14 digit total, 6 desimal (maksimum 99999999.999999); bukan NaN/infinity/bool |
+| items[].temperature | decimal number/string | Tidak / ya / null | -9999.99..9999.99, maksimal 2 desimal; suhu inspeksi dalam Celsius |
+| items[].expired_date | date YYYY-MM-DD | Tidak / ya / null | Batch kedaluwarsa boleh dicatat agar bisa ditolak |
+| items[].qr_code | string | Tidak / ya / null | Trim, 1..255; unik per tenant dan dalam request jika bukan null |
+
+Field ekstra ditolak pada seluruh object payload. String harus UTF-8 valid, tanpa
+NUL. Bool tidak diterima sebagai angka. `uom` diambil dari master bahan dan disimpan
+sebagai snapshot item; jumlah tidak dikonversi. Beberapa batch bahan yang sama boleh
+berada dalam satu receiving selama kode/QR berbeda. API tidak membuat gambar QR.
+
+Contoh request (ganti UUID master dengan hasil GET master milik tenant sendiri):
+
+```http
+POST /api/v1/receivings
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{"supplier_id":"11111111-1111-4111-8111-111111111111","kitchen_id":"22222222-2222-4222-8222-222222222222","received_at":"2026-01-01T08:00:00+07:00","items":[{"raw_material_id":"33333333-3333-4333-8333-333333333333","batch_code":"BATCH-EXAMPLE-001","quantity":"2.500000","temperature":"3.20","expired_date":null,"qr_code":null}]}
+```
+
+### Penyelesaian dan pembatalan
+
+CompleteInput memiliki `expected_version` integer strict wajib 1..2147483647 serta
+`items` array wajib 1..100 elemen. Setiap object hanya `receiving_item_id` UUID wajib
+dan `accepted` boolean wajib, bukan string/angka/null. Seluruh item dari detail
+harus dikirim tepat sekali; duplicate ID adalah 400, set ID tidak cocok adalah 409.
+CancelInput hanya `expected_version` dengan validasi yang sama.
+
+```http
+POST /api/v1/receivings/44444444-4444-4444-8444-444444444444/complete
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{"expected_version":1,"items":[{"receiving_item_id":"55555555-5555-4555-8555-555555555555","accepted":true}]}
+```
+
+Alternatif untuk membatalkan draft lain:
+
+```http
+POST /api/v1/receivings/44444444-4444-4444-8444-444444444444/cancel
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{"expected_version":1}
+```
+
+Alur status yang berlaku:
+
+- Create: receiving dan batch CREATED, item.accepted null, version masing-masing 1.
+- Complete: receiving COMPLETED meskipun seluruh item ditolak. Batch masing-masing
+  ACCEPTED/REJECTED sesuai keputusan, accepted true/false. Header, setiap item,
+  setiap batch naik version satu dan updated_by menjadi actor penyelesaian.
+- Cancel: hanya CREATED menjadi CANCELLED; semua batch CANCELLED, accepted tetap
+  null; version header/item/batch naik satu. Tidak ada penghapusan atau movement.
+- COMPLETED/CANCELLED final. Tidak ada reopen, koreksi parsial, return atau reversal.
+  expected_version lama atau mencoba finalisasi ulang menghasilkan 409; fetch ulang.
+
+Batch dengan expired_date sebelum **tanggal UTC saat complete** tidak boleh
+accepted=true, termasuk penerimaan yang dibackdate. Tanggal sama dengan hari UTC
+ini masih boleh diterima; null berarti tanggal belum diketahui. Penerimaan suhu
+adalah keputusan inspeksi manusia, belum evaluator ambang suhu otomatis. Parent
+aktif/divalidasi saat create; complete memakai snapshot transaksi dan tidak mengubah
+pemasok, kitchen, item atau kuantitas meski definisi master kemudian dinonaktifkan.
+Operator pada header tetap pembuat penerimaan; operator movement adalah penyelesai.
+
+### Bentuk response dan contoh GET
+
+Semua field tabel respons selalu dikirim; nullable berarti nilai boleh null.
+UUID/date/datetime berupa JSON string, Decimal berupa JSON **string**, version integer.
+Setiap header, item, batch memiliki AuditData berikut:
+
+| Field audit | Tipe / nullable | Makna |
+| --- | --- | --- |
+| tenant_id | UUID / tidak | Tenant sesi |
+| version | integer / tidak | Versi optimistic locking record |
+| created_at, updated_at | datetime UTC / tidak | Timestamp audit |
+| created_by, updated_by | UUID / ya | Actor, diisi pada write API ini |
+| deleted_at, deleted_by | datetime UTC, UUID / ya | Null pada API receiving ini |
+
+| Object | Field selain audit (semua required pada response) |
+| --- | --- |
+| ReceivingData | receiving_id, supplier_id, kitchen_id, operator: UUID nonnull; received_at: datetime UTC nonnull; status: string nonnull |
+| ReceivingDetail | Semua ReceivingData + items: array ItemData nonnull |
+| ItemData | receiving_item_id, receiving_id, raw_material_batch_id: UUID nonnull; quantity: decimal string nonnull; uom: string nonnull; temperature: decimal string nullable; accepted: bool nullable; batch: BatchData nonnull |
+| BatchData | raw_material_batch_id, raw_material_id, receiving_id, supplier_id: UUID nonnull; batch_code, status: string nonnull; expired_date: date nullable; qr_code: string nullable |
+| ReceivingPage | items: array ReceivingData; offset, limit: integer; next_offset: integer nullable |
+| BatchPage | items: array BatchData; offset, limit: integer; next_offset: integer nullable |
+
+Contoh panggilan GET tanpa body:
+
+```http
+GET /api/v1/receivings?status=CREATED&limit=20&offset=0
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/v1/receivings/44444444-4444-4444-8444-444444444444
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/v1/raw-material-batches?receiving_id=44444444-4444-4444-8444-444444444444&status=ACCEPTED
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/v1/raw-material-batches/66666666-6666-4666-8666-666666666666
+Authorization: Bearer <access_token>
+```
+
+Contoh lengkap respons create 201 berikut juga merupakan struktur respons detail
+GET 200 (code 200), complete 200 dan cancel 200. Untuk complete contoh keputusan
+true di atas: status header COMPLETED, batch ACCEPTED, accepted true, ketiga version
+menjadi 2 dan updated_at/by mengikuti finalisasi. Untuk cancel: header/batch
+CANCELLED, accepted null, version ketiganya 2. Semua field lain tetap.
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "tenant_id": "77777777-7777-4777-8777-777777777777",
+    "version": 1,
+    "created_at": "2026-09-11T09:00:00Z",
+    "updated_at": "2026-09-11T09:00:00Z",
+    "deleted_at": null,
+    "created_by": "88888888-8888-4888-8888-888888888888",
+    "updated_by": "88888888-8888-4888-8888-888888888888",
+    "deleted_by": null,
+    "receiving_id": "44444444-4444-4444-8444-444444444444",
+    "supplier_id": "11111111-1111-4111-8111-111111111111",
+    "kitchen_id": "22222222-2222-4222-8222-222222222222",
+    "operator": "88888888-8888-4888-8888-888888888888",
+    "received_at": "2026-01-01T01:00:00Z",
+    "status": "CREATED",
+    "items": [
+      {
+        "tenant_id": "77777777-7777-4777-8777-777777777777",
+        "version": 1,
+        "created_at": "2026-09-11T09:00:00Z",
+        "updated_at": "2026-09-11T09:00:00Z",
+        "deleted_at": null,
+        "created_by": "88888888-8888-4888-8888-888888888888",
+        "updated_by": "88888888-8888-4888-8888-888888888888",
+        "deleted_by": null,
+        "receiving_item_id": "55555555-5555-4555-8555-555555555555",
+        "receiving_id": "44444444-4444-4444-8444-444444444444",
+        "raw_material_batch_id": "66666666-6666-4666-8666-666666666666",
+        "quantity": "2.500000",
+        "uom": "kg",
+        "temperature": "3.20",
+        "accepted": null,
+        "batch": {
+          "tenant_id": "77777777-7777-4777-8777-777777777777",
+          "version": 1,
+          "created_at": "2026-09-11T09:00:00Z",
+          "updated_at": "2026-09-11T09:00:00Z",
+          "deleted_at": null,
+          "created_by": "88888888-8888-4888-8888-888888888888",
+          "updated_by": "88888888-8888-4888-8888-888888888888",
+          "deleted_by": null,
+          "raw_material_batch_id": "66666666-6666-4666-8666-666666666666",
+          "raw_material_id": "33333333-3333-4333-8333-333333333333",
+          "receiving_id": "44444444-4444-4444-8444-444444444444",
+          "supplier_id": "11111111-1111-4111-8111-111111111111",
+          "batch_code": "BATCH-EXAMPLE-001",
+          "expired_date": null,
+          "status": "CREATED",
+          "qr_code": null
+        }
+      }
+    ]
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "99999999-9999-4999-8999-999999999999",
+    "correlation_id": "99999999-9999-4999-8999-999999999999",
+    "timestamp": "2026-09-11T09:00:00Z",
+    "execution_time_ms": 18.4
+  }
+}
+```
+
+Respons GET batch memakai envelope yang sama (code 200) dengan `data` tepat object
+`batch` pada contoh di atas. Respons list memakai `data.items` berisi object header
+(tanpa items) atau BatchData; misalnya halaman kosong untuk kedua list:
+
+```json
+{"success":true,"code":200,"message":"Success","data":{"items":[],"offset":0,"limit":20,"next_offset":null},"errors":[],"meta":{"request_id":"99999999-9999-4999-8999-999999999999","correlation_id":"99999999-9999-4999-8999-999999999999","timestamp":"2026-09-11T09:00:00Z","execution_time_ms":2.1}}
+```
+
+### Error dan efek samping receiving
+
+| HTTP | message / kondisi |
+| --- | --- |
+| 400 | Validation Error: field ekstra/hilang, UUID, datetime, enum, angka, bool inspeksi, batas item/pagination, kode/QR duplicate dalam payload, item keputusan duplicate |
+| 401 | Invalid credentials or session; token hilang, invalid, expired, revoked; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted |
+| 404 | Receiving or batch not found; tenant lain/deleted/tidak ada sama |
+| 409 | Active supplier, kitchen and material in this tenant required |
+| 409 | Supplier-material link required |
+| 409 | Batch code or QR already exists in this tenant; transaksi seluruhnya rollback |
+| 409 | Receiving changed; reload before retrying |
+| 409 | Only CREATED receiving can be completed or cancelled |
+| 409 | Decisions must include every receiving item exactly once |
+| 409 | Expired batch cannot be accepted (UTC date) |
+| 409 | Receiving must contain items / Receiving items are already finalized / Receiving source registry is incomplete: data lama yang tidak memenuhi prasyarat lifecycle |
+| 409 | Receiving reference unavailable; konflik FK |
+| 503 | Authentication unavailable; database/auth belum siap |
+| 500 | Internal Server Error; kesalahan tak terduga, tidak menampilkan SQL |
+
+Contoh stale version, berlaku untuk complete/cancel:
+
+```json
+{"success":false,"code":409,"message":"Receiving changed; reload before retrying","data":null,"errors":[],"meta":{"request_id":"99999999-9999-4999-8999-999999999999","correlation_id":"99999999-9999-4999-8999-999999999999","timestamp":"2026-09-11T09:00:00Z","execution_time_ms":2.1}}
+```
+
+Error lain menggunakan envelope sama dengan code/message tabel. Error validasi
+menyertakan `errors: [{"field":"body.items.0.quantity","message":"Input should be greater than 0"}]`.
+Tidak memakai HTTP 422. Frontend perlu menyimpan receiving_id dan version hasil
+create, fetch detail sebelum inspeksi, lalu mengganti state dari respons aksi.
+
+Seluruh create/finalisasi satu transaksi PostgreSQL: header, item, batch, registry,
+relationship/movement dan event commit bersama atau semuanya rollback. Create sync
+SUPPLIER/KITCHEN/RECEIVING/RAW_MATERIAL_BATCH; finalisasi sync receiving/batch.
+Untuk setiap batch accepted, complete menambah SUPPLIED (supplier -> batch),
+RECEIVED (receiving -> batch) dan satu movement RECEIVING menuju digital_asset
+kitchen, from_location null, waktu received_at, operator actor penyelesaian.
+UUID lokasi/edge adalah asset_uuid registry, bukan kitchen_id/receiving_id.
+Batch rejected/cancelled tidak menghasilkan edge/movement penerimaan.
+
+`receiving.created`, `receiving.completed`, `receiving.cancelled` disimpan di event_log
+internal dengan snapshot; lihat [catalog](event-catalog.md#event-receiving-tersimpan).
+Belum ada publisher/subscription/event HTTP. GET tidak menambah event. Tidak ada
+idempotency key create: retry kode sama menghasilkan 409, bukan receiving baru;
+setelah timeout periksa daftar/detail sebelum mengulang. Finalisasi diserialkan
+per receiving dan versi/status mencegah event/movement ganda pada retry sukses.
+
+**Batas fitur:** ACCEPTED berarti keputusan penerimaan, bukan saldo stok siap pakai
+atau jaminan keamanan otomatis. Belum ada putaway storage, stock ledger/saldo,
+pemakaian produksi, return/reversal, lampiran foto, nomor dokumen supplier, inspeksi
+parsial, engine suhu, atau endpoint graph/timeline. Receiving/item tetap historis;
+master kitchen/supplier/material yang dirujuk tidak boleh dihapus, termasuk setelah
+receiving cancelled. Lengkapi relasi pemasok-bahan melalui API master sebelum create.

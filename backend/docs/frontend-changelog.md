@@ -1,5 +1,25 @@
 # Perubahan kontrak frontend
 
+## 2026-09-11 - Penerimaan bahan dan batch
+
+- Tujuh operasi receiving/batch tersedia; total 75 operasi HTTP, master CRUD tetap
+  45 operasi. Create header/item/batch atomik, GET list/detail, complete inspeksi,
+  cancel draft dan baca batch. Tidak ada edit/delete langsung transaksi historis.
+- Receiving.Read/Write/Complete/Cancel dan RawMaterialBatch.Read independen; hak
+  minimum runtime dan DEV_MAINTENANCE lokal telah diterapkan.
+- Frontend mengirim seluruh keputusan bool + expected_version untuk complete;
+  expired sebelum tanggal UTC hari ini tidak boleh accepted. Batch ditolak tetap
+  tercatat. Retry finalisasi sukses 409; reload sebelum mencoba kembali.
+- Registry, SUPPLIED/RECEIVED, movement dan event_log tersimpan atomik. Event baru
+  created/completed/cancelled belum diterbitkan ke broker/frontend.
+- [Kontrak lengkap](frontend-api.md#kontrak-receiving-dan-batch-bahan) dan
+  [event catalog](event-catalog.md#event-receiving-tersimpan) menjelaskan payload,
+  respons, permission, pagination, error dan efek samping. Stok/saldo/putaway,
+  produksi, inspeksi parsial/foto serta reversal masih TODO.
+- Pemeriksaan HTTP memakai role runtime mencakup rollback, tenant/permission,
+  expiry, lifecycle dan bukti event/movement. Contoh JSON diverifikasi ke schemas
+  dan jumlah operasi ke OpenAPI. Tidak ada migrasi atau seeding bisnis lokal.
+
 ## 2026-09-11 - CRUD kendaraan dan driver
 
 - Sepuluh operasi GET list/detail, POST, PUT, DELETE tersedia untuk /drivers dan

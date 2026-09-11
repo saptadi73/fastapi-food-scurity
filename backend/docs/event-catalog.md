@@ -1,6 +1,6 @@
 # Event catalog FSOS
 
-Terakhir diperbarui: 2026-09-11. Status: **belum ada event yang diterbitkan runtime**.
+Terakhir diperbarui: 2026-09-11. Status: **event receiving tersimpan di database; belum ada event yang dipublikasikan ke transport**.
 
 Endpoint login/refresh/logout terhubung ke SessionService dan mengubah database,
 tanpa event bus/notifikasi. Log operasional mencatat action/outcome/request_id;
@@ -80,9 +80,9 @@ struktur tabel database.
 | `event_type` | varchar(100) | Ya | Nama event tidak kosong; belum enum catalog |
 | `entity_type` | varchar(100) | Ya | Jenis entity tidak kosong |
 | `entity_uuid` | UUID | Ya | Identitas entity sumber; referensi polimorfik belum FK sumber |
-| `payload` | JSONB object | Ya | Baru divalidasi sebagai objek, belum schema tiap jenis event |
+| `payload` | JSONB object | Ya | Object; event receiving divalidasi dengan ReceivingDetail dan schema_version=1 |
 | `created_at`, `updated_at` | timestamptz | Ya | Timestamp audit, default waktu database |
-| `created_by`, `updated_by` | UUID | Tidak | Actor audit; validasi actor masih TODO |
+| `created_by`, `updated_by` | UUID | Tidak | Actor audit; receiving memakai actor sesi tervalidasi |
 | `deleted_at`, `deleted_by` | timestamp/UUID | Harus null | Soft delete bukti ditolak |
 | `version` | integer | Ya | Default 1; bukan versi schema event publik |
 
@@ -195,7 +195,7 @@ Tidak ada event baru, producer/consumer, payload event berversi, channel/transpo
 ordering delivery, retry atau replay broker. Tidak membuat asset_relationship,
 asset_movement atau event_log. Registry bukan pesan notifikasi/realtime. Contoh
 request/response ada di [kontrak master](frontend-api.md#kontrak-master-kitchen-storage-zone).
-Event transaksi receiving/production berikutnya tetap dikerjakan bersama alur bisnis.
+Event receiving kini tersimpan seperti bagian berikut; event production tetap TODO.
 
 
 ## Supplier, bahan baku dan relasi pemasok-bahan
@@ -266,3 +266,105 @@ ordering pengiriman, retry/replay broker atau subscription. Mengganti driver/GPS
 vehicle tidak mencatat movement/GPS/delivery atau mengubah riwayat pengiriman lama.
 POST duplicate retry 409; DELETE ulang 404. Contoh lengkap ada di
 [kontrak kendaraan/driver](frontend-api.md#kontrak-kendaraan-dan-driver).
+
+
+## Event receiving tersimpan
+
+Status: aktif sebagai **record internal event_log**, bukan pesan realtime frontend.
+Producer: ReceivingService, bersama transaksi API /receivings. Consumer runtime:
+belum ada. Transport/channel/topic: belum tersedia, hanya PostgreSQL event_log.
+Frontend menggunakan response mutasi lalu GET, tidak melakukan subscribe.
+
+| Event | Trigger commit berhasil | Permission producer | Snapshot |
+| --- | --- | --- | --- |
+| receiving.created | POST /receivings | Receiving.Write | CREATED, item.accepted null, batch CREATED |
+| receiving.completed | POST /receivings/{id}/complete | Receiving.Complete | COMPLETED, batch ACCEPTED/REJECTED dan keputusan semua item |
+| receiving.cancelled | POST /receivings/{id}/cancel | Receiving.Cancel | CANCELLED, batch CANCELLED, accepted null |
+
+Ketiga event memakai entity_type RECEIVING, entity_uuid receiving_id, event_uuid
+UUID baru. tenant_id dan actor berasal dari sesi aktif dan permission tenant, tidak
+berasal dari request. created_by/updated_by berisi actor producer; deleted_at/by
+null dan version record 1. Bukti append-only, tanpa UPDATE/DELETE runtime.
+
+Payload **v1** sama untuk ketiganya, seluruh field wajib dan nonnull:
+
+- schema_version: integer literal 1, versi payload (berbeda dari version record).
+- actor_id: string UUID actor pembuat event; berbeda dari operator receiving jika
+  inspeksi diselesaikan pengguna lain.
+- receiving: snapshot lengkap ReceivingDetail sesuai [kontrak API](frontend-api.md#kontrak-receiving-dan-batch-bahan),
+  termasuk semua item, batch dan audit. Nullable field mengikuti kontrak tersebut;
+  decimal berupa string, datetime UTC, ID UUID string. Urutan item UUID ascending.
+
+Ordering: create mendahului finalisasi receiving yang sama; lock header dan versi
+mengizinkan hanya satu finalisasi. Gunakan receiving.version untuk urutan agregat,
+bukan created_at/event_uuid untuk urutan global. Tidak ada jaminan ordering antar
+receiving. Deduplikasi finalisasi melalui expected_version + status CREATED;
+retry setelah sukses 409 tanpa event tambahan. Create belum memiliki idempotency
+key; kode batch/QR unik menolak duplikasi dengan rollback. Retry transaksi gagal
+hanya sesudah membaca hasil/menyelesaikan konflik; tidak ada automatic retry,
+outbox, broker acknowledgment, replay worker atau endpoint pembacaan event.
+Kegagalan penulisan event menggagalkan keseluruhan transaksi bisnis. Database
+snapshot ini belum dapat diasumsikan sebagai kontrak publik transport masa depan.
+
+Contoh payload aktif receiving.created (UUID fiktif); receiving.completed/cancelled
+menggunakan struktur sama dengan snapshot final dan actor penyelesaian:
+
+```json
+{
+  "schema_version": 1,
+  "actor_id": "88888888-8888-4888-8888-888888888888",
+  "receiving": {
+    "tenant_id": "77777777-7777-4777-8777-777777777777",
+    "version": 1,
+    "created_at": "2026-09-11T09:00:00Z",
+    "updated_at": "2026-09-11T09:00:00Z",
+    "deleted_at": null,
+    "created_by": "88888888-8888-4888-8888-888888888888",
+    "updated_by": "88888888-8888-4888-8888-888888888888",
+    "deleted_by": null,
+    "receiving_id": "44444444-4444-4444-8444-444444444444",
+    "supplier_id": "11111111-1111-4111-8111-111111111111",
+    "kitchen_id": "22222222-2222-4222-8222-222222222222",
+    "operator": "88888888-8888-4888-8888-888888888888",
+    "received_at": "2026-01-01T01:00:00Z",
+    "status": "CREATED",
+    "items": [
+      {
+        "tenant_id": "77777777-7777-4777-8777-777777777777",
+        "version": 1,
+        "created_at": "2026-09-11T09:00:00Z",
+        "updated_at": "2026-09-11T09:00:00Z",
+        "deleted_at": null,
+        "created_by": "88888888-8888-4888-8888-888888888888",
+        "updated_by": "88888888-8888-4888-8888-888888888888",
+        "deleted_by": null,
+        "receiving_item_id": "55555555-5555-4555-8555-555555555555",
+        "receiving_id": "44444444-4444-4444-8444-444444444444",
+        "raw_material_batch_id": "66666666-6666-4666-8666-666666666666",
+        "quantity": "2.500000",
+        "uom": "kg",
+        "temperature": "3.20",
+        "accepted": null,
+        "batch": {
+          "tenant_id": "77777777-7777-4777-8777-777777777777",
+          "version": 1,
+          "created_at": "2026-09-11T09:00:00Z",
+          "updated_at": "2026-09-11T09:00:00Z",
+          "deleted_at": null,
+          "created_by": "88888888-8888-4888-8888-888888888888",
+          "updated_by": "88888888-8888-4888-8888-888888888888",
+          "deleted_by": null,
+          "raw_material_batch_id": "66666666-6666-4666-8666-666666666666",
+          "raw_material_id": "33333333-3333-4333-8333-333333333333",
+          "receiving_id": "44444444-4444-4444-8444-444444444444",
+          "supplier_id": "11111111-1111-4111-8111-111111111111",
+          "batch_code": "BATCH-EXAMPLE-001",
+          "expired_date": null,
+          "status": "CREATED",
+          "qr_code": null
+        }
+      }
+    ]
+  }
+}
+```

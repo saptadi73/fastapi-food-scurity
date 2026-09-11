@@ -27,6 +27,7 @@ from app.modules.master.api.storages import router as storages_router
 from app.modules.master.api.supplier_materials import router as supplier_materials_router
 from app.modules.master.api.suppliers import router as suppliers_router
 from app.modules.master.api.vehicles import router as vehicles_router
+from app.modules.receiving.api.router import router as receiving_router
 from app.modules.telemetry.api.alarms import router as telemetry_alarm_router
 from app.modules.telemetry.api.sessions import router as device_session_router
 
@@ -69,12 +70,13 @@ def create_app() -> FastAPI:
     app.include_router(schools_router, prefix=settings.api_prefix)
     app.include_router(drivers_router, prefix=settings.api_prefix)
     app.include_router(vehicles_router, prefix=settings.api_prefix)
+    app.include_router(receiving_router, prefix=settings.api_prefix)
     original_openapi = app.openapi
 
     def documented_openapi():
         schema = original_openapi()
         for path, operations in schema['paths'].items():
-            if path.startswith((f'{settings.api_prefix}/auth/', f'{settings.api_prefix}/holding-rules', f'{settings.api_prefix}/alarm-rules', f'{settings.api_prefix}/alarms', f'{settings.api_prefix}/device-sessions', f'{settings.api_prefix}/kitchens', f'{settings.api_prefix}/storages', f'{settings.api_prefix}/storage-zones', f'{settings.api_prefix}/suppliers', f'{settings.api_prefix}/raw-materials', f'{settings.api_prefix}/supplier-materials', f'{settings.api_prefix}/schools', f'{settings.api_prefix}/drivers', f'{settings.api_prefix}/vehicles')):
+            if path.startswith((f'{settings.api_prefix}/auth/', f'{settings.api_prefix}/holding-rules', f'{settings.api_prefix}/alarm-rules', f'{settings.api_prefix}/alarms', f'{settings.api_prefix}/device-sessions', f'{settings.api_prefix}/kitchens', f'{settings.api_prefix}/storages', f'{settings.api_prefix}/storage-zones', f'{settings.api_prefix}/suppliers', f'{settings.api_prefix}/raw-materials', f'{settings.api_prefix}/supplier-materials', f'{settings.api_prefix}/schools', f'{settings.api_prefix}/drivers', f'{settings.api_prefix}/vehicles', f'{settings.api_prefix}/receivings', f'{settings.api_prefix}/raw-material-batches')):
                 for operation in operations.values():
                     operation.get('responses', {}).pop('422', None)
         return schema
@@ -109,7 +111,7 @@ def create_app() -> FastAPI:
                 status_code=500,
             )
         response.headers["X-Request-ID"] = request.state.request_id
-        if is_auth or request.url.path.startswith((f'{settings.api_prefix}/holding-rules', f'{settings.api_prefix}/alarm-rules', f'{settings.api_prefix}/alarms', f'{settings.api_prefix}/device-sessions', f'{settings.api_prefix}/kitchens', f'{settings.api_prefix}/storages', f'{settings.api_prefix}/storage-zones', f'{settings.api_prefix}/suppliers', f'{settings.api_prefix}/raw-materials', f'{settings.api_prefix}/supplier-materials', f'{settings.api_prefix}/schools', f'{settings.api_prefix}/drivers', f'{settings.api_prefix}/vehicles')):
+        if is_auth or request.url.path.startswith((f'{settings.api_prefix}/holding-rules', f'{settings.api_prefix}/alarm-rules', f'{settings.api_prefix}/alarms', f'{settings.api_prefix}/device-sessions', f'{settings.api_prefix}/kitchens', f'{settings.api_prefix}/storages', f'{settings.api_prefix}/storage-zones', f'{settings.api_prefix}/suppliers', f'{settings.api_prefix}/raw-materials', f'{settings.api_prefix}/supplier-materials', f'{settings.api_prefix}/schools', f'{settings.api_prefix}/drivers', f'{settings.api_prefix}/vehicles', f'{settings.api_prefix}/receivings', f'{settings.api_prefix}/raw-material-batches')):
             response.headers['Cache-Control'] = 'no-store'
             response.headers['Pragma'] = 'no-cache'
         logger.info(

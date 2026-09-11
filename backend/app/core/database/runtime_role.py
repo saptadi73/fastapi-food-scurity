@@ -9,8 +9,11 @@ from app.modules.traceability.infrastructure.registry import SOURCES
 
 ROLE = 'fsos_runtime'
 MARKER = 'FSOS managed runtime role v1'
-INSERT_TABLES = ('driver', 'vehicle', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
+INSERT_TABLES = ('receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
 UPDATES = {
+    'receiving': 'status,updated_at,updated_by,version',
+    'receiving_item': 'accepted,updated_at,updated_by,version',
+    'raw_material_batch': 'status,updated_at,updated_by,version',
     'driver': 'driver_code,driver_name,phone,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'vehicle': 'vehicle_code,plate_number,vehicle_type,capacity,gps_device,driver_id,location,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'school': 'school_code,school_name,latitude,longitude,address,student_count,status,updated_at,updated_by,deleted_at,deleted_by,version',

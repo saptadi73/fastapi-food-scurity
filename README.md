@@ -191,3 +191,11 @@ CRUD keenam master kini mencakup [DELETE soft delete](backend/docs/frontend-api.
 [CRUD master sekolah](backend/docs/frontend-api.md#kontrak-crud-sekolah) tersedia: list/detail/create/replace/soft delete. Transaksi penerimaan sekolah masih TODO.
 
 [CRUD kendaraan dan driver](backend/docs/frontend-api.md#kontrak-kendaraan-dan-driver) tersedia; transaksi delivery dan GPS ingestion tetap TODO.
+
+
+### Penerimaan bahan
+
+API receiving kini menyediakan create header/item/batch, inspeksi complete, cancel
+CREATED dan list/detail receiving/batch. Lihat [panduan frontend receiving](backend/docs/frontend-api.md#kontrak-receiving-dan-batch-bahan)
+serta [event tersimpan](backend/docs/event-catalog.md#event-receiving-tersimpan).
+Batch accepted mencatat movement/traceability; saldo stok dan putaway masih TODO.

@@ -99,7 +99,19 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [ ] API pengelolaan tenant/user/role/permission bila diperlukan alur bisnis;
   endpoint autentikasi dan CLI provisioning tidak menyelesaikan CRUD administrasi.
 
-**Pekerjaan berikutnya: transaksi receiving, item penerimaan dan batch bahan baku.**
+- [x] Transaksi receiving: create header + item/batch atomik, list/detail,
+  complete seluruh keputusan inspeksi dan cancel CREATED; validasi parent aktif,
+  relasi pemasok-bahan, quantity/uom, expired date, tenant/permission/version.
+- [x] Registry receiving/batch, SUPPLIED/RECEIVED, movement RECEIVING untuk accepted,
+  event created/completed/cancelled internal dalam transaksi yang sama; baca batch.
+- [x] Kontrak 7 endpoint baru, contoh payload/response, event catalog/changelog dan
+  hak minimum runtime/development diperbarui tanpa migrasi atau data bisnis lokal.
+  Sepuluh pemeriksaan terkait lulus; Ruff dan contoh OpenAPI/JSON diperiksa.
+- [ ] Stok penerimaan: putaway/alokasi storage, ledger/saldo dan ketersediaan bahan.
+  Status batch ACCEPTED belum berarti saldo siap digunakan produksi.
+
+**Pekerjaan berikutnya: alokasi penyimpanan dan stok batch bahan hasil receiving,
+kemudian master menu/resep dan alur produksi.**
 
 ## P0 — Fondasi instalasi FastAPI
 

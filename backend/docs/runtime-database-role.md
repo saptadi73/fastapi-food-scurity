@@ -18,6 +18,9 @@ lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema
 | alembic_version | SELECT saja |
 | kitchen, storage, storage_zone, school, driver, vehicle, supplier, raw_material, supplier_material, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
 | alarm_acknowledgment, device_session_end | INSERT |
+| receiving, raw_material_batch | INSERT; UPDATE hanya status, updated_at, updated_by, version |
+| receiving_item | INSERT; UPDATE hanya accepted, updated_at, updated_by, version |
+| asset_relationship, asset_movement, event_log | INSERT; SELECT yang sudah ada, tanpa UPDATE/DELETE |
 | auth_session, refresh_token | SELECT/INSERT; UPDATE hanya revoked_at atau used_at masing-masing |
 | Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
 | History revisi aturan | SELECT; INSERT hanya melalui fungsi trigger yang diperketat |
@@ -137,3 +140,14 @@ minimum CRUD sekolah dan sudah diterapkan pada fsos.
 Driver/vehicle kini memiliki INSERT dan UPDATE definisi/audit/version termasuk
 soft delete. Vehicle.driver_id/gps_device boleh diubah setelah pemeriksaan service;
 tenant/ID tetap dilindungi. Tidak ada privilege DELETE SQL/DDL atau INSERT GPS log baru.
+
+
+## Akses receiving development
+
+Profil runtime receiving telah diterapkan pada fsos (2026-09-11). Permission RBAC
+Receiving.Read, Receiving.Write, Receiving.Complete, Receiving.Cancel dan
+RawMaterialBatch.Read diberikan pada DEV_MAINTENANCE lokal. Tidak membuat data
+receiving atau akun baru. CLI `backend/scripts/provision_receiving_permissions.py`
+mengikuti pola administratif development yang ada: --tenant, --actor, --role,
+--permission berulang dan --apply untuk write; default check, tidak merestore grant
+revoked. Gunakan ADMIN_DATABASE_URL untuk CLI, DATABASE_URL terbatas untuk API.
