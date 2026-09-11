@@ -1,5 +1,160 @@
 # Perubahan kontrak frontend
 
+## 2026-09-11 - CRUD kendaraan dan driver
+
+- Sepuluh operasi GET list/detail, POST, PUT, DELETE tersedia untuk /drivers dan
+  /vehicles. Driver/Vehicle.Read/Write/Delete independen; akses minimum lokal tersedia.
+- Driver/GPS opsional dan boleh dilepas dengan null; bila diisi harus aktif satu
+  tenant, GPS harus tipe GPS dan menggunakan device_id internal, bukan device_uuid.
+- Koordinat/kapasitas divalidasi; PUT mengganti definisi dan memakai expected_version.
+  Penggantian driver pada master tidak mengubah driver historis pada delivery.
+- Soft delete driver ditolak bila masih ada vehicle/delivery; vehicle ditolak bila
+  masih ada delivery/gps_log nondeleted. Registry VEHICLE mengikuti mutasi atomik;
+  driver tidak menjadi digital_asset. Tidak ada cascade/restore/event baru.
+- [Kontrak frontend](frontend-api.md#kontrak-kendaraan-dan-driver) memuat seluruh
+  payload/response, contoh, permission, error dan batas integrasi GPS. Matriks kini
+  68 operasi HTTP, 45 operasi CRUD sembilan master. API delivery/device masih TODO.
+- Dua belas pemeriksaan terkait lulus; Ruff bersih. Tidak ada migrasi atau fixture
+  bisnis lokal baru; grant minimum runtime dan role development diperbarui.
+
+## 2026-09-11 - CRUD master sekolah
+
+- GET/POST /schools dan GET/PUT/DELETE /schools/{identifier} tersedia. School.Read,
+  Write dan Delete independen, sudah diberikan ke DEV_MAINTENANCE lokal.
+- Kitchen harus aktif satu tenant untuk create/update dan tidak dapat dipindahkan.
+  Koordinat berpasangan, student_count integer nonnegatif. PUT mengganti definisi
+  dengan expected_version; DELETE memakai expected_version query dan body kosong.
+- Soft delete ditolak bila delivery_item, school_receiving atau complaint nondeleted
+  merujuk sekolah. Source dan registry SCHOOL disinkronkan atomik pada setiap mutasi.
+- [Kontrak sekolah](frontend-api.md#kontrak-crud-sekolah) memuat field/payload,
+  respons, contoh, permission, validasi, pagination dan error. Matriks kini 58 operasi
+  HTTP, 35 di antaranya CRUD tujuh master. Transaksi penerimaan sekolah tetap TODO.
+- Pemeriksaan terarah sekolah lulus setelah koreksi ekspektasi urutan fixture dengan
+  timestamp sama; regresi lokasi/delete/API juga diperiksa. Tidak ada migrasi,
+  seeding sekolah lokal atau event runtime baru.
+
+## 2026-09-11 - Klarifikasi cakupan CRUD dan sekolah
+
+- Tambahkan [matriks cakupan](frontend-api.md#cakupan-crud-dan-status-modul) berdasarkan
+  router/OpenAPI: 53 operasi aktif, 30 di antaranya CRUD enam master.
+- CRUD sekolah, kendaraan, driver, menu/food item, resep, jenis kemasan dan master
+  device/binding belum tersedia; schema/fixture/adapter bukan kontrak endpoint.
+- Master sekolah dibedakan dari transaksi penerimaan sekolah, dan master device
+  dibedakan dari API sesi perangkat. Keduanya tidak boleh disamakan statusnya.
+- Pembaruan dokumentasi/status saja; tidak ada perubahan endpoint, payload,
+  permission, data, event atau implementasi CRUD baru pada perubahan ini.
+
+## 2026-09-11 - CRUD lengkap dengan soft delete enam master
+
+- DELETE /kitchens/{identifier}, /storages/{identifier}, /storage-zones/{identifier},
+  /suppliers/{identifier}, /raw-materials/{identifier}, /supplier-materials/{identifier}
+  ditambahkan. expected_version query wajib; tanpa body; sukses 200 snapshot terhapus.
+- Permission Kitchen/Storage/StorageZone/Supplier/RawMaterial/SupplierMaterial.Delete
+  terpisah dari Read/Write, sudah diberikan eksplisit ke DEV_MAINTENANCE lokal.
+- Soft delete mengisi actor/waktu audit dan menaikkan version; source/registry
+  kitchen/storage/supplier/bahan atomik. Tidak ada DELETE SQL, cascade atau event baru.
+- Referensi nondeleted (termasuk INACTIVE dan transaksi selesai) memblokir 409;
+  daftar tabel penghalang dan contoh lengkap di [kontrak DELETE](frontend-api.md#soft-delete-master-operasional).
+- Frontend sembunyikan aksi tanpa Delete; kirim version terakhir. Setelah sukses
+  hapus row dari tampilan; GET/PUT/DELETE ulang 404. Kode/pasangan tidak bisa dipakai
+  ulang dan tidak ada restore otomatis. Riwayat/transaksi tidak dihapus.
+- Sepuluh pemeriksaan terarah lulus: enam lifecycle DELETE, audit/registry, permission
+  terpisah/dicabut, tenant lain, version, referensi serta regresi create/read/update.
+
+## 2026-09-11 - Supplier, bahan baku dan relasi pemasok
+
+- Dua belas operasi list/detail/create/replace tersedia pada /suppliers,
+  /raw-materials dan /supplier-materials; bearer dan Read/Write tiap modul terpisah.
+- Banyak supplier per bahan; pasangan aktif satu tenant wajib, duplicate/version
+  conflict 409. PUT relasi boleh mengoreksi pasangan tanpa mengubah transaksi lama.
+- Uom bahan tetap setelah create; suhu/durasi/email divalidasi. PUT mengganti semua
+  definisi, optional yang dihilangkan reset default; decimal respons string.
+- Supplier/material registry sinkron atomik; relasi tidak membuat edge graph,
+  stok, receiving atau event runtime. Tidak ada delete/unlink/restore.
+- [Kontrak frontend](frontend-api.md#kontrak-supplier-bahan-dan-relasi) memuat seluruh
+  payload, contoh respons, filter/pagination, nullable, permission, error dan efek samping.
+- Akses minimum DEV_MAINTENANCE dan runtime diterapkan tanpa migrasi/seeding bisnis.
+  Delapan pemeriksaan terarah lulus; Ruff bersih. Selanjutnya transaksi receiving.
+
+## 2026-09-11 - Master kitchen, storage dan zone
+
+- Dua belas operasi tersedia: list/detail/create/replace untuk /kitchens, /storages
+  dan /storage-zones. Bearer dan Read/Write masing-masing modul; grant minimum lokal
+  tersedia pada DEV_MAINTENANCE. Tidak ada perubahan seeding atau fixture bisnis.
+- POST 201; GET/PUT 200; expected_version mencegah lost update. PUT mengganti seluruh
+  definisi, termasuk reset field opsional yang dihilangkan; parent tidak dapat diganti.
+- Parent wajib aktif dan satu tenant; INACTIVE tidak menghapus/mengubah anak secara
+  cascade. Koordinat/suhu divalidasi; decimal respons string dan audit timestamp UTC.
+- Registry kitchen/storage sinkron atomik; zone tidak menjadi digital_asset.
+  Tidak ada delete, movement, relationship atau event runtime baru.
+- [Kontrak frontend](frontend-api.md#kontrak-master-kitchen-storage-zone) memuat
+  payload/response lengkap, contoh semua operasi, pagination, auth, validasi dan error.
+- Tujuh pemeriksaan terarah lulus; dua tes HTTP lulus ulang dengan kasus tenant lain.
+  Ruff bersih. Tidak ada migrasi; grant runtime storage/zone disesuaikan minimum.
+
+## 2026-09-11 - HTTP sesi perangkat dan provisioning telemetry
+
+- GET /device-sessions, GET /device-sessions/{session_id} dan POST
+  /device-sessions/{session_id}/end tersedia dengan DeviceSession.Read/Close terpisah.
+- POST menerima disconnected_at ISO 8601 bertimezone; retry instant sama 200,
+  waktu berbeda 409. Frontend memakai is_open/effective_disconnected_at, bukan snapshot
+  disconnected_at. Respons UTC, no-store, filter status/waktu/perangkat dan next_offset.
+- [Kontrak frontend lengkap](frontend-api.md#kontrak-sesi-perangkat-http) mencakup
+  payload, field respons, nullable, contoh, permission, validasi, error dan efek samping.
+- [CLI provisioning](telemetry-permissions.md) tersedia, default check dan --apply
+  eksplisit; empat permission/grant diterapkan ke DEV_MAINTENANCE di FSOS_DEV lokal.
+  Pengulangan tidak membuat row baru; revoked grant tidak dipulihkan; seed tidak berubah.
+- Akun anggota role tersebut dapat memuat ulang /auth/me untuk izin terbaru.
+  Tidak ada akun/password/membership baru, migrasi, ingestion/reconnect atau event runtime.
+- Verifikasi 25 tes terkait lulus; Ruff bersih. Pemeriksaan runtime grant lokal berhasil.
+
+## 2026-09-11 - HTTP alarm telemetry dan acknowledgment
+
+- Tiga operasi tersedia: GET /alarms, GET /alarms/{alarm_id}, POST
+  /alarms/{alarm_id}/acknowledgment. Bearer dengan Alarm.Read/Alarm.Acknowledge terpisah.
+- Filter status efektif/perangkat/waktu, offset/limit/next_offset; respons terstruktur
+  UTC/no-store. POST wajib tanpa body; actor/waktu server, retry mempertahankan bukti.
+- Frontend memakai effective_acknowledged, bukan snapshot acknowledged; metadata
+  acknowledgment impor dapat null. Kontrak payload/response/error dan contoh lengkap
+  ada di [panduan frontend](frontend-api.md#kontrak-alarm-telemetry-http).
+- Permission telemetry belum ditambahkan ke role lokal; provisioning administratif
+  tetap TODO. AlarmRule.* tidak memberikan akses Alarm.*.
+- Tidak ada migrasi, ingestion, notifikasi atau event runtime. API sesi masih TODO.
+- Verifikasi 26 tes terkait lulus, termasuk runtime database role, tenant lain,
+  izin dicabut, retry tanpa duplikasi, filter efektif dan snapshot impor.
+
+## 2026-09-11 - Endpoint manajemen dan aktivasi alarm rule
+
+- Enam operasi HTTP: list/create/detail/replace/history dan PUT enabled.
+  Bearer session wajib; AlarmRule.Read/Write/Activate independen, scope tenant dari sesi.
+- POST 201 membuat konfigurasi disabled. Edit disabled dan aktivasi memakai
+  expected_version; stale/duplikat/edit aktif 409, DSL invalid 400. Enable memvalidasi
+  ulang DSL; disable legacy invalid tetap boleh. No-op enabled tidak menambah revisi.
+- Schema respons lengkap, timestamp UTC, pagination offset/limit, no-store dan
+  error mapping terdokumentasi dalam [kontrak frontend](frontend-api.md#kontrak-alarm-rule-http).
+- Frontend editor harus memisahkan izin aktivasi dari izin edit, menyimpan version
+  terbaru dari respons, serta meminta reload/peninjauan saat konflik versi.
+- Pengetatan validator: metadata alarm dan nilai teks DSL tidak menerima NUL atau
+  Unicode invalid. DSL struktur belum memvalidasi template/target/transisi executor.
+- Tidak ada migrasi, engine, alarm_log baru atau publikasi event. Enabled merupakan
+  status konfigurasi, bukan bukti pemantauan alarm sudah berjalan.
+- Verifikasi 39 tes terkait lulus, lalu dua tes HTTP alarm diperluas dan lulus ulang
+  untuk legacy invalid dan Activate tanpa Read/Write; Ruff bersih.
+
+## 2026-09-11 - Endpoint manajemen holding rule
+
+- Lima operasi HTTP tersedia: list/create/detail/replace/history di /holding-rules.
+  Read/Write terpisah, tenant/actor dari bearer session dan transaksi atomik history.
+- POST 201, GET/PUT 200; validasi 400, auth 401, permission 403, record 404 dan
+  duplicate/version 409. Respons bertipe terstruktur, UTC dan no-store.
+- PUT membutuhkan empat field definisi dan expected_version; tidak ada PATCH/delete.
+  Nilai menit integer dibatasi 2147483647, warning <= maximum <= discard.
+- [Kontrak frontend lengkap](frontend-api.md#kontrak-holding-rule-http) memuat
+  field, contoh request/response, pagination, error dan efek samping.
+- Tidak ada event/publisher atau holding engine yang dijalankan. Tidak ada migrasi.
+- Verifikasi: 37 tes terkait lulus setelah normalisasi UTC; HTTP diuji dengan role
+  database fsos_runtime, termasuk izin dicabut, tenant lain dan history atomik.
+
 ## 2026-09-11 - Bootstrap akun manusia development
 
 - CLI administratif membuat akun ACTIVE baru dan membership role tenant yang

@@ -1,9 +1,9 @@
 # Status efektif alarm dan sesi perangkat
 
-Status 2026-09-11: service internal tersedia; tidak ada endpoint HTTP baru,
-WebSocket, MQTT consumer, atau reconnect handler. Memakai tabel migrasi 0014
-tanpa perubahan schema. [API frontend](frontend-api.md) tetap hanya menyediakan
-health dan readiness.
+Status 2026-09-11: service internal serta HTTP daftar/detail/acknowledgment alarm dan
+daftar/detail/akhir sesi perangkat tersedia. WebSocket, MQTT consumer dan reconnect masih TODO.
+Memakai tabel migrasi 0014 tanpa perubahan schema. Kontrak HTTP lengkap ada di
+[panduan frontend](frontend-api.md#kontrak-alarm-telemetry-http).
 
 ## Permission dan operasi
 
@@ -21,9 +21,9 @@ sudah diverifikasi; UUID actor dari body/header bukan autentikasi.
 | close_session | DeviceSession.Close | identifier UUID sesi, disconnected_at datetime bertimezone |
 
 Permission mutasi mengizinkan hasil operasi dikembalikan tanpa perlu permission
-Read terpisah. Permission baru ini belum ditambahkan ke seed DEV_MAINTENANCE;
-seed tidak memperluas grant actor lama secara diam-diam. Provisioning permission
-harus dilakukan eksplisit melalui jalur administratif yang sah.
+Read terpisah. Keempat permission telemetry telah diprovision eksplisit ke role DEV_MAINTENANCE
+di FSOS_DEV lokal menggunakan [CLI administratif](telemetry-permissions.md).
+Seed tidak memperluas grant otomatis; role/tenant lain harus dipilih eksplisit.
 
 Semua query membatasi tenant. Pada operasi detail/finalisasi, sumber yang hilang atau milik tenant lain menghasilkan
 RecordNotFoundError yang sama. Akses tetap memungkinkan pembacaan bukti perangkat
@@ -67,7 +67,7 @@ Hasil berupa dict kolom `device_session` ditambah:
 effective_disconnected_at berasal dari device_session_end. Input disconnected_at
 wajib datetime aware (tidak menerima string langsung pada service Python),
 dinormalisasi ke UTC dan tidak boleh sebelum connected_at. Penutupan baru juga
-tidak boleh memakai waktu masa depan. Parsing ISO 8601 untuk HTTP nantinya tugas schema API.
+tidak boleh memakai waktu masa depan. Schema HTTP kini menerima string ISO 8601 bertimezone; timestamp angka ditolak pada body.
 
 Service mengunci parent sesi lalu insert bukti akhir; created_by/updated_by berasal
 dari scope dan recorded_at adalah waktu penerimaan server. Retry dengan waktu
@@ -85,14 +85,14 @@ ada stress test paralel atau delivery exactly-once dari broker.
 
 InvalidActorError/PermissionDeniedError menandai masalah identitas/izin;
 RecordNotFoundError menandai record tidak terlihat; ValueError menandai input waktu
-invalid; CompletionConflictError menandai konflik waktu akhir. Belum ada pemetaan
-HTTP untuk exception ini. Dict service bukan DTO JSON frontend: timestamp/UUID
-perlu serialisasi schema. Tidak ada payload POST/PATCH HTTP yang dapat dipanggil sekarang.
+invalid; CompletionConflictError menandai konflik waktu akhir. Router alarm memetakan
+permission/record/input menjadi 403/404/400 dan memakai DTO timestamp UTC.
+Router sesi juga memetakan konflik akhir menjadi 409 dengan DTO UTC.
 
 Reconnect harus membuat session_id baru. Penutupan sesi tidak menandai device
 offline secara global karena perangkat dapat memiliki sesi lain. Membuka sesi,
-mendeteksi sesi kedaluwarsa, korelasi broker reconnect, daftar/pagination alarm/sesi,
-API berautentikasi dan event publication tetap TODO. Tidak ada event runtime baru.
+mendeteksi sesi kedaluwarsa, korelasi broker reconnect
+dan event publication tetap TODO. Daftar/pagination internal serta HTTP alarm/sesi tersedia. Tidak ada event runtime baru.
 
 Contoh internal setelah otorisasi identitas:
 
@@ -192,3 +192,14 @@ filter tenant/perangkat, izin Read tidak ada/dicabut dan akses fsos_runtime.
 Parameter invalid diuji tanpa akses database. Bukti tambahan tetap satu per
 finalisasi; pembacaan tidak menambah bukti. Fixture hanya dibuat pada database
 uji terpisah, lalu rollback; tidak ada alarm/sesi contoh ditambahkan ke fsos.
+
+
+## HTTP sesi perangkat
+
+GET /api/v1/device-sessions, GET /api/v1/device-sessions/{session_id} dan
+POST /api/v1/device-sessions/{session_id}/end tersedia. Kontrak field, JSON, filter,
+permission, retry dan error ada di [panduan frontend](frontend-api.md#kontrak-sesi-perangkat-http).
+Close memakai waktu input eksplisit, bukan waktu browser yang diisi otomatis server.
+Penutupan tidak mengubah snapshot awal atau status online perangkat secara global.
+Verifikasi 25 tes terkait lulus, termasuk HTTP runtime, tenant lain, revoked grant,
+retry sama/berbeda, snapshot impor, timestamp invalid dan provisioning administratif.

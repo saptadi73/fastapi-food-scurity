@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from uuid import UUID, uuid4
 
 from sqlalchemy import insert, select, update
@@ -51,6 +53,15 @@ class RuleService:
     async def get(self, identifier: UUID) -> dict:
         await self._authorize('Read')
         return await self._get(identifier)
+
+    async def list(self, *, offset: int = 0, limit: int = 20) -> list[dict]:
+        if type(offset) is not int or type(limit) is not int or offset < 0 or not 1 <= limit <= 100:
+            raise ValueError('Invalid rule pagination')
+        await self._authorize('Read')
+        rows = (await self.session.execute(select(self.table).where(
+            self.table.c.tenant_id == self.scope.tenant_id, self.table.c.deleted_at.is_(None),
+        ).order_by(self.table.c.created_at.desc(), self.pk.desc()).offset(offset).limit(limit))).mappings()
+        return [dict(row) for row in rows]
 
     async def history(self, identifier: UUID, *, offset=0, limit=20) -> list[dict]:
         if type(offset) is not int or type(limit) is not int or offset < 0 or not 1 <= limit <= 100:

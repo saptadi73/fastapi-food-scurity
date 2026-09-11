@@ -207,3 +207,31 @@ pelestarian record registry dan eksekusi dengan grant fsos_runtime. Ruff bersih.
 Scan development FSOS_DEV melalui koneksi runtime mencakup 15 tipe: enam registry
 diperiksa, issue_count=0. Ini hanya keadaan tenant tersebut saat scan, bukan
 sertifikasi integritas seluruh database atau penilaian keamanan pangan.
+
+
+## Integrasi HTTP master lokasi
+
+Create/replace kitchen dan storage melalui [API master lokasi](frontend-api.md#kontrak-master-kitchen-storage-zone)
+menyinkronkan registry dalam transaksi yang sama. Otorisasi memakai Kitchen.Write
+atau Storage.Write; primitive internal tidak membutuhkan AssetRegistry.Sync tambahan.
+Zone bukan tipe digital_asset. Registry tidak otomatis membuat edge relationship,
+asset_movement, operational event atau publisher. Perubahan status INACTIVE parent
+tidak mengubah status registry anak secara cascade.
+
+API supplier dan raw-material juga menyinkronkan registry dari jalur create/replace
+secara atomik. SupplierMaterial tidak membuat digital_asset atau edge graph.
+Permission domain Supplier.Write/RawMaterial.Write cukup untuk sinkronisasi internal.
+
+
+DELETE master kitchen/storage/supplier/raw-material kini menandai sumber serta
+registry deleted_at/deleted_by secara atomik setelah pemeriksaan referensi.
+UUID/proyeksi lama tetap tersimpan; tidak menghapus relationship/movement atau
+menerbitkan event. Zone dan supplier-material bukan asset registry.
+
+CRUD sekolah menambahkan jalur sinkronisasi SCHOOL pada create/update/soft delete
+dalam transaksi yang sama. School.Write/Delete cukup, tanpa AssetRegistry.Sync
+tambahan. Tidak membuat edge atau transaksi school receiving.
+
+CRUD vehicle menyinkronkan VEHICLE pada create/update/soft delete secara atomik;
+label registry mengikuti plate_number. Driver bukan tipe registry. Perubahan tautan
+driver/GPS tidak membuat edge atau menulis ulang riwayat delivery.

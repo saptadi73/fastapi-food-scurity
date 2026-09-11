@@ -26,8 +26,7 @@ Tanpa aktivasi, gunakan perintah berikut:
 
 Health hanya membuktikan proses API aktif, bukan kesiapan database atau broker.
 Health dan dokumentasi adalah endpoint publik untuk development/monitoring.
-Endpoint login/refresh/logout dan /auth/me sudah tersedia. Endpoint bisnis belum
-tersedia; setiap operasi bisnis tetap wajib memeriksa permission dan tenant.
+Endpoint login/refresh/logout dan /auth/me sudah tersedia. Endpoint holding/alarm rule serta daftar/detail/acknowledgment alarm telemetry tersedia; setiap operasi bisnis tetap wajib memeriksa permission dan tenant.
 [Kontrak autentikasi frontend](backend/docs/frontend-api.md#kontrak-autentikasi-http)
 memuat payload, respons, header, error dan contoh. Akun manusia perlu diprovisioning;
 actor dev-maintenance tetap tanpa password. Gunakan [bootstrap manusia development](backend/docs/human-bootstrap.md)
@@ -129,7 +128,9 @@ Schema telemetry docs/08 kini lengkap melalui migrasi `20260911_0014`, termasuk
 health, alarm, holding, signal, battery, dan device session. Acknowledgment alarm
 dan penutupan sesi memakai tabel bukti tambahan yang append-only. Detail satuan
 dan cara membaca status efektif tersedia di [panduan database](backend/docs/database.md).
-Ingestion MQTT dan API bisnis masih dalam TODO.
+Ingestion MQTT dan API bisnis lainnya masih dalam TODO. Holding rule memiliki
+[endpoint manajemen dan history](backend/docs/frontend-api.md#kontrak-holding-rule-http).
+Alarm rule memiliki [enam endpoint konfigurasi termasuk aktivasi](backend/docs/frontend-api.md#kontrak-alarm-rule-http); engine dan executor masih TODO.
 
 ## Pemeriksaan
 
@@ -176,3 +177,17 @@ Referensi instalasi: [FastAPI](https://fastapi.tiangolo.com/tutorial/),
 #   f a s t a p i - f o o d - s c u r i t y 
  
  
+
+API kejadian alarm: [kontrak frontend](backend/docs/frontend-api.md#kontrak-alarm-telemetry-http). Empat permission telemetry sudah diprovision ke DEV_MAINTENANCE lokal. [API sesi perangkat](backend/docs/frontend-api.md#kontrak-sesi-perangkat-http) dan [runbook provisioning](backend/docs/telemetry-permissions.md) tersedia.
+
+Master operasional kitchen/storage/zone: [15 operasi API dan kontrak frontend](backend/docs/frontend-api.md#kontrak-master-kitchen-storage-zone). Supplier/bahan/relasi juga tersedia; berikutnya transaksi receiving.
+
+[Kontrak supplier dan bahan baku](backend/docs/frontend-api.md#kontrak-supplier-bahan-dan-relasi): 15 operasi termasuk soft delete untuk persiapan receiving.
+
+CRUD keenam master kini mencakup [DELETE soft delete](backend/docs/frontend-api.md#soft-delete-master-operasional), dengan permission Delete, version dan proteksi referensi.
+
+[Cakupan CRUD per modul](backend/docs/frontend-api.md#cakupan-crud-dan-status-modul): CRUD lengkap saat ini sembilan master termasuk sekolah, kendaraan dan driver. Menu/resep, jenis kemasan dan master device masih belum memiliki CRUD HTTP.
+
+[CRUD master sekolah](backend/docs/frontend-api.md#kontrak-crud-sekolah) tersedia: list/detail/create/replace/soft delete. Transaksi penerimaan sekolah masih TODO.
+
+[CRUD kendaraan dan driver](backend/docs/frontend-api.md#kontrak-kendaraan-dan-driver) tersedia; transaksi delivery dan GPS ingestion tetap TODO.

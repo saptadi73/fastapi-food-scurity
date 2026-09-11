@@ -16,7 +16,7 @@ lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema
 | Database/schema | CONNECT database, USAGE schema public |
 | Tabel aplikasi yang dikenal ORM | SELECT |
 | alembic_version | SELECT saja |
-| kitchen, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
+| kitchen, storage, storage_zone, school, driver, vehicle, supplier, raw_material, supplier_material, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
 | alarm_acknowledgment, device_session_end | INSERT |
 | auth_session, refresh_token | SELECT/INSERT; UPDATE hanya revoked_at atau used_at masing-masing |
 | Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
@@ -112,3 +112,28 @@ Profil grant diperbarui dan diprovisioning ulang setelah migrasi sesi. Runtime
 mendapat INSERT auth_session/refresh_token serta UPDATE hanya kolom revokasi atau
 pemakaian; tidak mendapat hak mengubah user/tenant, hash atau waktu expiry sesi.
 Grant ini tidak membuat endpoint login. Lihat [sesi refresh](refresh-sessions.md).
+
+
+Master lokasi: profil runtime kini memberi INSERT storage/storage_zone dan UPDATE
+kolom definisi/audit/version. Parent kitchen_id pada storage dan storage_id pada zone
+tidak diberi UPDATE. API mempertahankan induk dan memeriksa tenant/parent aktif.
+Perubahan telah diterapkan pada fsos tanpa migrasi; tidak menambah hak delete/DDL.
+
+Supplier/bahan: profil kini memberi INSERT serta UPDATE definisi/audit/version
+supplier, raw_material dan supplier_material. Referensi tenant dan parent aktif
+diperiksa service; perubahan uom bahan ditolak service. Tidak ada hak delete/DDL baru.
+
+
+Soft delete master: UPDATE deleted_at/deleted_by kini diberikan pada storage,
+storage_zone, supplier, raw_material dan supplier_material (kitchen sudah tersedia).
+Service mengisi audit/version dan memeriksa referensi sebelum menandai terhapus.
+Tidak ada privilege DELETE SQL baru, cascade atau DDL. Grant sudah diterapkan pada
+fsos sebagai dependensi API DELETE; schema tetap 0017 tanpa migrasi.
+
+School kini mendapatkan INSERT dan UPDATE kolom definisi/audit/version termasuk
+soft delete, tanpa UPDATE kitchen_id/tenant_id atau hard delete. Ini dependensi
+minimum CRUD sekolah dan sudah diterapkan pada fsos.
+
+Driver/vehicle kini memiliki INSERT dan UPDATE definisi/audit/version termasuk
+soft delete. Vehicle.driver_id/gps_device boleh diubah setelah pemeriksaan service;
+tenant/ID tetap dilindungi. Tidak ada privilege DELETE SQL/DDL atau INSERT GPS log baru.

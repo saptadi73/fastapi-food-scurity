@@ -29,6 +29,15 @@ def validate_rule_dsl(condition: Any, action: Any) -> None:
     def fail():
         raise RuleDSLValidationError("Invalid rule DSL v1")
 
+    def valid_text(value):
+        if type(value) is not str or not value.strip() or len(value) > 200 or '\x00' in value:
+            return False
+        try:
+            value.encode('utf-8')
+        except UnicodeEncodeError:
+            return False
+        return True
+
     def visit(node, depth):
         nonlocal nodes
         nodes += 1
@@ -50,7 +59,7 @@ def validate_rule_dsl(condition: Any, action: Any) -> None:
             if type(value) not in (int, float) or not -1e12 <= value <= 1e12 or not math.isfinite(value):
                 fail()
         elif field in TEXT_FIELDS:
-            if op not in {"eq", "ne"} or type(value) is not str or not value.strip() or len(value) > 200:
+            if op not in {"eq", "ne"} or not valid_text(value):
                 fail()
         else:
             fail()
@@ -69,7 +78,7 @@ def validate_rule_dsl(condition: Any, action: Any) -> None:
         fields = ACTION_FIELDS.get(step["type"])
         if fields is None or set(step) != fields | {"type"}:
             fail()
-        if any(type(step[key]) is not str or not step[key].strip() or len(step[key]) > 200 for key in fields):
+        if any(not valid_text(step[key]) for key in fields):
             fail()
         if step["type"] == "alarm" and step["severity"] not in {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}:
             fail()

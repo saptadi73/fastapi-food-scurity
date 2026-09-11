@@ -18,6 +18,10 @@ Insert database tidak otomatis menerbitkan event. Frontend belum memiliki channe
 untuk subscribe. Kedua endpoint sistem saat ini tidak menghasilkan event bisnis.
 Repository kitchen juga belum menerbitkan event; create/update/soft delete hanya
 mengubah record di dalam transaksi milik application service.
+Endpoint alarm-rule create/update/ubah enabled dan holding-rule create/update
+mencatat revisi dalam transaksi database;
+list/detail/history tidak mengubah data. Tidak ada event perubahan rule, transport,
+consumer atau subscription baru; frontend perlu fetch ulang setelah mutasi.
 History revisi alarm/holding rule dicatat trigger database; ini tidak menerbitkan
 event perubahan aturan ke frontend. Validator DSL juga tidak menjalankan aksi.
 Service simpan/aktivasi aturan menggunakan trigger history yang sama dan belum
@@ -128,3 +132,137 @@ dianggap dapat menggunakannya:
 
 Catalog diperbarui bersama implementasi producer/consumer dan
 [changelog frontend](frontend-changelog.md), bukan hanya ketika tabel dibuat.
+
+
+## Konfigurasi alarm melalui HTTP
+
+Status: manajemen konfigurasi alarm sudah tersedia; publikasi event belum tersedia.
+POST /alarm-rules dan PUT definisi/ubah enabled mencatat snapshot melalui trigger
+PostgreSQL dalam transaksi yang sama dengan mutasi. GET tidak mengubah data;
+PUT enabled identik dengan versi terkini tidak menambah revisi. Tidak ada producer,
+consumer, transport/channel, payload event berversi atau subscription baru.
+Revision bukan event message dan tidak memiliki mekanisme retry/replay transport.
+Tenant/actor diambil dari bearer session; Read/Write/Activate diperiksa terpisah.
+History diurutkan version DESC; expected_version melindungi update bersamaan.
+Contoh payload request dan snapshot ada di
+[kontrak alarm HTTP](frontend-api.md#kontrak-alarm-rule-http).
+
+Enabled=true belum memicu evaluasi telemetry, alarm.created, notifikasi atau aksi
+recall/discard. Event alarm.created di tabel rencana tetap berstatus rencana.
+Kontrak producer/consumer, ordering, deduplikasi, retry dan replay akan ditetapkan
+bersama implementasi engine dan transport; jangan subscribe berdasarkan revision_id.
+
+
+## HTTP acknowledgment alarm telemetry
+
+Status: GET /api/v1/alarms, GET detail dan POST acknowledgment sudah tersedia.
+POST mencatat bukti pertama di alarm_acknowledgment dengan actor/tenant dari bearer
+session, permission Alarm.Acknowledge. Retry mengembalikan bukti yang sama; snapshot
+impor yang sudah acknowledged tidak ditambah bukti. GET memakai Alarm.Read.
+Tidak ada publisher/consumer, channel/transport atau payload event baru. Bukti ini
+bukan pesan event dan tidak memiliki retry/replay transport. Constraint unik tenant/
+alarm dan lock parent mencegah duplikasi melalui service; ordering pembacaan daftar
+recorded_at DESC lalu alarm_id DESC tidak menyatakan urutan pengiriman event.
+Contoh request dan snapshot ada di [kontrak HTTP](frontend-api.md#kontrak-alarm-telemetry-http).
+Notifikasi dan event acknowledgment masih rencana; tidak ada subscription frontend.
+
+
+## HTTP akhir sesi dan provisioning permission
+
+Status: POST /api/v1/device-sessions/{session_id}/end tersedia dan mencatat satu
+bukti device_session_end; GET list/detail membaca status efektif. Tenant/actor berasal
+dari bearer, DeviceSession.Read/Close independen. Parent lock dan constraint unik
+melindungi finalisasi; retry instant sama mengembalikan bukti pertama, berbeda 409.
+Daftar diurutkan connected_at DESC lalu session_id DESC, bukan urutan delivery event.
+Contoh request dan snapshot: [kontrak sesi](frontend-api.md#kontrak-sesi-perangkat-http).
+
+Tidak ada event baru: device.disconnected tetap rencana. Tidak ada producer/consumer,
+transport/channel, payload event berversi, subscription atau retry/replay transport.
+CLI provisioning telemetry menambah permission/grant dengan audit dalam satu transaksi;
+tidak menerbitkan permission.changed. Snapshot DB bukan pesan event. Frontend dapat
+memuat ulang /auth/me sesudah provisioning dan daftar sesi sesudah finalisasi.
+
+
+## Master kitchen/storage/zone melalui HTTP
+
+Status: 12 operasi master tersedia. POST/PUT kitchen dan storage menulis sumber serta
+proyeksi digital_asset atomik; zone hanya menulis storage_zone. Tenant/actor dari
+bearer; Kitchen/Storage/StorageZone.Read atau Write sesuai operasi. Version sumber
+bertambah setiap PUT, termasuk definisi identik; POST duplicate code 409 dan tidak
+memiliki idempotency key. Konflik version 409; tidak ada replay otomatis.
+
+Tidak ada event baru, producer/consumer, payload event berversi, channel/transport,
+ordering delivery, retry atau replay broker. Tidak membuat asset_relationship,
+asset_movement atau event_log. Registry bukan pesan notifikasi/realtime. Contoh
+request/response ada di [kontrak master](frontend-api.md#kontrak-master-kitchen-storage-zone).
+Event transaksi receiving/production berikutnya tetap dikerjakan bersama alur bisnis.
+
+
+## Supplier, bahan baku dan relasi pemasok-bahan
+
+Status: 12 operasi master tersedia. POST/PUT supplier dan raw-material menyimpan
+sumber serta digital_asset dalam transaksi yang sama; supplier-material hanya
+menyimpan pasangan sumber. Tenant/actor dari bearer, Read/Write masing-masing modul.
+Version naik setiap PUT; kode/pasangan duplikat dan stale version menghasilkan 409.
+POST tidak memiliki idempotency key; tidak ada replay otomatis.
+
+Tidak ada event baru, producer/consumer, transport/channel, payload event berversi,
+ordering delivery atau retry/replay broker. Tidak membuat asset_relationship,
+movement, receiving, stok atau event_log. Nama relasi supplier-material tidak
+menyatakan edge graph traceability sudah dibuat. Contoh request/response ada di
+[kontrak frontend](frontend-api.md#kontrak-supplier-bahan-dan-relasi).
+
+
+## Soft delete enam master
+
+Status: enam DELETE kitchen/storage/zone/supplier/raw-material/supplier-material
+tersedia. Trigger operasinya request DELETE dengan expected_version, bearer tenant/
+actor dan permission modul.Delete. Sumber ditandai deleted_at/deleted_by dan version
+naik; registry kitchen/storage/supplier/raw-material mengikuti dalam transaksi sama.
+Zone/relasi tidak memiliki proyeksi asset. Referensi nondeleted memblokir penghapusan;
+tidak ada cascade, penghapusan bukti, event_log baru atau mutasi graph/movement.
+
+Tidak ada producer/consumer event, channel/transport, payload event berversi,
+ordering delivery, deduplikasi/retry/replay broker. DELETE ulang adalah 404, bukan
+pengiriman ulang event. Contoh request/respons lengkap dan error ada di
+[kontrak soft delete](frontend-api.md#soft-delete-master-operasional).
+Event master.deleted masih belum diimplementasikan; jangan berlangganan berdasar
+perubahan deleted_at registry. Frontend memperbarui daftar dari respons/GET.
+
+
+## Cakupan modul sekolah dan master lain
+
+CRUD sekolah kini tersedia. Kendaraan/driver juga kini memiliki CRUD. Menu/resep, jenis kemasan serta
+master device/binding belum memiliki endpoint. Keberadaan tabel, registry source adapter atau referensi
+penghalang delete tidak berarti terdapat producer/event runtime dari modul tersebut.
+Matriks HTTP terverifikasi ada di [cakupan frontend](frontend-api.md#cakupan-crud-dan-status-modul).
+Klarifikasi status ini tidak menambahkan event, channel atau payload baru.
+
+
+## CRUD sekolah
+
+Status: lima operasi master sekolah tersedia, bukan transaksi school receiving.
+POST/PUT/DELETE memutasi school dan digital_asset SCHOOL secara atomik dengan tenant/
+actor bearer, permission School.Write/Delete dan version. DELETE ditolak bila masih
+ada delivery_item, school_receiving atau complaint nondeleted. GET memakai School.Read.
+
+Tidak ada producer/consumer event, channel/transport, payload event berversi, ordering
+delivery atau retry/replay broker baru. Tidak menulis movement/relationship/event_log,
+membuat penerimaan sekolah atau mengirim notifikasi. POST duplicate code 409; DELETE
+ulang 404; registry bukan pesan event. Contoh lengkap ada di
+[kontrak sekolah](frontend-api.md#kontrak-crud-sekolah).
+
+
+## CRUD kendaraan dan driver
+
+Status: 10 operasi master kendaraan/driver tersedia. Mutasi vehicle dan registry
+VEHICLE atomik dengan actor/tenant bearer, permission Vehicle.Write/Delete; driver
+menggunakan Driver.Write/Delete tanpa proyeksi registry. Read terpisah. Version
+bertambah setiap PUT/DELETE, duplicate code/plat dan stale version 409. Referensi
+vehicle/delivery/gps_log menjaga soft delete sesuai target.
+
+Tidak ada event baru, producer/consumer, transport/channel, payload event berversi,
+ordering pengiriman, retry/replay broker atau subscription. Mengganti driver/GPS pada
+vehicle tidak mencatat movement/GPS/delivery atau mengubah riwayat pengiriman lama.
+POST duplicate retry 409; DELETE ulang 404. Contoh lengkap ada di
+[kontrak kendaraan/driver](frontend-api.md#kontrak-kendaraan-dan-driver).

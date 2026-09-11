@@ -9,11 +9,19 @@ from app.modules.traceability.infrastructure.registry import SOURCES
 
 ROLE = 'fsos_runtime'
 MARKER = 'FSOS managed runtime role v1'
-INSERT_TABLES = ('kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
+INSERT_TABLES = ('driver', 'vehicle', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
 UPDATES = {
+    'driver': 'driver_code,driver_name,phone,status,updated_at,updated_by,deleted_at,deleted_by,version',
+    'vehicle': 'vehicle_code,plate_number,vehicle_type,capacity,gps_device,driver_id,location,status,updated_at,updated_by,deleted_at,deleted_by,version',
+    'school': 'school_code,school_name,latitude,longitude,address,student_count,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'auth_session': 'revoked_at',
     'refresh_token': 'used_at',
     'kitchen': 'kitchen_code,kitchen_name,latitude,longitude,address,capacity,status,updated_at,updated_by,deleted_at,deleted_by,version',
+    'supplier': 'deleted_at,deleted_by,supplier_code,supplier_name,phone,email,status,updated_at,updated_by,version',
+    'raw_material': 'deleted_at,deleted_by,material_code,material_name,category,uom,storage_type,recommended_temperature_min,recommended_temperature_max,maximum_storage_hours,status,updated_at,updated_by,version',
+    'supplier_material': 'deleted_at,deleted_by,supplier_id,raw_material_id,updated_at,updated_by,version',
+    'storage': 'deleted_at,deleted_by,storage_code,storage_name,storage_type,temperature_min,temperature_max,location,status,updated_at,updated_by,version',
+    'storage_zone': 'deleted_at,deleted_by,zone_code,zone_name,updated_at,updated_by,version',
     'digital_asset': 'name,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'alarm_rule': 'rule_code,rule_name,rule_category,priority,condition,action,enabled,updated_at,updated_by,version',
     'holding_rule': 'food_category,maximum_minutes,warning_minutes,discard_minutes,updated_at,updated_by,version',

@@ -1,8 +1,8 @@
 # Panduan integrasi frontend FSOS
 
 Terakhir diperbarui: 2026-09-11. Versi aplikasi: 0.1.0.
-Status: dua endpoint sistem dan empat endpoint autentikasi tersedia. API bisnis
-(master, aturan, telemetry, dan lainnya) belum tersedia.
+Status: dua endpoint sistem, empat endpoint autentikasi, lima endpoint
+holding rule, enam endpoint alarm rule, tiga endpoint alarm telemetry dan tiga endpoint sesi perangkat tersedia; 15 operasi master kitchen/storage/zone dan 15 operasi supplier/bahan/relasi tersedia, termasuk soft delete; lima operasi CRUD sekolah serta sepuluh operasi kendaraan/driver juga tersedia. Modul bisnis lain masih bertahap.
 
 Dokumen ini menjelaskan implementasi yang dapat dipanggil sekarang.
 [Desain API](../../docs/16_API_design.md) adalah roadmap draft, bukan daftar
@@ -39,7 +39,7 @@ Perbedaan host atau port berarti origin berbeda. CORS bukan autentikasi.
 | `X-Correlation-ID` | Request opsional | Menghubungkan request satu aktivitas; dipotong maksimal 128 karakter |
 | `X-Request-ID` | Response | UUID baru setiap request; tersedia untuk JavaScript melalui CORS |
 | `Content-Type: application/json` | Response API | Format envelope |
-| `Cache-Control: no-store` | Response `/ready` dan `/auth/*` | Respons tidak boleh disimpan cache |
+| `Cache-Control: no-store` | Response `/ready`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*` | Respons tidak boleh disimpan cache |
 | `Content-Type: application/json` | Request POST autentikasi | Body JSON wajib; bukan form OAuth |
 | `Authorization: Bearer <access_token>` | Request `/auth/me` | Access JWT dengan sesi aktif |
 | `Retry-After` | Response 429 autentikasi | Detik sebelum mencoba lagi; diekspos lewat CORS |
@@ -67,6 +67,55 @@ Semua field envelope di atas selalu dikirim oleh handler API. Nilai UUID,
 timestamp, dan durasi pada contoh hanya ilustrasi. Respons CORS preflight atau
 error dari proxy/jaringan dapat berada di luar envelope aplikasi.
 
+## Cakupan CRUD dan status modul
+
+Status berikut diperiksa dari router yang terdaftar dan OpenAPI aplikasi: **68
+operasi HTTP aktif**, termasuk 45 operasi CRUD untuk sembilan master. Angka ini adalah
+kombinasi method/path, bukan jumlah modul. Schema database, fixture development,
+service internal atau adapter registry tidak berarti endpoint sudah tersedia.
+
+| Modul | Create | Read daftar/detail | Update | Delete | Kontrak/status |
+| --- | --- | --- | --- | --- | --- |
+| Kitchen | Ada | Ada | Ada | Soft delete | [Master lokasi](#kontrak-master-kitchen-storage-zone) |
+| Storage | Ada | Ada | Ada | Soft delete | [Master lokasi](#kontrak-master-kitchen-storage-zone) |
+| Storage zone | Ada | Ada | Ada | Soft delete | [Master lokasi](#kontrak-master-kitchen-storage-zone) |
+| Supplier | Ada | Ada | Ada | Soft delete | [Pemasok/bahan](#kontrak-supplier-bahan-dan-relasi) |
+| Bahan baku | Ada | Ada | Ada | Soft delete | [Pemasok/bahan](#kontrak-supplier-bahan-dan-relasi) |
+| Relasi supplier-material | Ada | Ada | Ada | Soft delete/unlink | [Pemasok/bahan](#kontrak-supplier-bahan-dan-relasi) |
+| Sekolah (school) | Ada | Ada | Ada | Soft delete | [Kontrak sekolah](#kontrak-crud-sekolah) |
+| Kendaraan (vehicle) | Ada | Ada | Ada | Soft delete | [Kontrak kendaraan/driver](#kontrak-kendaraan-dan-driver) |
+| Driver | Ada | Ada | Ada | Soft delete | [Kontrak kendaraan/driver](#kontrak-kendaraan-dan-driver) |
+| Menu/food item | Belum | Belum | Belum | Belum | Schema tersedia; CRUD HTTP belum dibuat |
+| Resep (recipe) | Belum | Belum | Belum | Belum | Schema tersedia; CRUD HTTP belum dibuat |
+| Jenis kemasan (packaging type) | Belum | Belum | Belum | Belum | Schema tersedia; CRUD HTTP belum dibuat |
+| Master device dan binding | Belum | Belum | Belum | Belum | Schema device tersedia; CRUD/binding HTTP belum dibuat |
+| Tenant/user/role/permission | Belum | Belum | Belum | Belum | Schema dan CLI administratif tertentu tersedia; bukan API CRUD |
+| Holding rule | Ada | Ada | Ada | Belum | [Konfigurasi + history](#kontrak-holding-rule-http); engine belum tersedia |
+| Alarm rule | Ada | Ada | Ada | Belum | [Konfigurasi + aktivasi/history](#kontrak-alarm-rule-http); executor belum tersedia |
+
+Read pada matriks berarti endpoint master, bukan pembacaan database internal.
+CRUD sembilan master menggunakan permission Read/Write/Delete terpisah. Delete adalah
+soft delete dengan expected_version dan proteksi referensi; bukan cascade atau
+hard delete. Lihat [kontrak DELETE](#soft-delete-master-operasional).
+
+Modul lain yang memiliki HTTP hanya untuk operasi tertentu:
+
+| Modul | Operasi HTTP tersedia | Batas |
+| --- | --- | --- |
+| Autentikasi | Login, refresh, logout, identitas /auth/me | Tidak menyediakan CRUD user/role/permission |
+| Kejadian alarm | Daftar/detail dan acknowledgment | Tidak menyediakan create/update/delete bukti alarm |
+| Sesi perangkat | Daftar/detail dan akhir sesi | Berbeda dari CRUD device; tidak menyediakan create/delete sesi atau reconnect |
+| Sistem | Health dan readiness | Bukan indikator seluruh modul bisnis telah selesai |
+
+Receiving/item/batch bahan, produksi, paket, pengiriman, penerimaan sekolah,
+konsumsi, complaint dan recall masih memiliki schema tanpa API transaksi aktif.
+**Master sekolah sudah memiliki CRUD; transaksi penerimaan sekolah belum memiliki API.** Traceability traversal, dashboard dan subscription realtime
+juga belum tersedia. Penghapusan kitchen tetap diblokir bila sekolah nondeleted masih merujuknya.
+
+Frontend hanya boleh mengintegrasikan method/path pada daftar endpoint aktif di
+bawah. Jangan menebak path, payload atau permission untuk modul berstatus Belum;
+kontrak akan ditambahkan bersamaan dengan implementasinya.
+
 ## Daftar endpoint aktif
 
 | Method | Path | Tujuan | Payload | Respons normal |
@@ -77,6 +126,68 @@ error dari proxy/jaringan dapat berada di luar envelope aplikasi.
 | POST | `/api/v1/auth/refresh` | Rotasi token sesi | refresh_token | 200 |
 | POST | `/api/v1/auth/logout` | Cabut satu sesi | refresh_token | 200 |
 | GET | `/api/v1/auth/me` | Identitas dan RBAC aktif | Tidak ada; bearer header | 200 |
+| GET | `/api/v1/holding-rules` | Daftar aturan holding | Tidak ada; offset/limit | 200 |
+| POST | `/api/v1/holding-rules` | Buat aturan holding | Definisi empat field | 201 |
+| GET | `/api/v1/holding-rules/{rule_id}` | Detail aturan | Tidak ada | 200 |
+| PUT | `/api/v1/holding-rules/{rule_id}` | Ganti definisi aturan | Definisi + expected_version | 200 |
+| GET | `/api/v1/holding-rules/{rule_id}/history` | Revisi aturan | Tidak ada; offset/limit | 200 |
+| GET | `/api/v1/alarm-rules` | Daftar aturan alarm | Tidak ada; offset/limit | 200 |
+| POST | `/api/v1/alarm-rules` | Buat aturan alarm nonaktif | Definisi lengkap | 201 |
+| GET | `/api/v1/alarm-rules/{rule_id}` | Detail aturan alarm | Tidak ada | 200 |
+| PUT | `/api/v1/alarm-rules/{rule_id}` | Ganti definisi alarm nonaktif | Definisi + expected_version | 200 |
+| PUT | `/api/v1/alarm-rules/{rule_id}/enabled` | Aktifkan/nonaktifkan konfigurasi | enabled + expected_version | 200 |
+| GET | `/api/v1/alarm-rules/{rule_id}/history` | Riwayat aturan alarm | Tidak ada; offset/limit | 200 |
+| GET | `/api/v1/alarms` | Daftar kejadian alarm | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/alarms/{alarm_id}` | Detail kejadian alarm | Tidak ada | 200 |
+| POST | `/api/v1/alarms/{alarm_id}/acknowledgment` | Catat acknowledgment | Tidak ada | 200 |
+| GET | `/api/v1/device-sessions` | Daftar sesi perangkat | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/device-sessions/{session_id}` | Detail sesi perangkat | Tidak ada | 200 |
+| POST | `/api/v1/device-sessions/{session_id}/end` | Catat akhir sesi | disconnected_at | 200 |
+| GET | `/api/v1/kitchens` | Daftar Kitchen | Tidak ada; pagination/filter induk | 200 |
+| POST | `/api/v1/kitchens` | Buat Kitchen | Definisi | 201 |
+| GET | `/api/v1/kitchens/{identifier}` | Detail Kitchen | Tidak ada | 200 |
+| PUT | `/api/v1/kitchens/{identifier}` | Ganti Kitchen | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/kitchens/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/storages` | Daftar Storage | Tidak ada; pagination/filter induk | 200 |
+| POST | `/api/v1/storages` | Buat Storage | Definisi | 201 |
+| GET | `/api/v1/storages/{identifier}` | Detail Storage | Tidak ada | 200 |
+| PUT | `/api/v1/storages/{identifier}` | Ganti Storage | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/storages/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/storage-zones` | Daftar Storage zone | Tidak ada; pagination/filter induk | 200 |
+| POST | `/api/v1/storage-zones` | Buat Storage zone | Definisi | 201 |
+| GET | `/api/v1/storage-zones/{identifier}` | Detail Storage zone | Tidak ada | 200 |
+| PUT | `/api/v1/storage-zones/{identifier}` | Ganti Storage zone | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/storage-zones/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/suppliers` | Daftar Supplier | Tidak ada; pagination/filter relasi | 200 |
+| POST | `/api/v1/suppliers` | Buat Supplier | Definisi | 201 |
+| GET | `/api/v1/suppliers/{identifier}` | Detail Supplier | Tidak ada | 200 |
+| PUT | `/api/v1/suppliers/{identifier}` | Ganti Supplier | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/suppliers/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/raw-materials` | Daftar Bahan baku | Tidak ada; pagination/filter relasi | 200 |
+| POST | `/api/v1/raw-materials` | Buat Bahan baku | Definisi | 201 |
+| GET | `/api/v1/raw-materials/{identifier}` | Detail Bahan baku | Tidak ada | 200 |
+| PUT | `/api/v1/raw-materials/{identifier}` | Ganti Bahan baku | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/raw-materials/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/supplier-materials` | Daftar Relasi pemasok-bahan | Tidak ada; pagination/filter relasi | 200 |
+| POST | `/api/v1/supplier-materials` | Buat Relasi pemasok-bahan | Definisi | 201 |
+| GET | `/api/v1/supplier-materials/{identifier}` | Detail Relasi pemasok-bahan | Tidak ada | 200 |
+| PUT | `/api/v1/supplier-materials/{identifier}` | Ganti Relasi pemasok-bahan | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/supplier-materials/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/schools` | Daftar sekolah | Tidak ada; kitchen_id/offset/limit | 200 |
+| POST | `/api/v1/schools` | Buat sekolah | Definisi sekolah | 201 |
+| GET | `/api/v1/schools/{identifier}` | Detail sekolah | Tidak ada | 200 |
+| PUT | `/api/v1/schools/{identifier}` | Ganti definisi sekolah | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/schools/{identifier}` | Soft delete sekolah | Tidak ada; expected_version query | 200 |
+| GET | `/api/v1/drivers` | Daftar driver | Tidak ada; pagination | 200 |
+| POST | `/api/v1/drivers` | Buat driver | Definisi | 201 |
+| GET | `/api/v1/drivers/{identifier}` | Detail driver | Tidak ada | 200 |
+| PUT | `/api/v1/drivers/{identifier}` | Ganti driver | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/drivers/{identifier}` | Soft delete driver | Tidak ada; expected_version query | 200 |
+| GET | `/api/v1/vehicles` | Daftar kendaraan | Tidak ada; pagination | 200 |
+| POST | `/api/v1/vehicles` | Buat kendaraan | Definisi | 201 |
+| GET | `/api/v1/vehicles/{identifier}` | Detail kendaraan | Tidak ada | 200 |
+| PUT | `/api/v1/vehicles/{identifier}` | Ganti kendaraan | Definisi + expected_version | 200 |
+| DELETE | `/api/v1/vehicles/{identifier}` | Soft delete kendaraan | Tidak ada; expected_version query | 200 |
 
 ### GET /api/v1/health
 
@@ -281,12 +392,9 @@ atas. Browser memakai JSON dan bearer; tidak ada cookie refresh otomatis. Lihat
 bagian kontrak autentikasi di bawah untuk payload, respons dan error lengkap.
 
 [Daftar alarm/sesi](telemetry-lifecycle.md#daftar-alarm-dan-sesi-service-internal)
-kini tersedia pada service internal dengan filter perangkat, status efektif,
-rentang waktu dan pagination. Belum ada endpoint HTTP untuk memanggilnya dari
-browser; query parameter dan JSON HTTP belum menjadi kontrak aktif. Panduan
-service merinci input/hasil, izin, error dan batas pagination. Perubahan ini
-tidak mengubah respons health/ready atau menyediakan subscription realtime.
-
+tersedia pada service internal. Daftar/detail/acknowledgment alarm kini juga memiliki
+[kontrak HTTP](#kontrak-alarm-telemetry-http); operasi sesi perangkat juga memiliki [kontrak HTTP](#kontrak-sesi-perangkat-http).
+Tidak ada subscription realtime.
 
 [Rekonsiliasi digital asset](asset-registry.md#rekonsiliasi-registry-laporan-tanpa-mutasi)
 tersedia sebagai service internal/CLI dengan hasil IN_SYNC, SOURCE_MISSING, atau
@@ -308,9 +416,8 @@ Windows development. Tidak ada endpoint laporan maintenance baru. Respons ready
 tetap tidak menyatakan cakupan partisi bulan mendatang atau ketersediaan arsip.
 
 [Service status alarm/sesi](telemetry-lifecycle.md) sekarang menghitung status efektif
-dan mencatat acknowledgment/akhir sesi secara append-only. Belum ada endpoint HTTP
-untuk operasi tersebut; tabel field dan contoh service adalah kontrak internal,
-bukan payload frontend. Snapshot awal bisa berbeda dari status efektif setelah finalisasi.
+dan mencatat acknowledgment/akhir sesi secara append-only. HTTP alarm sudah tersedia;
+API akhir sesi juga tersedia. Snapshot awal bisa berbeda dari status efektif setelah finalisasi.
 
 [Fixture development](development-seed.md) kini tersedia di database lokal:
 tenant FSOS_DEV dan data master contoh. dev-maintenance adalah actor internal
@@ -323,21 +430,17 @@ termasuk backfill dan sinkronisasi kitchen dalam transaksi yang sama. Tidak ada
 endpoint registry baru. asset_uuid registry berbeda dari entity_uuid sumber;
 frontend belum boleh mengasumsikan keduanya dapat saling menggantikan.
 
-Riwayat revisi alarm/holding rule, validator DSL, dan [service aturan internal](rule-versioning.md)
-dengan permission database tersedia. Belum ada endpoint baca history/simpan/aktivasi aturan;
-contoh DSL bukan request body endpoint aktif. Frontend rule editor menunggu API
-beserta validasi permission, error mapping, dan kontrak payload final.
+Holding dan alarm rule memiliki endpoint daftar/detail/create/update/history yang
+dijelaskan di bawah. Alarm juga memiliki endpoint aktivasi/nonaktif konfigurasi.
+DSL v1 menjadi kontrak input alarm; evaluator, simulasi dan executor masih TODO.
 
-Fondasi internal `KitchenRepository` sudah membatasi tenant/actor, mencatat audit,
-menyembunyikan soft-deleted records, serta menolak update dengan version lama.
-Belum ada route kitchen atau kontrak payload `expected_version` untuk HTTP.
-Error internal repository belum dipetakan ke status HTTP bisnis; frontend
-menunggu endpoint, schema, auth/permission, dan dokumentasinya saat diimplementasikan.
+API kitchen, storage dan storage zone kini tersedia dengan tenant/actor dari bearer,
+permission Read/Write dan expected_version. Lihat [kontrak master lokasi](#kontrak-master-kitchen-storage-zone).
 
-Master data, device, telemetry, receiving, production, package, holding,
-traceability, fleet, school, complaint, recall, dashboard, analytics, dan QR
-belum memiliki endpoint aktif. Pagination, filter, sort, upload, serta
-acknowledgment alarm/akhir sesi belum tersedia melalui HTTP. Payloadnya belum menjadi
+Master data selain kitchen/storage/zone/sekolah/kendaraan/driver/supplier/bahan/relasi pemasok/holding/alarm rule, device, telemetry selain alarm/sesi, receiving, production, package, holding engine,
+traceability, fleet, school receiving, complaint, recall, dashboard, analytics, dan QR
+belum memiliki endpoint aktif. Filter dan pagination tersedia untuk aturan/alarm/sesi
+sesuai kontrak masing-masing; sort kustom dan upload belum tersedia melalui HTTP. Payloadnya belum menjadi
 kontrak; akan ditambahkan saat endpoint dibuat.
 
 Tidak ada route WebSocket atau SSE aktif. Frontend belum dapat berlangganan
@@ -628,3 +731,2831 @@ terpilih. [Panduan bootstrap](human-bootstrap.md) memuat perintah, mode --check,
 validasi, output dan efek samping. Tidak ada endpoint, payload atau respons baru;
 login/me yang sudah didokumentasikan dipakai setelah akun berhasil dibuat.
 Actor dev-maintenance tetap tanpa password; script tidak mengubahnya.
+
+## Kontrak holding rule HTTP
+
+Holding rule adalah konfigurasi batas waktu per kategori makanan. Endpoint ini
+menyimpan definisi dan revisinya; **belum menjalankan holding engine**, mengubah
+status paket, mengirim alarm, atau menerbitkan event. Angka contoh di bawah hanya
+ilustrasi kontrak API, bukan rekomendasi batas keamanan pangan.
+
+Semua endpoint wajib Authorization: Bearer <access_token> dari login dengan sid
+aktif. Tenant dan actor berasal dari sesi, tidak diterima dari body/header tenant.
+Header Accept: application/json disarankan, Content-Type: application/json wajib
+untuk POST/PUT, X-Correlation-ID opsional. Respons menggunakan envelope standar,
+X-Request-ID, Cache-Control: no-store dan Pragma: no-cache, termasuk error.
+Tidak ada cookie, API key, upload atau subscription. Limiter sementara /auth/*
+belum mencakup endpoint holding rule; limiter bisnis lintas worker tetap TODO.
+
+| Method/path | Tujuan | Permission | Body | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/holding-rules | Daftar aturan aktif tenant | HoldingRule.Read | Tidak ada | offset/limit opsional |
+| POST /api/v1/holding-rules | Buat aturan dan revisi awal | HoldingRule.Write | Definisi lengkap | Tidak ada |
+| GET /api/v1/holding-rules/{rule_id} | Detail satu aturan | HoldingRule.Read | Tidak ada | rule_id UUID wajib |
+| PUT /api/v1/holding-rules/{rule_id} | Ganti seluruh definisi | HoldingRule.Write | Definisi + expected_version | rule_id UUID wajib |
+| GET /api/v1/holding-rules/{rule_id}/history | Revisi immutable | HoldingRule.Read | Tidak ada | rule_id UUID; offset/limit opsional |
+
+Permission diperiksa dari database setiap operasi; claim JWT tidak menggantikan
+pemeriksaan ini. Read tidak memberi Write. Write boleh mengembalikan hasil mutasinya
+tanpa Read terpisah. Actor/user/tenant atau sesi tidak aktif ditolak 401. Jika
+permission tidak ada, 403 diberikan sebelum mencari rule. Dengan Read/Write sah,
+UUID rule tidak ada, soft-deleted atau milik tenant lain menghasilkan 404 yang sama.
+Role DEV_MAINTENANCE sudah memuat HoldingRule.Read/Write; login manusia yang
+memakai role ini dapat mengakses endpoint sesuai grant yang belum dicabut.
+
+### Payload POST dan PUT
+
+| Field | Tipe | Required / nullable | Validasi |
+| --- | --- | --- | --- |
+| food_category | string | Ya / tidak | Trim whitespace, 1..100 karakter, UTF-8 valid tanpa NUL; unik per tenant, case-sensitive |
+| warning_minutes | integer | Ya / tidak | 0..2147483647 |
+| maximum_minutes | integer | Ya / tidak | 1..2147483647 |
+| discard_minutes | integer | Ya / tidak | 1..2147483647 |
+| expected_version | integer | PUT saja / tidak | 1..2147483647, harus sama dengan version terakhir yang dibaca |
+
+Semua nilai waktu dalam menit dan harus memenuhi warning <= maximum <= discard.
+Boolean, angka dalam string, nilai pecahan dan field tambahan ditolak. Audit,
+tenant_id, created_by, updated_by, deleted_at, version atau enabled tidak boleh
+masuk body. POST tidak menerima expected_version. PUT bukan PATCH: empat field
+definisi wajib dikirim kembali, termasuk bila hanya satu nilai yang diubah.
+
+Contoh POST /api/v1/holding-rules:
+
+```json
+{"food_category":"EXAMPLE_ONLY","warning_minutes":60,"maximum_minutes":90,"discard_minutes":120}
+```
+
+Contoh PUT /api/v1/holding-rules/11111111-1111-4111-8111-111111111111:
+
+```json
+{"food_category":"EXAMPLE_ONLY","warning_minutes":60,"maximum_minutes":100,"discard_minutes":120,"expected_version":1}
+```
+
+POST menghasilkan 201 dengan version=1 dan snapshot pertama. PUT menghasilkan
+200 dengan version bertambah satu; trigger mengisi updated_at dan history atomik,
+updated_by diambil dari sesi. Tidak ada commit jika write/history gagal. PUT identik
+dengan version terbaru tetap menambah revisi; mengulang expected_version lama
+menghasilkan 409. Setelah konflik, fetch ulang detail dan minta pengguna meninjau
+perubahan sebelum mencoba lagi. Tidak ada dukungan If-Match/ETag/idempotency key.
+Kategori yang sama setelah trim berbenturan 409; akun tenant lain boleh memakai
+kategori sama. Kategori lama soft-deleted tetap tercakup constraint unik.
+
+### Bentuk data detail dan hasil mutasi
+
+GET detail (200), POST (201) dan PUT (200) mengembalikan data dengan field berikut.
+Semua field selalu hadir; nullable hanya seperti ditandai.
+
+| Field | Tipe / nullable | Penjelasan |
+| --- | --- | --- |
+| holding_rule_id | UUID / tidak | Identitas aturan |
+| tenant_id | UUID / tidak | Tenant terverifikasi |
+| food_category | string / tidak | Kategori yang sudah di-trim |
+| warning_minutes / maximum_minutes / discard_minutes | integer / tidak | Batas menit tersimpan |
+| version | integer / tidak | Versi untuk expected_version pada PUT |
+| created_at / updated_at | ISO 8601 UTC / tidak | Audit waktu database |
+| created_by / updated_by | UUID atau null | Actor audit; record legacy mungkin null |
+| deleted_at | ISO 8601 UTC atau null | Null pada record yang dapat dibaca endpoint |
+| deleted_by | UUID atau null | Null pada record aktif; tidak dapat diubah melalui endpoint |
+
+Contoh response POST 201 lengkap:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "holding_rule_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "food_category": "EXAMPLE_ONLY",
+    "warning_minutes": 60,
+    "maximum_minutes": 90,
+    "discard_minutes": 120,
+    "version": 1,
+    "created_at": "2026-09-11T10:00:00Z",
+    "updated_at": "2026-09-11T10:00:00Z",
+    "created_by": "33333333-3333-4333-8333-333333333333",
+    "updated_by": "33333333-3333-4333-8333-333333333333",
+    "deleted_at": null,
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 8.4
+  }
+}
+```
+
+GET detail memakai bentuk yang sama dengan code/status 200. PUT memakai code 200,
+version berikutnya, waktu updated_at baru dan definisi yang dikirim.
+
+### Pagination daftar dan history
+
+Query offset default 0, minimum 0, maksimum 2147483647. Query limit default 20,
+rentang 1..100. Tidak ada total_count, cursor, filter/sort bebas atau pencarian.
+Daftar hanya tenant sendiri dan nondeleted, urut created_at DESC lalu holding_rule_id
+DESC. History urut version DESC dan hanya tersedia jika parent rule terlihat.
+
+GET /api/v1/holding-rules?offset=0&limit=20 menghasilkan 200 dengan data
+{items: [record detail], offset: 0, limit: 20}. Halaman kosong:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 20,
+    "limit": 20
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 8.4
+  }
+}
+```
+
+Naikkan offset sebesar limit untuk halaman berikutnya; berhenti jika jumlah items
+kurang dari limit. Jika halaman terakhir tepat penuh, request berikutnya kosong.
+Pagination offset bukan snapshot lintas request: insert baru dapat menggeser daftar.
+
+GET /api/v1/holding-rules/{rule_id}/history?offset=0&limit=20 mengembalikan data
+{items: [revision], offset, limit}. Tiap revision memiliki revision_id UUID,
+tenant_id UUID, rule_id UUID, version integer, captured_at timestamp, dan snapshot
+berisi seluruh field data detail di atas. Semua field revisi nonnullable; field
+nullable di dalam snapshot mengikuti data detail. Contoh response history:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [
+      {
+        "revision_id": "55555555-5555-4555-8555-555555555555",
+        "tenant_id": "22222222-2222-4222-8222-222222222222",
+        "rule_id": "11111111-1111-4111-8111-111111111111",
+        "version": 1,
+        "captured_at": "2026-09-11T10:00:00Z",
+        "snapshot": {
+          "holding_rule_id": "11111111-1111-4111-8111-111111111111",
+          "tenant_id": "22222222-2222-4222-8222-222222222222",
+          "food_category": "EXAMPLE_ONLY",
+          "warning_minutes": 60,
+          "maximum_minutes": 90,
+          "discard_minutes": 120,
+          "version": 1,
+          "created_at": "2026-09-11T10:00:00Z",
+          "updated_at": "2026-09-11T10:00:00Z",
+          "created_by": "33333333-3333-4333-8333-333333333333",
+          "updated_by": "33333333-3333-4333-8333-333333333333",
+          "deleted_at": null,
+          "deleted_by": null
+        }
+      }
+    ],
+    "offset": 0,
+    "limit": 20
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 8.4
+  }
+}
+```
+
+History tidak memiliki endpoint edit/delete; endpoint ini tidak menghapus snapshot.
+Tidak ada DELETE, PATCH atau endpoint aktivasi holding rule. Tidak ada automatic
+re-evaluation paket atau pemilihan threshold produksi ketika definisi diubah.
+
+### Error holding rule
+
+| HTTP | message | Penyebab |
+| --- | --- | --- |
+| 400 | Validation Error | JSON/body/path/query tidak valid; errors berisi field/message tanpa raw input |
+| 400 | Invalid holding rule input | Validasi ulang service gagal |
+| 401 | Invalid credentials or session | Bearer hilang/invalid, akun/tenant atau sesi tidak aktif; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | HoldingRule.Read atau Write belum diberikan/dicabut |
+| 404 | Rule not found | Tidak ditemukan, soft-deleted atau tenant lain |
+| 409 | Food category already exists in this tenant | Konflik kategori unik |
+| 409 | Rule changed; reload before retrying | expected_version tertinggal |
+| 503 | Authentication unavailable | Koneksi DB/konfigurasi auth tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh error konflik versi lengkap:
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Rule changed; reload before retrying",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 8.4
+  }
+}
+```
+
+Error lainnya memakai envelope sama dengan code/message sesuai tabel; 400 validasi
+mengisi errors, misalnya field body.maximum_minutes. OpenAPI mendokumentasikan 400
+bukan 422 otomatis. Rincian database/SQL tidak dikirim ke browser.
+
+Tindakan frontend: gunakan version hasil GET/POST/PUT untuk edit berikutnya, jangan
+mengirim field audit, gunakan izin dari /auth/me untuk tampilan dan tetap tangani
+403 jika grant berubah. Setelah create/update berhasil, muat ulang daftar/history
+sesuai kebutuhan; tidak ada event realtime untuk refresh otomatis.
+
+Verifikasi holding rule: 37 tes API/service/DSL/autentikasi terkait lulus, termasuk
+history yang konsisten dengan detail setelah normalisasi UTC, error versi/kategori,
+permission terpisah dan lintas tenant. Tidak ada migrasi baru atau fixture aturan
+pada database aplikasi. Restart proses backend lama untuk memuat route baru.
+
+
+## Kontrak alarm rule HTTP
+
+Status: enam operasi berikut sudah tersedia. Semua memakai bearer access token dengan
+session aktif, tenant/actor dari sesi dan permission database yang diperiksa setiap
+operasi. Header wajib `Authorization: Bearer <access_token>`; untuk POST/PUT gunakan
+`Content-Type: application/json`. `X-Correlation-ID` opsional (maksimal 128 karakter
+diteruskan). Respons JSON envelope, `X-Request-ID`, `Cache-Control: no-store` dan
+`Pragma: no-cache`. Tidak ada cookie atau header tenant yang mengganti scope sesi.
+Limiter auth sementara tidak mencakup endpoint alarm rule; limiter bisnis masih TODO.
+
+| Method/path | Tujuan | Permission | Payload | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/alarm-rules | Daftar konfigurasi nondeleted, enabled true maupun false | AlarmRule.Read | Tidak ada | offset/limit opsional |
+| POST /api/v1/alarm-rules | Buat konfigurasi disabled dan revisi awal | AlarmRule.Write | Definisi lengkap | Tidak ada |
+| GET /api/v1/alarm-rules/{rule_id} | Detail aturan tenant | AlarmRule.Read | Tidak ada | rule_id UUID wajib |
+| PUT /api/v1/alarm-rules/{rule_id} | Ganti seluruh definisi aturan disabled | AlarmRule.Write | Definisi + expected_version | rule_id UUID wajib |
+| PUT /api/v1/alarm-rules/{rule_id}/enabled | Aktifkan/nonaktifkan konfigurasi | AlarmRule.Activate | enabled + expected_version | rule_id UUID wajib |
+| GET /api/v1/alarm-rules/{rule_id}/history | Snapshot revisi immutable | AlarmRule.Read | Tidak ada | rule_id UUID wajib; offset/limit opsional |
+
+Read, Write, Activate independen. Write saja dapat membuat/mengedit dan menerima
+snapshot respons, tetapi tidak membaca daftar/detail/history. Activate saja dapat
+mengubah enabled dan menerima snapshot tanpa Read/Write. Seed DEV_MAINTENANCE
+memiliki ketiga grant; akun manusia harus dibuat melalui bootstrap development.
+Tidak ada DELETE, PATCH, restore, bulk, simulasi atau endpoint execution log.
+
+### Payload dan validasi alarm
+
+Semua field tabel berikut wajib dan tidak nullable. POST menerima enam field definisi;
+PUT definisi menerima enam field tersebut ditambah expected_version. Field tambahan
+(termasuk tenant_id, audit, version dan enabled) ditolak. String metadata di-trim;
+setelah trim panjang minimum 1; NUL dan Unicode tidak valid ditolak.
+
+| Field | Tipe / batas | Makna |
+| --- | --- | --- |
+| rule_code | string 1..50 | Unik case-sensitive per tenant; kode milik record soft-deleted tetap terpakai |
+| rule_name | string 1..200 | Nama tampilan |
+| rule_category | string 1..100 | Kategori konfigurasi |
+| priority | string enum CRITICAL/HIGH/MEDIUM/LOW/INFO | Prioritas konfigurasi |
+| condition | object | Pohon kondisi DSL v1 |
+| action | object | DSL v1 dengan dsl_version dan steps |
+| expected_version | integer 1..2147483647; hanya PUT | Versi terakhir dari server; bool/string angka ditolak |
+
+Grammar condition/action lengkap ada di [DSL v1](rule-versioning.md#kontrak-validator-internal)
+dan merupakan bagian kontrak endpoint ini. Leaf tepat field/op/value atau group tepat
+all/any (1..20 anak); maksimum 100 node dan kedalaman 8. Field numerik temperature,
+duration_minutes, humidity, remaining_minutes, speed menerima eq/ne/gt/gte/lt/lte,
+angka finite -1e12..1e12 (bukan bool/string). Field storage_type/status menerima eq/ne
+dan string nonblank 1..200. Action tepat dsl_version integer 1 dan steps 1..10 object;
+tipe dan field wajib dijabarkan di tabel DSL. Semua nilai teks DSL harus valid UTF-8,
+tanpa NUL, nonblank dan maksimal 200 karakter; teks DSL tidak di-trim oleh validator.
+Key tambahan dan null ditolak. Template/target/transisi belum divalidasi semantik.
+
+Contoh POST /api/v1/alarm-rules (angka hanya ilustrasi, bukan ambang keamanan pangan):
+
+```json
+{
+  "rule_code": "TEMP_EXAMPLE",
+  "rule_name": "Contoh suhu",
+  "rule_category": "STORAGE",
+  "priority": "HIGH",
+  "condition": {
+    "field": "temperature",
+    "op": "gt",
+    "value": 10
+  },
+  "action": {
+    "dsl_version": 1,
+    "steps": [
+      {
+        "type": "alarm",
+        "code": "TEMP_EXAMPLE",
+        "severity": "HIGH"
+      }
+    ]
+  }
+}
+```
+
+Contoh PUT /api/v1/alarm-rules/11111111-1111-4111-8111-111111111111:
+
+```json
+{
+  "rule_code": "TEMP_EXAMPLE",
+  "rule_name": "Contoh suhu diperbarui",
+  "rule_category": "STORAGE",
+  "priority": "HIGH",
+  "condition": {
+    "field": "temperature",
+    "op": "gt",
+    "value": 10
+  },
+  "action": {
+    "dsl_version": 1,
+    "steps": [
+      {
+        "type": "alarm",
+        "code": "TEMP_EXAMPLE",
+        "severity": "HIGH"
+      }
+    ]
+  },
+  "expected_version": 1
+}
+```
+
+Endpoint enabled hanya menerima dua field wajib, tidak nullable:
+`enabled` boolean JSON true/false (bukan 0/1 atau string), dan `expected_version`
+integer 1..2147483647. Contoh PUT /api/v1/alarm-rules/{rule_id}/enabled setelah edit:
+
+```json
+{
+  "enabled": true,
+  "expected_version": 2
+}
+```
+
+POST selalu enabled=false, version=1. Edit definisi mensyaratkan disabled; perubahan
+berhasil menaikkan version dan mencatat snapshot atomik. Bahkan definisi identik
+menghasilkan revisi baru. Ubah enabled juga menaikkan version jika status berubah.
+Status identik dengan expected_version terkini menghasilkan 200 tanpa revisi baru;
+versi lama tetap 409. Enable selalu memvalidasi ulang DSL tersimpan, termasuk jika
+sudah enabled. Disable tetap bisa untuk DSL legacy invalid. Untuk edit aturan aktif,
+nonaktifkan dahulu lalu gunakan version dari respons disable untuk PUT definisi.
+Konflik 409 harus diikuti reload dan peninjauan perubahan sebelum mencoba ulang.
+POST tidak memiliki idempotency key; retry kode yang sudah tersimpan menghasilkan 409.
+
+### Respons alarm dan pagination
+
+POST mengembalikan 201; GET dan kedua PUT 200. Semua field data berikut selalu hadir:
+
+| Field data | Tipe / nullable | Penjelasan |
+| --- | --- | --- |
+| alarm_rule_id, tenant_id | UUID / tidak | Identitas aturan dan tenant sesi |
+| rule_code, rule_name, rule_category, priority | string / tidak | Metadata konfigurasi |
+| condition, action | object / tidak | Definisi tersimpan; legacy bisa belum memenuhi DSL |
+| enabled | boolean / tidak | Status konfigurasi; bukan bukti engine berjalan |
+| version | integer / tidak | Versi untuk expected_version berikutnya |
+| created_at, updated_at | ISO 8601 UTC / tidak | Waktu audit server |
+| created_by, updated_by | UUID / ya | Actor audit; null dimungkinkan pada data lama |
+| deleted_at | ISO 8601 UTC / ya | Null pada record yang tersedia melalui API |
+| deleted_by | UUID / ya | Actor penghapusan; API ini tidak menyediakan delete |
+
+Contoh respons lengkap POST 201. GET detail dan PUT memakai bentuk data sama dengan
+nilai tersimpan terbaru serta code 200; metadata request dibuat server untuk setiap request.
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "alarm_rule_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "rule_code": "TEMP_EXAMPLE",
+    "rule_name": "Contoh suhu",
+    "rule_category": "STORAGE",
+    "priority": "HIGH",
+    "condition": {
+      "field": "temperature",
+      "op": "gt",
+      "value": 10
+    },
+    "action": {
+      "dsl_version": 1,
+      "steps": [
+        {
+          "type": "alarm",
+          "code": "TEMP_EXAMPLE",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "enabled": false,
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "created_by": "33333333-3333-4333-8333-333333333333",
+    "updated_by": "33333333-3333-4333-8333-333333333333",
+    "deleted_at": null,
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET /api/v1/alarm-rules?offset=0&limit=20 mengembalikan 200, data berbentuk:
+
+```json
+{
+  "items": [
+    {
+      "alarm_rule_id": "11111111-1111-4111-8111-111111111111",
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "rule_code": "TEMP_EXAMPLE",
+      "rule_name": "Contoh suhu",
+      "rule_category": "STORAGE",
+      "priority": "HIGH",
+      "condition": {
+        "field": "temperature",
+        "op": "gt",
+        "value": 10
+      },
+      "action": {
+        "dsl_version": 1,
+        "steps": [
+          {
+            "type": "alarm",
+            "code": "TEMP_EXAMPLE",
+            "severity": "HIGH"
+          }
+        ]
+      },
+      "enabled": false,
+      "version": 1,
+      "created_at": "2026-09-11T03:00:00Z",
+      "updated_at": "2026-09-11T03:00:00Z",
+      "created_by": "33333333-3333-4333-8333-333333333333",
+      "updated_by": "33333333-3333-4333-8333-333333333333",
+      "deleted_at": null,
+      "deleted_by": null
+    }
+  ],
+  "offset": 0,
+  "limit": 20
+}
+```
+
+Bungkus data tersebut dengan envelope sukses di atas (code 200). GET list dan history
+menerima offset integer 0..2147483647, default 0, serta limit integer 1..100, default 20;
+keduanya opsional, tidak menerima null. Parameter lain tidak menyediakan filter/sort.
+List urut created_at DESC lalu alarm_rule_id DESC; history version DESC. Tidak ada
+total/cursor/has_more. Halaman habis mengembalikan items=[] dengan offset/limit diminta.
+Pagination offset tidak menjamin snapshot stabil saat data berubah bersamaan.
+
+GET /api/v1/alarm-rules/11111111-1111-4111-8111-111111111111/history?offset=0&limit=20
+mengembalikan 200 dengan data berikut (contoh tepat setelah create):
+
+```json
+{
+  "items": [
+    {
+      "revision_id": "55555555-5555-4555-8555-555555555555",
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "rule_id": "11111111-1111-4111-8111-111111111111",
+      "version": 1,
+      "captured_at": "2026-09-11T03:00:00Z",
+      "snapshot": {
+        "alarm_rule_id": "11111111-1111-4111-8111-111111111111",
+        "tenant_id": "22222222-2222-4222-8222-222222222222",
+        "rule_code": "TEMP_EXAMPLE",
+        "rule_name": "Contoh suhu",
+        "rule_category": "STORAGE",
+        "priority": "HIGH",
+        "condition": {
+          "field": "temperature",
+          "op": "gt",
+          "value": 10
+        },
+        "action": {
+          "dsl_version": 1,
+          "steps": [
+            {
+              "type": "alarm",
+              "code": "TEMP_EXAMPLE",
+              "severity": "HIGH"
+            }
+          ]
+        },
+        "enabled": false,
+        "version": 1,
+        "created_at": "2026-09-11T03:00:00Z",
+        "updated_at": "2026-09-11T03:00:00Z",
+        "created_by": "33333333-3333-4333-8333-333333333333",
+        "updated_by": "33333333-3333-4333-8333-333333333333",
+        "deleted_at": null,
+        "deleted_by": null
+      }
+    }
+  ],
+  "offset": 0,
+  "limit": 20
+}
+```
+
+Item history memiliki revision_id/tenant_id/rule_id UUID, version integer,
+captured_at ISO 8601 UTC dan snapshot lengkap dengan schema AlarmRuleData di atas;
+semua field item wajib dan tidak nullable. Nullable di dalam snapshot mengikuti
+schema data. History hanya dapat dibaca jika aturan masih nondeleted dalam tenant.
+Snapshot lama dipertahankan; bukan event untuk subscribe/replay.
+
+### Error dan efek samping alarm
+
+| HTTP | message | Kondisi / tindakan frontend |
+| --- | --- | --- |
+| 400 | Validation Error | Body, DSL, UUID atau query invalid; lihat errors field/message |
+| 400 | Invalid alarm rule input | Validasi ulang service/DSL legacy gagal; perbaiki definisi sebelum enable |
+| 401 | Invalid credentials or session | Bearer hilang, invalid atau sesi tidak aktif; alur autentikasi ulang |
+| 403 | Required permission is not granted | Permission operasi tidak tersedia/dicabut |
+| 404 | Rule not found | ID tidak ada, soft-deleted atau tenant lain; respons sama |
+| 409 | Rule code already exists in this tenant | Kode sudah terpakai |
+| 409 | Rule changed; reload before retrying | expected_version kedaluwarsa |
+| 409 | Disable alarm rule before changing its definition | PUT definisi saat enabled |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh konflik versi (bentuk error generik juga dipakai status lain):
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Rule changed; reload before retrying",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Pada 400 Validation Error, errors berisi object field/message seperti
+`{"field":"body.expected_version","message":"Field required"}`; data null.
+401 menyertakan WWW-Authenticate: Bearer. Validasi request dan autentikasi dapat
+terjadi sebelum pengecekan permission/record; jangan bergantung pada urutan error
+ketika satu request melanggar beberapa syarat sekaligus.
+
+Mutasi dan pencatatan revisi dalam satu transaksi, tenant dan actor berasal dari
+sesi; tidak menerima identitas audit dari browser. Tidak ada publikasi event,
+alarm_log baru, evaluasi telemetry, notifikasi, perubahan paket ataupun recall.
+`enabled=true` hanya konfigurasi yang disimpan. Engine, executor, validasi target/
+template/transisi dan distribusi event masih TODO. Lihat [event catalog](event-catalog.md).
+
+
+## Kontrak alarm telemetry HTTP
+
+Status: tiga operasi tersedia. Ini kejadian alarm (`alarm_log`), berbeda dari
+konfigurasi `/alarm-rules`. Tidak ada endpoint untuk membuat alarm, ingestion MQTT,
+evaluator, menghapus/mengedit bukti, atau subscription realtime.
+
+| Method/path | Tujuan | Permission | Body | Parameter |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/alarms | Daftar kejadian berdasarkan status efektif | Alarm.Read | Tidak ada | Filter dan pagination opsional |
+| GET /api/v1/alarms/{alarm_id} | Detail snapshot dan status efektif | Alarm.Read | Tidak ada | alarm_id UUID wajib |
+| POST /api/v1/alarms/{alarm_id}/acknowledgment | Akui alarm dengan actor/waktu server | Alarm.Acknowledge | Wajib kosong; bahkan {} atau null ditolak | alarm_id UUID wajib; tanpa query |
+
+Semua memakai `Authorization: Bearer <access_token>` dengan sid aktif; tenant/actor
+berasal dari sesi, bukan parameter browser. `X-Correlation-ID` opsional (128 karakter
+pertama diteruskan). Tidak memerlukan Content-Type karena tidak ada request body.
+Respons JSON envelope 200, X-Request-ID, Cache-Control: no-store dan Pragma: no-cache.
+Auth limiter sementara belum mencakup endpoint bisnis ini.
+
+Alarm.Read dan Alarm.Acknowledge independen; izin mutasi dapat menerima snapshot
+respons tanpa Read. Permission Alarm.Read, Alarm.Acknowledge, DeviceSession.Read dan DeviceSession.Close
+sudah diprovision secara eksplisit ke role DEV_MAINTENANCE di tenant FSOS_DEV lokal.
+Seed generik tetap tidak memperluas grant secara otomatis. Akun pada role lain perlu
+provisioning terpilih; AlarmRule.* sendiri tidak memberikan izin Alarm.*. Lihat
+[runbook provisioning](telemetry-permissions.md). User harus memiliki membership
+aktif; tidak ada akun/password baru yang dibuat oleh provisioning ini.
+
+### Query GET daftar
+
+Semua opsional, tidak menerima literal null; kosong bukan pengganti parameter yang
+dihilangkan. Tidak ada body, pencarian bebas atau sort kustom.
+
+| Parameter | Tipe / default | Validasi / makna |
+| --- | --- | --- |
+| device_uuid | UUID / tidak ada | Identitas publik perangkat; perangkat tenant lain menghasilkan halaman kosong |
+| acknowledged | string true atau false / tidak ada | Tepat huruf kecil; 1/0/yes ditolak; filter effective_acknowledged |
+| since | datetime bertimezone / tidak ada | recorded_at >= since; ISO 8601 dengan Z/offset direkomendasikan |
+| until | datetime bertimezone / tidak ada | recorded_at < until; jika keduanya ada harus since < until |
+| offset | integer / 0 | 0..2147483647 |
+| limit | integer / 20 | 1..100 |
+
+Datetime diparsing Pydantic AwareDatetime; timestamp Unix yang dikenali parser juga
+bisa diterima. Gunakan ISO 8601 untuk integrasi frontend; encode '+' pada offset
+menjadi %2B. Timestamp tanpa timezone ditolak. Urutan recorded_at DESC lalu alarm_id
+DESC. Parameter yang tidak didefinisikan tidak menyediakan filter tambahan.
+
+Contoh request (Bearer header wajib untuk setiap operasi):
+
+```http
+GET /api/v1/alarms?acknowledged=false&since=2026-09-11T00:00:00Z&until=2026-09-12T00:00:00Z&offset=0&limit=20
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/v1/alarms/11111111-1111-4111-8111-111111111111
+Authorization: Bearer <access_token>
+```
+
+```http
+POST /api/v1/alarms/11111111-1111-4111-8111-111111111111/acknowledgment
+Authorization: Bearer <access_token>
+```
+
+### Respons dan status efektif
+
+Semua field data berikut selalu hadir. Field nullable menggunakan JSON null.
+
+| Field | Tipe / nullable | Makna |
+| --- | --- | --- |
+| alarm_id, tenant_id, device_uuid | UUID / tidak | Identitas alarm, tenant dan perangkat |
+| alarm_code | string / tidak | Kode kejadian tersimpan |
+| severity | string / tidak | Severity tersimpan; bukan enum tertutup karena bukti legacy |
+| description | string / ya | Keterangan alarm |
+| acknowledged | boolean / tidak | Snapshot awal immutable |
+| recorded_at | ISO 8601 UTC / tidak | Waktu kejadian; dasar filter dan urutan |
+| mqtt_message_id | UUID / ya | Referensi pesan sumber bila tersedia |
+| created_at, updated_at | ISO 8601 UTC / tidak | Audit snapshot awal |
+| created_by, updated_by, deleted_by | UUID / ya | Actor audit snapshot |
+| deleted_at | ISO 8601 UTC / ya | Null; bukti tidak menyediakan soft delete |
+| version | integer / tidak | Versi snapshot awal, tidak berubah saat acknowledge |
+| effective_acknowledged | boolean / tidak | acknowledged OR bukti acknowledgment tersedia |
+| acknowledgment_id | UUID / ya | Identitas bukti tambahan |
+| acknowledged_at | ISO 8601 UTC / ya | Waktu acknowledgment tambahan |
+| acknowledged_by | UUID / ya | Actor yang pertama mencatat bukti tambahan |
+
+Contoh GET detail 200 sebelum acknowledgment:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "alarm_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "device_uuid": "44444444-4444-4444-8444-444444444444",
+    "alarm_code": "TEMP_EXAMPLE",
+    "severity": "HIGH",
+    "description": null,
+    "acknowledged": false,
+    "recorded_at": "2026-09-11T01:00:00Z",
+    "mqtt_message_id": null,
+    "created_at": "2026-09-11T01:00:00Z",
+    "updated_at": "2026-09-11T01:00:00Z",
+    "deleted_at": null,
+    "created_by": null,
+    "updated_by": null,
+    "deleted_by": null,
+    "version": 1,
+    "effective_acknowledged": false,
+    "acknowledgment_id": null,
+    "acknowledged_at": null,
+    "acknowledged_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET daftar memakai envelope sama dengan data `{items, offset, limit, next_offset}`.
+items adalah array AlarmData lengkap di atas, offset/limit integer nonnull,
+next_offset integer atau null (null bila tidak ada halaman berikutnya). Tidak ada
+total/cursor. Contoh data halaman kosong untuk GET /api/v1/alarms?offset=100&limit=20:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 100,
+    "limit": 20,
+    "next_offset": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+POST acknowledgment 200 memakai schema detail yang sama. Contoh hasil:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "alarm_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "device_uuid": "44444444-4444-4444-8444-444444444444",
+    "alarm_code": "TEMP_EXAMPLE",
+    "severity": "HIGH",
+    "description": null,
+    "acknowledged": false,
+    "recorded_at": "2026-09-11T01:00:00Z",
+    "mqtt_message_id": null,
+    "created_at": "2026-09-11T01:00:00Z",
+    "updated_at": "2026-09-11T01:00:00Z",
+    "deleted_at": null,
+    "created_by": null,
+    "updated_by": null,
+    "deleted_by": null,
+    "version": 1,
+    "effective_acknowledged": true,
+    "acknowledgment_id": "66666666-6666-4666-8666-666666666666",
+    "acknowledged_at": "2026-09-11T03:00:00Z",
+    "acknowledged_by": "33333333-3333-4333-8333-333333333333"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Frontend harus menggunakan effective_acknowledged untuk badge/filter. acknowledged,
+version dan updated_at snapshot awal tetap sama. Snapshot impor acknowledged=true
+bisa menghasilkan effective_acknowledged=true dengan tiga field acknowledgment null;
+UI jangan mengarang actor/waktu yang tidak diketahui.
+
+Retry POST mengembalikan bukti pertama, tanpa mengganti actor/waktu atau menambah
+row; tidak membutuhkan expected_version/idempotency key. Alarm yang sudah diakui
+pada snapshot impor tidak dibuatkan bukti baru. Parent dikunci dan insert bukti
+committed sebelum respons; gagal berarti transaksi rollback. Untuk insert baru,
+recorded_at masa depan ditolak. Perangkat yang kemudian nonaktif tidak menyembunyikan
+bukti historis; actor/tenant pemanggil tetap harus aktif. Pagination bukan snapshot
+stabil lintas halaman; acknowledgment baru dapat menggeser hasil filter.
+
+### Error dan efek samping
+
+| HTTP | message | Penyebab |
+| --- | --- | --- |
+| 400 | Validation Error | UUID/filter/pagination tidak valid; errors berisi field/message |
+| 400 | Request body must be empty | POST membawa body, termasuk {} atau null |
+| 400 | Invalid alarm filters or observation time | Rentang since/until terbalik/sama atau alarm masa depan saat insert acknowledgment |
+| 401 | Invalid credentials or session | Token hilang/invalid atau sesi tidak aktif; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | Permission operasi tidak tersedia/dicabut |
+| 404 | Telemetry record not found | Detail/POST untuk ID hilang atau tenant lain, pesan sama |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh error permission:
+
+```json
+{
+  "success": false,
+  "code": 403,
+  "message": "Required permission is not granted",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Error validasi memiliki data null dan errors seperti
+`[{"field":"query.limit","message":"Input should be less than or equal to 100"}]`.
+Urutan validasi/auth/permission tidak dijamin ketika beberapa syarat dilanggar.
+
+GET tidak memutasi data. POST hanya menambah alarm_acknowledgment secara atomik;
+tidak menulis ulang alarm_log, menonaktifkan alarm rule, menjalankan aksi perangkat,
+atau menerbitkan event/notifikasi. Browser dapat memuat ulang daftar setelah POST;
+WebSocket, event acknowledgment dan ingestion masih rencana. Lihat
+[event catalog](event-catalog.md) dan [service lifecycle](telemetry-lifecycle.md).
+
+
+## Kontrak sesi perangkat HTTP
+
+Status: tiga operasi tersedia. Ini sesi koneksi perangkat, berbeda dari sesi login
+`/auth/*`. Semua membutuhkan bearer access token dengan sid aktif; actor dan tenant
+dari sesi login. Tidak ada create/delete sesi, ingestion atau reconnect otomatis.
+
+| Method/path | Tujuan | Permission | Body | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/device-sessions | Daftar sesi berdasarkan status efektif | DeviceSession.Read | Tidak ada | Filter/pagination opsional |
+| GET /api/v1/device-sessions/{session_id} | Detail snapshot dan status akhir efektif | DeviceSession.Read | Tidak ada | session_id UUID wajib |
+| POST /api/v1/device-sessions/{session_id}/end | Catat akhir sesi immutable | DeviceSession.Close | disconnected_at wajib | session_id UUID wajib; tanpa query |
+
+Header wajib `Authorization: Bearer <access_token>`; POST memakai
+`Content-Type: application/json`. `X-Correlation-ID` opsional, 128 karakter pertama
+diteruskan. Respons JSON envelope, X-Request-ID, Cache-Control: no-store,
+Pragma: no-cache. Limiter auth sementara tidak mencakup endpoint ini.
+Read dan Close independen: Close saja boleh menerima snapshot hasil mutasi tanpa
+Read. Role DEV_MAINTENANCE lokal kini mempunyai keduanya melalui provisioning
+administratif eksplisit; role lain tidak otomatis berubah.
+
+### Query dan payload
+
+GET list: semua parameter opsional; literal null/kosong bukan pengganti parameter
+yang dihilangkan. Parameter lain tidak menyediakan filter/sort tambahan.
+
+| Parameter | Tipe / default | Validasi / arti |
+| --- | --- | --- |
+| device_uuid | UUID / tidak ada | UUID publik perangkat; tenant lain menghasilkan items kosong |
+| is_open | string true/false / tidak ada | Tepat huruf kecil; filter status efektif; 1/0/yes ditolak |
+| since | datetime bertimezone / tidak ada | connected_at >= since |
+| until | datetime bertimezone / tidak ada | connected_at < until; since < until jika keduanya ada |
+| offset | integer / 0 | 0..2147483647 |
+| limit | integer / 20 | 1..100 |
+
+Datetime query mengikuti AwareDatetime Pydantic (termasuk timestamp Unix yang
+parser kenali); gunakan ISO 8601 dengan Z/offset dan encode '+' menjadi %2B.
+Tanpa timezone ditolak. Urutan connected_at DESC lalu session_id DESC. Filter
+waktu berdasarkan waktu mulai sesi, bukan recorded_at atau disconnected_at.
+
+POST hanya menerima field `disconnected_at`: string ISO 8601 bertimezone dengan
+pemisah T, wajib dan tidak nullable. Timestamp angka, body kosong, field tambahan
+(tenant/actor/expected_version) dan timestamp tanpa timezone ditolak.
+Waktu dinormalisasi ke UTC, harus >= connected_at. Penutupan baru tidak boleh di
+masa depan. Tidak membutuhkan expected_version karena parent immutable.
+
+Contoh request:
+
+```http
+GET /api/v1/device-sessions?is_open=true&since=2026-09-11T00:00:00Z&until=2026-09-12T00:00:00Z&offset=0&limit=20
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/v1/device-sessions/11111111-1111-4111-8111-111111111111
+Authorization: Bearer <access_token>
+```
+
+POST /api/v1/device-sessions/11111111-1111-4111-8111-111111111111/end
+(dengan kedua header wajib di atas):
+
+```json
+{
+  "disconnected_at": "2026-09-11T02:00:00Z"
+}
+```
+
+### Respons dan perilaku finalisasi
+
+Ketiga operasi sukses mengembalikan 200. Semua field data berikut selalu hadir;
+nullable berarti JSON null diizinkan.
+
+| Field | Tipe / nullable | Penjelasan |
+| --- | --- | --- |
+| session_id, tenant_id, device_uuid | UUID / tidak | Identitas sesi, tenant dan perangkat |
+| connected_at | ISO 8601 UTC / tidak | Awal sesi, dasar filter waktu |
+| disconnected_at | ISO 8601 UTC / ya | Snapshot akhir sesi asli, tidak berubah oleh POST |
+| ip_address | string / ya | Alamat INET snapshot perangkat, termasuk prefix bila tersimpan |
+| firmware | string / ya | Versi firmware snapshot |
+| recorded_at | ISO 8601 UTC / tidak | Waktu pencatatan bukti sumber |
+| mqtt_message_id | UUID / ya | Referensi pesan sumber |
+| created_at, updated_at | ISO 8601 UTC / tidak | Waktu audit snapshot awal |
+| created_by, updated_by, deleted_by | UUID / ya | Actor audit snapshot |
+| deleted_at | ISO 8601 UTC / ya | Null, tidak ada soft delete bukti |
+| version | integer / tidak | Versi snapshot awal, tidak naik karena finalisasi |
+| effective_disconnected_at | ISO 8601 UTC / ya | Akhir snapshot asli atau bukti device_session_end |
+| is_open | boolean / tidak | true jika effective_disconnected_at null |
+| session_end_id | UUID / ya | ID bukti tambahan; null pada sesi terbuka atau snapshot impor lengkap |
+
+Contoh GET detail sebelum penutupan:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "session_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "device_uuid": "33333333-3333-4333-8333-333333333333",
+    "connected_at": "2026-09-11T01:00:00Z",
+    "disconnected_at": null,
+    "ip_address": "192.0.2.1",
+    "firmware": "example-v1",
+    "recorded_at": "2026-09-11T01:00:00Z",
+    "mqtt_message_id": null,
+    "created_at": "2026-09-11T01:00:00Z",
+    "updated_at": "2026-09-11T01:00:00Z",
+    "deleted_at": null,
+    "created_by": null,
+    "updated_by": null,
+    "deleted_by": null,
+    "version": 1,
+    "effective_disconnected_at": null,
+    "is_open": true,
+    "session_end_id": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh POST 200 setelah penutupan; GET detail berikutnya memakai data sama:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "session_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "device_uuid": "33333333-3333-4333-8333-333333333333",
+    "connected_at": "2026-09-11T01:00:00Z",
+    "disconnected_at": null,
+    "ip_address": "192.0.2.1",
+    "firmware": "example-v1",
+    "recorded_at": "2026-09-11T01:00:00Z",
+    "mqtt_message_id": null,
+    "created_at": "2026-09-11T01:00:00Z",
+    "updated_at": "2026-09-11T01:00:00Z",
+    "deleted_at": null,
+    "created_by": null,
+    "updated_by": null,
+    "deleted_by": null,
+    "version": 1,
+    "effective_disconnected_at": "2026-09-11T02:00:00Z",
+    "is_open": false,
+    "session_end_id": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET list memakai envelope sama dengan data `{items, offset, limit, next_offset}`.
+items array DeviceSessionData lengkap di atas; offset/limit integer nonnull,
+next_offset integer atau null bila halaman berikutnya tidak ada. Tidak ada total
+atau cursor. Contoh halaman kosong:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 0,
+    "limit": 20,
+    "next_offset": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Frontend memakai is_open/effective_disconnected_at; snapshot disconnected_at bisa
+tetap null meskipun sesi sudah ditutup. Snapshot impor lengkap memiliki is_open=false
+namun session_end_id null. Jangan menganggap null ID bukti berarti sesi terbuka.
+POST ulang dengan waktu instant yang sama (meski offset berbeda) mengembalikan
+bukti yang sama; waktu berbeda menghasilkan 409. Ini juga berlaku untuk snapshot
+impor lengkap. Timestamp/actor audit bukti pertama tidak ditimpa.
+
+Perangkat nonaktif tetap dapat memiliki bukti historis yang terbaca. Penutupan
+satu sesi tidak menetapkan perangkat offline secara global karena bisa ada sesi
+lain. Reconnect harus membuka session_id baru melalui ingestion yang masih TODO.
+Pagination offset tidak stabil terhadap perubahan data/status di antara halaman.
+
+### Error dan efek samping
+
+| HTTP | message | Kondisi |
+| --- | --- | --- |
+| 400 | Validation Error | Body, UUID, timezone atau query tidak valid; errors field/message |
+| 400 | Invalid session filters or disconnection time | Rentang since/until invalid, akhir sebelum awal atau penutupan baru di masa depan |
+| 401 | Invalid credentials or session | Bearer hilang/invalid atau sesi login tidak aktif; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | Permission operasi hilang/dicabut |
+| 404 | Telemetry record not found | ID hilang atau tenant lain; respons sama |
+| 409 | Session already ended at a different time | Sesi sudah ditutup dengan instant berbeda |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh konflik:
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Session already ended at a different time",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "44444444-4444-4444-8444-444444444444",
+    "correlation_id": "44444444-4444-4444-8444-444444444444",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+400 Validation Error memiliki data null dan errors seperti
+`[{"field":"body.disconnected_at","message":"Field required"}]`.
+Urutan validasi/auth/permission tidak dijamin bila beberapa syarat dilanggar.
+
+GET tidak memutasi. POST mengunci parent dan menambah satu device_session_end
+beserta actor audit dari sesi login dalam transaksi yang selesai sebelum respons.
+Rollback membatalkan bukti bila gagal. Tidak mengubah device_session, tidak
+mengirim device.disconnected atau notifikasi, dan tidak membuka koneksi/reconnect.
+Lihat [event catalog](event-catalog.md) dan [lifecycle](telemetry-lifecycle.md).
+
+
+## Kontrak master kitchen storage zone
+
+Status: 15 operasi aktif untuk data operasional dasar docs/06. Alur frontend:
+buat/pilih kitchen, buat storage pada kitchen tersebut, lalu buat zone pada storage.
+Ini belum menyediakan receiving/stok, binding device, movement atau hard delete.
+
+Semua operasi wajib `Authorization: Bearer <access_token>` dengan sesi aktif dan
+tenant/actor dari sesi. POST/PUT wajib `Content-Type: application/json`.
+`X-Correlation-ID` opsional (128 karakter pertama diteruskan). Respons JSON envelope,
+X-Request-ID, Cache-Control: no-store, Pragma: no-cache. Limiter auth sementara belum
+mencakup endpoint bisnis ini. Tenant/audit/ID/version tidak boleh ditulis oleh browser.
+
+| Method/path | Tujuan | Permission | Body | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/kitchens | Daftar kitchen | Kitchen.Read | Tidak ada | offset/limit |
+| POST /api/v1/kitchens | Buat kitchen dan registry | Kitchen.Write | KitchenInput | Tidak ada |
+| GET /api/v1/kitchens/{identifier} | Detail kitchen | Kitchen.Read | Tidak ada | identifier UUID kitchen wajib |
+| PUT /api/v1/kitchens/{identifier} | Ganti definisi kitchen | Kitchen.Write | KitchenInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/kitchens/{identifier} | Hapus secara administratif | Kitchen.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+| GET /api/v1/storages | Daftar storage | Storage.Read | Tidak ada | kitchen_id opsional; offset/limit |
+| POST /api/v1/storages | Buat storage dan registry | Storage.Write | StorageInput | Tidak ada |
+| GET /api/v1/storages/{identifier} | Detail storage | Storage.Read | Tidak ada | identifier UUID storage wajib |
+| PUT /api/v1/storages/{identifier} | Ganti definisi storage | Storage.Write | StorageInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/storages/{identifier} | Hapus secara administratif | Storage.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+| GET /api/v1/storage-zones | Daftar zone | StorageZone.Read | Tidak ada | storage_id opsional; offset/limit |
+| POST /api/v1/storage-zones | Buat zone | StorageZone.Write | ZoneInput | Tidak ada |
+| GET /api/v1/storage-zones/{identifier} | Detail zone | StorageZone.Read | Tidak ada | identifier UUID zone wajib |
+| PUT /api/v1/storage-zones/{identifier} | Ganti definisi zone | StorageZone.Write | ZoneInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/storage-zones/{identifier} | Hapus secara administratif | StorageZone.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+
+Read/Write/Delete setiap modul independen. Write saja dapat menerima snapshot hasil mutasi;
+pengecekan induk tidak memerlukan Read induk. Sembilan permission telah diberikan secara
+eksplisit ke role DEV_MAINTENANCE lokal sebagai kebutuhan minimum API ini. Role lain
+tidak otomatis mendapat akses. AssetRegistry.Sync tidak diperlukan untuk sinkronisasi
+internal saat menulis kitchen/storage. DELETE soft delete tersedia sesuai kontrak di bawah; PATCH, restore dan pemindahan induk belum tersedia.
+
+### Payload input
+
+Semua field tambahan ditolak. String di-trim, NUL/Unicode invalid ditolak; boolean
+tidak dikonversi menjadi angka. Decimal menerima angka JSON atau string numerik finite;
+frontend sebaiknya mengirim string untuk mempertahankan presisi. Null hanya pada
+field bertanda nullable. Default di bawah berlaku juga pada PUT: PUT mengganti seluruh
+definisi, jadi field opsional yang dihilangkan direset ke default, bukan dipertahankan.
+
+| KitchenInput | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| kitchen_code | string / ya / tidak | 1..50 karakter; unik case-sensitive per tenant termasuk kode record soft-deleted |
+| kitchen_name | string / ya / tidak | 1..200 karakter |
+| latitude | decimal / tidak / ya | -90..90, maksimal 6 desimal; default null |
+| longitude | decimal / tidak / ya | -180..180, maksimal 6 desimal; default null |
+| address | string / tidak / ya | Default null; tidak ada batas panjang aplikasi |
+| capacity | integer / tidak / ya | 0..2147483647; string angka/bool ditolak; default null |
+| status | string enum / tidak / tidak | ACTIVE atau INACTIVE; default ACTIVE |
+
+Latitude/longitude harus keduanya bernilai atau keduanya null. Lokasi PostGIS
+kitchen dihitung dari pasangan tersebut; field location tidak diterima/tidak dikirim.
+
+| StorageInput | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| kitchen_id | UUID / ya / tidak | Induk nondeleted ACTIVE dalam tenant; tidak bisa diganti lewat PUT |
+| storage_code | string / ya / tidak | 1..50; unik case-sensitive per kitchen termasuk soft-deleted |
+| storage_name | string / ya / tidak | 1..200 |
+| storage_type | string enum / ya / tidak | COLD_STORAGE, FREEZER, DRY_STORAGE |
+| temperature_min | decimal / tidak / ya | -9999.99..9999.99, maksimal 2 desimal; default null |
+| temperature_max | decimal / tidak / ya | Batas sama; default null; jika keduanya terisi min <= max |
+| latitude, longitude | decimal / tidak / ya | Rentang/pasangan/presisi seperti kitchen; default null |
+| status | string enum / tidak / tidak | ACTIVE/INACTIVE, default ACTIVE |
+
+Satu batas suhu boleh null. Angka suhu contoh di bawah hanya ilustrasi konfigurasi,
+bukan rekomendasi keamanan pangan. Lokasi storage disimpan sebagai Point SRID 4326,
+direspons sebagai latitude/longitude (maksimal 6 desimal), bukan WKB internal.
+
+| ZoneInput | Tipe / required / nullable | Validasi |
+| --- | --- | --- |
+| storage_id | UUID / ya / tidak | Storage dan kitchen induknya nondeleted ACTIVE dalam tenant; tidak bisa diganti lewat PUT |
+| zone_code | string / ya / tidak | 1..50; unik case-sensitive per storage termasuk soft-deleted |
+| zone_name | string / ya / tidak | 1..200 |
+
+Semua PUT menambahkan expected_version integer wajib, tidak nullable, 1..2147483647;
+string angka dan boolean ditolak. POST tidak menerima expected_version.
+
+### Contoh request per modul
+
+Contoh POST /api/v1/kitchens:
+
+```json
+{
+  "kitchen_code": "KITCHEN_EXAMPLE",
+  "kitchen_name": "Dapur contoh",
+  "latitude": "-6.200000",
+  "longitude": "106.800000",
+  "address": null,
+  "capacity": 200,
+  "status": "ACTIVE"
+}
+```
+
+Contoh PUT /api/v1/kitchens/11111111-1111-4111-8111-111111111111:
+
+```json
+{
+  "kitchen_code": "KITCHEN_EXAMPLE",
+  "kitchen_name": "Dapur diperbarui",
+  "latitude": "-6.200000",
+  "longitude": "106.800000",
+  "address": null,
+  "capacity": 200,
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+Contoh POST /api/v1/storages:
+
+```json
+{
+  "kitchen_id": "11111111-1111-4111-8111-111111111111",
+  "storage_code": "COLD_EXAMPLE",
+  "storage_name": "Penyimpanan contoh",
+  "storage_type": "COLD_STORAGE",
+  "temperature_min": "1.50",
+  "temperature_max": "5.00",
+  "latitude": null,
+  "longitude": null,
+  "status": "ACTIVE"
+}
+```
+
+Contoh PUT /api/v1/storages/22222222-2222-4222-8222-222222222222:
+
+```json
+{
+  "kitchen_id": "11111111-1111-4111-8111-111111111111",
+  "storage_code": "COLD_EXAMPLE",
+  "storage_name": "Penyimpanan diperbarui",
+  "storage_type": "COLD_STORAGE",
+  "temperature_min": "1.50",
+  "temperature_max": "5.00",
+  "latitude": null,
+  "longitude": null,
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+Contoh POST /api/v1/storage-zones:
+
+```json
+{
+  "storage_id": "22222222-2222-4222-8222-222222222222",
+  "zone_code": "RACK_A",
+  "zone_name": "Rak A"
+}
+```
+
+Contoh PUT /api/v1/storage-zones/33333333-3333-4333-8333-333333333333:
+
+```json
+{
+  "storage_id": "22222222-2222-4222-8222-222222222222",
+  "zone_code": "RACK_A",
+  "zone_name": "Rak diperbarui",
+  "expected_version": 1
+}
+```
+
+Contoh GET tanpa body (semuanya memakai header Bearer di atas):
+
+```http
+GET /api/v1/kitchens?offset=0&limit=20
+GET /api/v1/kitchens/11111111-1111-4111-8111-111111111111
+GET /api/v1/storages?kitchen_id=11111111-1111-4111-8111-111111111111&offset=0&limit=20
+GET /api/v1/storages/22222222-2222-4222-8222-222222222222
+GET /api/v1/storage-zones?storage_id=22222222-2222-4222-8222-222222222222&offset=0&limit=20
+GET /api/v1/storage-zones/33333333-3333-4333-8333-333333333333
+```
+
+### Respons sukses
+
+POST 201, GET/PUT 200. data detail/mutasi berisi seluruh field definisi di atas,
+termasuk opsional yang null, ditambah field berikut (semuanya selalu hadir):
+
+| Field tambahan | Tipe / nullable | Makna |
+| --- | --- | --- |
+| kitchen_id / storage_id / zone_id | UUID / tidak | ID sumber sesuai modul, bukan asset_uuid registry |
+| tenant_id | UUID / tidak | Tenant sesi |
+| version | integer / tidak | 1 pada create; naik satu setiap PUT, termasuk definisi identik |
+| created_at, updated_at | ISO 8601 UTC / tidak | Waktu audit server |
+| created_by, updated_by | UUID / ya | Actor audit; null mungkin pada data lama |
+| deleted_at | ISO 8601 UTC / ya | Null pada hasil biasa; timestamp terisi pada respons DELETE |
+| deleted_by | UUID / ya | Actor penghapusan; terisi pada respons DELETE |
+
+Tipe respons mengikuti input kecuali decimal dikirim sebagai **string** dan
+status/storage_type berupa string terbuka agar record legacy tetap dapat dibaca.
+Record legacy belum tentu lolos validasi saat ditulis kembali. Latitude/longitude
+storage diproyeksikan sampai enam desimal; tidak ada field location mentah.
+
+Contoh respons POST kitchen 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "kitchen_code": "KITCHEN_EXAMPLE",
+    "kitchen_name": "Dapur contoh",
+    "latitude": "-6.200000",
+    "longitude": "106.800000",
+    "address": null,
+    "capacity": 200,
+    "status": "ACTIVE",
+    "kitchen_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "deleted_at": null,
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh respons POST storage 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "kitchen_id": "11111111-1111-4111-8111-111111111111",
+    "storage_code": "COLD_EXAMPLE",
+    "storage_name": "Penyimpanan contoh",
+    "storage_type": "COLD_STORAGE",
+    "temperature_min": "1.50",
+    "temperature_max": "5.00",
+    "latitude": null,
+    "longitude": null,
+    "status": "ACTIVE",
+    "storage_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "deleted_at": null,
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh respons POST zone 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "storage_id": "22222222-2222-4222-8222-222222222222",
+    "zone_code": "RACK_A",
+    "zone_name": "Rak A",
+    "zone_id": "33333333-3333-4333-8333-333333333333",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "deleted_at": null,
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET detail dan PUT memakai envelope/data sesuai modul yang sama dengan code 200;
+PUT mengembalikan version dan audit terbaru. Simpan version respons sebelum edit berikutnya.
+
+### Pagination, status dan induk
+
+GET list menerima offset integer 0..2147483647 default 0, limit integer 1..100 default
+20. Filter induk kitchen_id/storage_id berupa UUID opsional. Hilangkan parameter
+jika tidak digunakan, bukan string null. Filter ID induk tenant lain/missing memberi
+items kosong. Tidak ada filter status/search/sort kustom. Hanya nondeleted dalam
+tenant; kitchen/storage ACTIVE dan INACTIVE sama-sama dapat dibaca. Urutan
+created_at DESC lalu ID DESC. Data list: items array snapshot modul, offset/limit
+integer, next_offset integer atau null bila tidak ada halaman berikutnya. Tidak ada
+total/cursor; perpindahan halaman tidak menjamin snapshot stabil saat ada mutasi.
+
+Contoh list kosong (berlaku pada ketiga collection):
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 0,
+    "limit": 20,
+    "next_offset": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Mengubah status kitchen/storage menjadi INACTIVE tidak menghapus atau mengubah status
+anak. Pembacaan anak tetap tersedia; create/update storage memerlukan kitchen aktif,
+dan create/update zone memerlukan storage serta kitchen aktif. Aktifkan kembali induk
+jika perlu memperbarui anak. Referensi induk ditolak dengan pesan sama jika tidak ada,
+lintas tenant, deleted atau inactive. Kode tetap dimiliki record lama walaupun inactive.
+Pemindahan induk tidak disediakan: PUT storage/zone wajib mempertahankan ID induk.
+
+### Error, transaksi dan efek samping
+
+| HTTP | message | Penyebab/tindakan |
+| --- | --- | --- |
+| 400 | Validation Error | Body, UUID, query, tipe, koordinat atau suhu invalid; errors field/message |
+| 400 | Invalid location input | Validasi ulang input service gagal |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi tidak aktif; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | Permission modul/operasi hilang atau dicabut |
+| 404 | Location not found | Detail/update record tidak ada, deleted atau tenant lain |
+| 409 | Location code already exists in this scope | Kode sudah terpakai pada tenant/induk |
+| 409 | Location changed; reload before retrying | expected_version kedaluwarsa; reload dan tinjau perubahan |
+| 409 | Active parent location in this tenant required | Induk tidak tersedia/aktif dalam tenant |
+| 409 | Parent location cannot be changed | PUT mencoba memindahkan induk |
+| 409 | Parent location unavailable | Constraint referensi database gagal |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database gagal |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Pengecekan parent pada write dapat mendahului lookup record; jika beberapa syarat
+invalid jangan bergantung pada urutan error. Contoh konflik version:
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Location changed; reload before retrying",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Pada 400 Validation Error, data null dan errors seperti
+`[{"field":"body.kitchen_name","message":"Field required"}]`.
+
+Kitchen/storage disimpan bersama proyeksi digital_asset dalam satu transaksi;
+rollback membatalkan keduanya. ID registry tetap terpisah dari ID sumber. Zone tidak
+membuat digital_asset karena belum menjadi tipe registry. Tidak membuat relationship,
+movement, event_log, notifikasi, alarm atau data receiving. Tidak ada publisher/event
+baru. Audit/version sumber dicatat, tetapi history revisi khusus master ini belum ada.
+POST tidak memiliki idempotency key; retry kode yang sudah berhasil disimpan memberi
+409. Gunakan daftar/detail untuk meninjau hasil bila respons sebelumnya terputus.
+
+Akses runtime storage/zone diperluas hanya untuk insert dan kolom update definisi/audit
+minimum, tanpa hard delete/DDL atau perubahan induk. Lihat
+[runbook akses lokasi](location-permissions.md) dan [event catalog](event-catalog.md).
+
+
+## Kontrak supplier bahan dan relasi
+
+Status: 15 operasi tersedia untuk persiapan receiving. Buat/pilih supplier dan
+bahan baku, lalu daftarkan pasangan supplier-material. Satu bahan dapat memiliki
+beberapa supplier dan satu supplier dapat memasok beberapa bahan. Relasi ini
+adalah daftar pemasok bahan, bukan saldo stok atau bukti penerimaan.
+
+Semua endpoint wajib `Authorization: Bearer <access_token>` dengan sesi aktif.
+POST/PUT wajib `Content-Type: application/json`; `X-Correlation-ID` opsional,
+128 karakter pertama diteruskan. Tenant/actor dari sesi, bukan body/header bebas.
+Respons JSON envelope, X-Request-ID, Cache-Control: no-store dan Pragma: no-cache.
+Limiter auth sementara tidak mencakup endpoint bisnis ini.
+
+| Method/path | Tujuan | Permission | Body | Parameter |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/suppliers | Daftar pemasok | Supplier.Read | Tidak ada | offset/limit |
+| POST /api/v1/suppliers | Buat pemasok | Supplier.Write | SupplierInput | Tidak ada |
+| GET /api/v1/suppliers/{identifier} | Detail pemasok | Supplier.Read | Tidak ada | identifier UUID supplier wajib |
+| PUT /api/v1/suppliers/{identifier} | Ganti definisi pemasok | Supplier.Write | SupplierInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/suppliers/{identifier} | Hapus secara administratif | Supplier.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+| GET /api/v1/raw-materials | Daftar bahan baku | RawMaterial.Read | Tidak ada | offset/limit |
+| POST /api/v1/raw-materials | Buat bahan baku | RawMaterial.Write | RawMaterialInput | Tidak ada |
+| GET /api/v1/raw-materials/{identifier} | Detail bahan | RawMaterial.Read | Tidak ada | identifier UUID bahan wajib |
+| PUT /api/v1/raw-materials/{identifier} | Ganti definisi bahan | RawMaterial.Write | RawMaterialInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/raw-materials/{identifier} | Hapus secara administratif | RawMaterial.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+| GET /api/v1/supplier-materials | Daftar pasangan pemasok-bahan | SupplierMaterial.Read | Tidak ada | supplier_id/raw_material_id opsional; offset/limit |
+| POST /api/v1/supplier-materials | Daftarkan pasangan | SupplierMaterial.Write | SupplierMaterialInput | Tidak ada |
+| GET /api/v1/supplier-materials/{identifier} | Detail pasangan | SupplierMaterial.Read | Tidak ada | identifier UUID relasi wajib |
+| PUT /api/v1/supplier-materials/{identifier} | Koreksi pasangan | SupplierMaterial.Write | SupplierMaterialInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/supplier-materials/{identifier} | Hapus secara administratif | SupplierMaterial.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+
+Read/Write/Delete tiap modul independen; Write boleh mengembalikan snapshot hasil tanpa
+Read. Validasi relasi tidak memerlukan Read supplier/bahan. Sembilan permission ini
+sudah diberikan ke DEV_MAINTENANCE lokal; role lain tetap memerlukan grant terpilih.
+AssetRegistry.Sync tidak diperlukan untuk sinkronisasi internal. Tidak ada endpoint
+PATCH/restore, harga pemasok, stok, penerimaan atau konversi satuan. DELETE relasi menyediakan unlink secara soft delete.
+
+### Payload dan validasi
+
+String di-trim, NUL dan Unicode invalid ditolak. Boolean tidak dikonversi ke angka.
+Field tambahan termasuk tenant_id, ID/audit/version ditolak. Semua PUT wajib
+expected_version integer 1..2147483647, tidak nullable, bukan string/bool.
+POST tidak menerima expected_version. PUT mengganti seluruh definisi: field
+opsional yang dihilangkan kembali ke default, bukan mempertahankan nilai lama.
+
+| SupplierInput | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| supplier_code | string / ya / tidak | 1..50; unik case-sensitive per tenant termasuk kode soft-deleted |
+| supplier_name | string / ya / tidak | 1..200 |
+| phone | string / tidak / ya | Maksimal 30; default null, tidak divalidasi sebagai nomor negara tertentu |
+| email | string email / tidak / ya | EmailStr valid, maksimal 254 setelah normalisasi; default null; string kosong ditolak |
+| status | enum string / tidak / tidak | ACTIVE/INACTIVE; default ACTIVE |
+
+| RawMaterialInput | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| material_code | string / ya / tidak | 1..50; unik case-sensitive per tenant termasuk soft-deleted |
+| material_name | string / ya / tidak | 1..200 |
+| category | string / tidak / ya | Maksimal 100; default null |
+| uom | string / ya / tidak | 1..30, nonblank; bebas seperti kg/g/liter; tidak dapat diubah setelah create |
+| storage_type | enum string / tidak / ya | COLD_STORAGE/FREEZER/DRY_STORAGE; default null |
+| recommended_temperature_min | decimal / tidak / ya | -9999.99..9999.99, maksimal 2 desimal; default null |
+| recommended_temperature_max | decimal / tidak / ya | Batas sama; jika kedua suhu terisi min <= max; default null |
+| maximum_storage_hours | decimal / tidak / ya | 0..99999999.99, maksimal 2 desimal; default null |
+| status | enum string / tidak / tidak | ACTIVE/INACTIVE; default ACTIVE |
+
+Decimal menerima angka JSON atau string numerik finite; gunakan string untuk
+presisi. Satu batas suhu boleh null. Nilai contoh hanya ilustrasi konfigurasi,
+bukan rekomendasi keamanan pangan. Uom dipertahankan setelah dibuat untuk menjaga
+makna kuantitas transaksi; konversi satuan belum tersedia.
+
+| SupplierMaterialInput | Tipe / required / nullable | Validasi |
+| --- | --- | --- |
+| supplier_id | UUID / ya / tidak | Supplier ACTIVE, nondeleted dalam tenant |
+| raw_material_id | UUID / ya / tidak | Bahan ACTIVE, nondeleted dalam tenant |
+
+Pasangan unik per tenant, termasuk pasangan soft-deleted. PUT boleh mengubah
+supplier_id/raw_material_id ke pasangan lain yang valid dan belum terpakai dengan
+expected_version terbaru. Ini koreksi daftar pemasok; tidak mengubah supplier/batch
+pada transaksi lama. Tidak ada tabel history khusus untuk perubahan relasi.
+
+### Contoh request
+
+POST /api/v1/suppliers:
+
+```json
+{
+  "supplier_code": "SUPPLIER_EXAMPLE",
+  "supplier_name": "Pemasok contoh",
+  "phone": null,
+  "email": "supplier@example.com",
+  "status": "ACTIVE"
+}
+```
+
+PUT /api/v1/suppliers/11111111-1111-4111-8111-111111111111:
+
+```json
+{
+  "supplier_code": "SUPPLIER_EXAMPLE",
+  "supplier_name": "Pemasok diperbarui",
+  "phone": null,
+  "email": "supplier@example.com",
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+POST /api/v1/raw-materials:
+
+```json
+{
+  "material_code": "MATERIAL_EXAMPLE",
+  "material_name": "Bahan contoh",
+  "category": null,
+  "uom": "kg",
+  "storage_type": "COLD_STORAGE",
+  "recommended_temperature_min": "1.50",
+  "recommended_temperature_max": "5.00",
+  "maximum_storage_hours": "12.50",
+  "status": "ACTIVE"
+}
+```
+
+PUT /api/v1/raw-materials/22222222-2222-4222-8222-222222222222:
+
+```json
+{
+  "material_code": "MATERIAL_EXAMPLE",
+  "material_name": "Bahan diperbarui",
+  "category": null,
+  "uom": "kg",
+  "storage_type": "COLD_STORAGE",
+  "recommended_temperature_min": "1.50",
+  "recommended_temperature_max": "5.00",
+  "maximum_storage_hours": "12.50",
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+POST /api/v1/supplier-materials:
+
+```json
+{
+  "supplier_id": "11111111-1111-4111-8111-111111111111",
+  "raw_material_id": "22222222-2222-4222-8222-222222222222"
+}
+```
+
+PUT /api/v1/supplier-materials/33333333-3333-4333-8333-333333333333 (contoh pasangan sama; version tetap naik):
+
+```json
+{
+  "supplier_id": "11111111-1111-4111-8111-111111111111",
+  "raw_material_id": "22222222-2222-4222-8222-222222222222",
+  "expected_version": 1
+}
+```
+
+Contoh GET tanpa body; setiap request memakai header Bearer:
+
+```http
+GET /api/v1/suppliers?offset=0&limit=20
+GET /api/v1/suppliers/11111111-1111-4111-8111-111111111111
+GET /api/v1/raw-materials?offset=0&limit=20
+GET /api/v1/raw-materials/22222222-2222-4222-8222-222222222222
+GET /api/v1/supplier-materials?supplier_id=11111111-1111-4111-8111-111111111111&raw_material_id=22222222-2222-4222-8222-222222222222&offset=0&limit=20
+GET /api/v1/supplier-materials/33333333-3333-4333-8333-333333333333
+```
+
+### Respons sukses dan pagination
+
+POST 201, GET/PUT 200. Snapshot berisi seluruh field input (opsional tetap hadir
+meskipun null) ditambah audit berikut. Semua field respons selalu hadir.
+
+| Field tambahan | Tipe / nullable | Makna |
+| --- | --- | --- |
+| supplier_id / raw_material_id / supplier_material_id | UUID / tidak | ID sumber sesuai modul, bukan asset_uuid registry |
+| tenant_id | UUID / tidak | Tenant sesi |
+| version | integer / tidak | Create 1; setiap PUT naik satu termasuk nilai identik |
+| created_at, updated_at | ISO 8601 UTC / tidak | Waktu audit |
+| created_by, updated_by | UUID / ya | Actor audit; null mungkin pada data lama |
+| deleted_at | ISO 8601 UTC / ya | Null pada hasil biasa; timestamp terisi pada respons DELETE |
+| deleted_by | UUID / ya | Actor penghapusan; terisi pada respons DELETE |
+
+Decimal respons adalah string, misalnya "12.50". Status/storage_type/email respons
+berupa string terbuka agar snapshot legacy tetap terbaca; input baru tetap mengikuti
+validasi di atas. PUT mengembalikan audit/version terbaru. Tidak ada nested objek
+supplier/bahan dalam respons relasi; ambil detail dengan permission Read terkait.
+
+Contoh POST supplier 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "supplier_code": "SUPPLIER_EXAMPLE",
+    "supplier_name": "Pemasok contoh",
+    "phone": null,
+    "email": "supplier@example.com",
+    "status": "ACTIVE",
+    "supplier_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "deleted_at": null,
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh POST bahan 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "material_code": "MATERIAL_EXAMPLE",
+    "material_name": "Bahan contoh",
+    "category": null,
+    "uom": "kg",
+    "storage_type": "COLD_STORAGE",
+    "recommended_temperature_min": "1.50",
+    "recommended_temperature_max": "5.00",
+    "maximum_storage_hours": "12.50",
+    "status": "ACTIVE",
+    "raw_material_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "deleted_at": null,
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh POST relasi 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "supplier_id": "11111111-1111-4111-8111-111111111111",
+    "raw_material_id": "22222222-2222-4222-8222-222222222222",
+    "supplier_material_id": "33333333-3333-4333-8333-333333333333",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "deleted_at": null,
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET detail/PUT memakai schema snapshot yang sama dengan code 200 dan nilai terbaru.
+GET list memakai data `{items, offset, limit, next_offset}`: items array snapshot
+modul terkait; offset/limit integer nonnull; next_offset integer atau null bila
+halaman berikutnya tidak ada. Tidak ada total/cursor. Contoh list kosong:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 0,
+    "limit": 20,
+    "next_offset": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Query offset integer 0..2147483647 default 0 dan limit integer 1..100 default 20;
+keduanya opsional, tidak nullable. Filter supplier_id/raw_material_id hanya di
+collection relasi, UUID opsional; bila keduanya diberikan berlaku AND. ID tenant
+lain/tidak ada memberi items kosong. Hilangkan parameter yang tidak dipakai,
+bukan string null. Tidak ada search, filter status atau sort kustom.
+
+Hasil hanya tenant sendiri dan nondeleted, urut created_at DESC lalu ID DESC.
+Supplier/bahan INACTIVE tetap terbaca. Relasi lama tetap terbaca ketika induknya
+INACTIVE; status parent tidak menghapus atau mengubah relasi secara cascade.
+Create/update relasi memerlukan kedua induk aktif. Pagination offset tidak menjamin
+snapshot stabil antarhalaman saat data berubah. Frontend jangan menyamakan adanya
+relasi dengan bukti supplier/bahan saat ini aktif.
+
+### Error dan efek samping
+
+| HTTP | message | Kondisi |
+| --- | --- | --- |
+| 400 | Validation Error | UUID, query, payload, email, decimal atau suhu tidak valid |
+| 400 | Invalid supply input | Validasi ulang service gagal |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi tidak aktif; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | Permission operasi tidak ada/dicabut |
+| 404 | Supply not found | Record hilang, deleted atau tenant lain |
+| 409 | Supply code or pair already exists in this tenant | Kode/pasangan sudah terpakai |
+| 409 | Supply changed; reload before retrying | expected_version kedaluwarsa |
+| 409 | Active supplier and material in this tenant required | Parent hilang/deleted/INACTIVE/lintas tenant |
+| 409 | Material unit cannot be changed | PUT mengubah uom bahan |
+| 409 | Supplier or material unavailable | Constraint referensi database gagal |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database gagal |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh konflik:
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Supply changed; reload before retrying",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+400 Validation Error memakai data null dan errors field/message, misalnya
+`[{"field":"body.uom","message":"Field required"}]`. Pengecekan parent dapat
+mendahului lookup relasi; jangan bergantung pada urutan error saat beberapa syarat
+invalid. Konflik versi memerlukan reload dan peninjauan sebelum retry.
+
+Mutasi supplier/bahan dan digital_asset atomik; relasi hanya menulis supplier_material.
+Tidak membuat stok, batch receiving, asset_relationship, movement atau event_log,
+dan tidak mengirim event/notifikasi. Audit/version sumber dicatat, history khusus
+master belum tersedia. POST tidak memiliki idempotency key; duplicate retry 409.
+Perubahan relasi tidak mengubah bukti transaksi yang sudah tercatat.
+Lihat [event catalog](event-catalog.md) dan [akses minimum](supply-permissions.md).
+
+
+## Soft delete master operasional
+
+Status: keenam modul kitchen, storage, zone, supplier, bahan baku dan relasi
+pemasok-bahan kini memiliki Create, Read, Update dan Delete. Delete adalah **soft
+delete**, bukan DELETE SQL: row fisik tetap ada dan menjadi nonaktif secara
+administratif melalui deleted_at/deleted_by. Field status asli tidak diganti.
+Tidak ada cascade, restore, reuse kode/pasangan terhapus atau daftar recycle bin.
+
+| Method/path | Permission | Path | Query | Payload |
+| --- | --- | --- | --- | --- |
+| DELETE /api/v1/kitchens/{identifier} | Kitchen.Delete | UUID kitchen wajib | expected_version wajib | Tidak ada |
+| DELETE /api/v1/storages/{identifier} | Storage.Delete | UUID storage wajib | expected_version wajib | Tidak ada |
+| DELETE /api/v1/storage-zones/{identifier} | StorageZone.Delete | UUID zone wajib | expected_version wajib | Tidak ada |
+| DELETE /api/v1/suppliers/{identifier} | Supplier.Delete | UUID supplier wajib | expected_version wajib | Tidak ada |
+| DELETE /api/v1/raw-materials/{identifier} | RawMaterial.Delete | UUID bahan wajib | expected_version wajib | Tidak ada |
+| DELETE /api/v1/supplier-materials/{identifier} | SupplierMaterial.Delete | UUID relasi wajib | expected_version wajib | Tidak ada |
+
+Authorization: Bearer <access_token> wajib dengan sid aktif. Tidak membutuhkan
+Content-Type karena body wajib kosong (termasuk {} dan null ditolak).
+X-Correlation-ID opsional (128 karakter pertama diteruskan). expected_version adalah
+integer query 1..2147483647, required/nonnullable; string true/null/angka pecahan ditolak.
+Gunakan version terakhir dari GET/list atau respons mutasi. Path UUID invalid 400.
+
+Read/Write/Delete independen: pemilik Delete boleh menerima snapshot hasil tanpa
+Read/Write. Write tidak memberi hak Delete. Enam permission Delete sudah ditambahkan
+secara eksplisit ke role DEV_MAINTENANCE lokal; role lain tidak otomatis berubah.
+Frontend muat ulang /auth/me dan tampilkan aksi hapus berdasarkan permission Delete.
+
+### Perlindungan referensi
+
+Penghapusan menolak referensi dari record yang deleted_at-nya masih null, termasuk
+record INACTIVE dan transaksi selesai. Tidak mencoba menghapus anak otomatis.
+
+| Target | Referensi yang menghalangi (409) |
+| --- | --- |
+| Kitchen | Storage, school, receiving, production_batch |
+| Storage | Storage zone, temperature_log |
+| Storage zone | Device yang masih menunjuk zone |
+| Supplier | Supplier-material, receiving |
+| Raw material | Supplier-material, recipe, raw_material_batch |
+| Supplier-material | Tidak memiliki tabel anak; penghapusan melepaskan pasangan dari daftar aktif |
+
+Field status INACTIVE bukan soft delete dan tetap menghalangi penghapusan induk.
+Bukti telemetry/transaksi tidak dihapus oleh API ini. Gunakan INACTIVE bila ingin
+menghentikan pemakaian master yang memiliki riwayat dan tidak bisa dihapus.
+Untuk hierarki baru tanpa referensi lain, hapus zone sebelum storage sebelum kitchen;
+untuk pemasok/bahan, hapus relasi terlebih dahulu. Jangan memaksa penghapusan bukti
+untuk meloloskan validasi. Delete zone/relasi tidak memerlukan induk ACTIVE, sehingga
+pembersihan relasi masih bisa dilakukan setelah induk dinonaktifkan.
+
+Service mengunci record sebelum memeriksa versi/referensi. Jalur tulis anak yang
+tersedia memeriksa dan mengunci induk. Pemeriksaan soft-delete adalah aturan service,
+bukan pengganti FK untuk SQL administratif; writer baru wajib mengikuti aturan ini.
+
+### Request dan respons lengkap
+
+Semua contoh berikut memakai Authorization: Bearer <access_token>, tanpa body.
+Contoh sukses diasumsikan tidak memiliki referensi penghalang. HTTP 200 dengan
+schema snapshot detail modul yang sama; berikut contoh lengkap untuk setiap DELETE.
+
+DELETE /api/v1/kitchens/11111111-1111-4111-8111-111111111111?expected_version=1
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "kitchen_code": "KITCHEN_EXAMPLE",
+    "kitchen_name": "Dapur contoh",
+    "latitude": "-6.200000",
+    "longitude": "106.800000",
+    "address": null,
+    "capacity": 200,
+    "status": "ACTIVE",
+    "kitchen_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 2,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+DELETE /api/v1/storages/22222222-2222-4222-8222-222222222222?expected_version=1
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "kitchen_id": "11111111-1111-4111-8111-111111111111",
+    "storage_code": "COLD_EXAMPLE",
+    "storage_name": "Penyimpanan contoh",
+    "storage_type": "COLD_STORAGE",
+    "temperature_min": "1.50",
+    "temperature_max": "5.00",
+    "latitude": null,
+    "longitude": null,
+    "status": "ACTIVE",
+    "storage_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 2,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+DELETE /api/v1/storage-zones/33333333-3333-4333-8333-333333333333?expected_version=1
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "storage_id": "22222222-2222-4222-8222-222222222222",
+    "zone_code": "RACK_A",
+    "zone_name": "Rak A",
+    "zone_id": "33333333-3333-4333-8333-333333333333",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 2,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+DELETE /api/v1/suppliers/11111111-1111-4111-8111-111111111111?expected_version=1
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "supplier_code": "SUPPLIER_EXAMPLE",
+    "supplier_name": "Pemasok contoh",
+    "phone": null,
+    "email": "supplier@example.com",
+    "status": "ACTIVE",
+    "supplier_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 2,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+DELETE /api/v1/raw-materials/22222222-2222-4222-8222-222222222222?expected_version=1
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "material_code": "MATERIAL_EXAMPLE",
+    "material_name": "Bahan contoh",
+    "category": null,
+    "uom": "kg",
+    "storage_type": "COLD_STORAGE",
+    "recommended_temperature_min": "1.50",
+    "recommended_temperature_max": "5.00",
+    "maximum_storage_hours": "12.50",
+    "status": "ACTIVE",
+    "raw_material_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 2,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+DELETE /api/v1/supplier-materials/33333333-3333-4333-8333-333333333333?expected_version=1
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "supplier_id": "11111111-1111-4111-8111-111111111111",
+    "raw_material_id": "22222222-2222-4222-8222-222222222222",
+    "supplier_material_id": "33333333-3333-4333-8333-333333333333",
+    "tenant_id": "44444444-4444-4444-8444-444444444444",
+    "version": 2,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "created_by": "55555555-5555-4555-8555-555555555555",
+    "updated_by": "55555555-5555-4555-8555-555555555555",
+    "deleted_by": "55555555-5555-4555-8555-555555555555"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Seluruh field snapshot tetap hadir dengan tipe/nullable sesuai kontrak modul.
+Pada DELETE sukses, version naik satu, deleted_at/updated_at ISO 8601 UTC nonnull,
+deleted_by/updated_by UUID actor nonnull. created_at/created_by dan definisi tetap.
+Tidak ada field removed_count atau respons 204. Respons mengirim X-Request-ID,
+Cache-Control: no-store, Pragma: no-cache; meta tetap envelope umum.
+
+Setelah commit, GET detail/PUT/DELETE ulang mengembalikan 404 bila caller memiliki
+permission operasi; list menyembunyikan record. Pengulangan DELETE tidak menambah
+version/bukti dan tetap 404 meski mengirim version terbaru. POST dengan kode atau
+pasangan yang pernah dihapus tetap konflik; tidak ada restore otomatis.
+
+### Error dan efek samping
+
+| HTTP | message | Arti/tindakan |
+| --- | --- | --- |
+| 400 | Validation Error | UUID/query required/batas version invalid; errors field/message |
+| 400 | Request body must be empty | DELETE membawa body |
+| 400 | Invalid location input / Invalid supply input | Validasi ulang service gagal |
+| 401 | Invalid credentials or session | Bearer invalid/hilang/sesi mati; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | Permission Delete tidak tersedia/dicabut |
+| 404 | Location not found / Supply not found | Missing, tenant lain atau sudah soft-deleted |
+| 409 | Location changed; reload before retrying / Supply changed; reload before retrying | Version kedaluwarsa; reload/tinjau sebelum retry |
+| 409 | Master record is still referenced | Referensi pada tabel di atas masih ada; jangan mencoba cascade |
+| 503 | Authentication unavailable | Konfigurasi autentikasi/database gagal |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh 409 referensi (berlaku keenam route):
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Master record is still referenced",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "66666666-6666-4666-8666-666666666666",
+    "correlation_id": "66666666-6666-4666-8666-666666666666",
+    "timestamp": "2026-09-11T04:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+400 validasi mengisi errors, misalnya
+`[{"field":"query.expected_version","message":"Field required"}]`.
+Jika beberapa syarat dilanggar, jangan bergantung pada urutan validasi/auth/error.
+
+Mutasi sumber dan proyeksi digital_asset untuk kitchen/storage/supplier/raw-material
+berada dalam transaksi yang sama; registry mendapat deleted_at/deleted_by yang sama.
+Zone/relasi bukan digital_asset. Gagal berarti rollback; FK/bukti lama tetap utuh.
+Tidak menerbitkan event/notifikasi, tidak menghapus graph/movement/telemetry dan tidak
+mengubah transaksi sebelumnya. Tidak ada history revisi khusus master baru; audit
+tersimpan pada record. HTTP handler menyelesaikan transaksi sebelum respons.
+
+
+## Kontrak CRUD sekolah
+
+Status: lima operasi aktif untuk master school, terpisah dari transaksi penerimaan
+sekolah yang masih TODO. Sekolah harus dimiliki kitchen aktif dalam tenant yang sama.
+Tidak ada pemindahan kitchen, PATCH, restore, hard delete atau data siswa individual.
+
+| Method/path | Tujuan | Permission | Body | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/schools | Daftar sekolah tenant | School.Read | Tidak ada | kitchen_id opsional, offset/limit |
+| POST /api/v1/schools | Buat sekolah dan registry | School.Write | SchoolInput | Tidak ada |
+| GET /api/v1/schools/{identifier} | Detail sekolah | School.Read | Tidak ada | identifier UUID sekolah wajib |
+| PUT /api/v1/schools/{identifier} | Ganti definisi sekolah | School.Write | SchoolInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/schools/{identifier} | Soft delete sekolah | School.Delete | Wajib kosong | identifier UUID; expected_version query wajib |
+
+Semua memakai Authorization: Bearer <access_token> dengan sid aktif, tenant/actor
+berasal dari sesi. POST/PUT memakai Content-Type: application/json. DELETE tidak
+memerlukan Content-Type dan menolak body, termasuk {} atau null. X-Correlation-ID
+opsional, 128 karakter pertama diteruskan. Respons JSON envelope, X-Request-ID,
+Cache-Control: no-store dan Pragma: no-cache. Limiter auth sementara belum mencakup API ini.
+
+School.Read/Write/Delete independen. Write/Delete boleh menerima hasil mutasi tanpa
+Read; pengecekan kitchen tidak membutuhkan Kitchen.Read. Tiga permission School
+sudah diprovision ke DEV_MAINTENANCE lokal; role lain tidak otomatis berubah.
+AssetRegistry.Sync tidak diperlukan untuk sinkronisasi internal. Muat ulang /auth/me
+untuk snapshot permission terbaru, bukan menganggap Kitchen.* memberikan School.*.
+
+### Payload SchoolInput
+
+| Field | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| kitchen_id | UUID / ya / tidak | Kitchen nondeleted ACTIVE dalam tenant; tidak dapat diganti melalui PUT |
+| school_code | string / ya / tidak | 1..50, unik case-sensitive per tenant termasuk kode soft-deleted |
+| school_name | string / ya / tidak | 1..200 |
+| latitude | decimal / tidak / ya | -90..90, maksimal 6 desimal, default null |
+| longitude | decimal / tidak / ya | -180..180, maksimal 6 desimal, default null |
+| address | string / tidak / ya | Default null, tanpa batas panjang aplikasi |
+| student_count | integer / tidak / ya | 0..2147483647; default null; string angka/bool ditolak |
+| status | string enum / tidak / tidak | ACTIVE/INACTIVE, default ACTIVE |
+
+String di-trim, NUL/Unicode invalid ditolak. Koordinat harus keduanya berisi atau
+keduanya null, menerima angka JSON/string decimal finite; gunakan string agar presisi
+terjaga. Lokasi PostGIS dihitung dari koordinat; field location tidak diterima.
+Field tambahan tenant_id/audit/ID/version ditolak. Status INACTIVE tidak mengubah
+transaksi/registry anak atau menghapus sekolah.
+
+PUT wajib menambahkan expected_version integer 1..2147483647, tidak nullable, bukan
+bool/string. PUT mengganti seluruh definisi; optional yang tidak dikirim direset ke
+default. Kitchen induk harus aktif pada create/update; delete dan pembacaan tetap
+boleh saat kitchen INACTIVE. Perubahan kitchen_id ditolak 409.
+
+### Contoh request
+
+POST /api/v1/schools:
+
+```json
+{
+  "kitchen_id": "11111111-1111-4111-8111-111111111111",
+  "school_code": "SCHOOL_EXAMPLE",
+  "school_name": "Sekolah contoh",
+  "latitude": "-6.200000",
+  "longitude": "106.800000",
+  "address": null,
+  "student_count": 100,
+  "status": "ACTIVE"
+}
+```
+
+PUT /api/v1/schools/22222222-2222-4222-8222-222222222222:
+
+```json
+{
+  "kitchen_id": "11111111-1111-4111-8111-111111111111",
+  "school_code": "SCHOOL_EXAMPLE",
+  "school_name": "Sekolah diperbarui",
+  "latitude": "-6.200000",
+  "longitude": "106.800000",
+  "address": null,
+  "student_count": 100,
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+GET/DELETE tanpa body; setiap request tetap wajib header Bearer:
+
+```http
+GET /api/v1/schools?kitchen_id=11111111-1111-4111-8111-111111111111&offset=0&limit=20
+GET /api/v1/schools/22222222-2222-4222-8222-222222222222
+DELETE /api/v1/schools/22222222-2222-4222-8222-222222222222?expected_version=2
+```
+
+Query list: kitchen_id UUID opsional; offset integer 0..2147483647 default 0, limit
+integer 1..100 default 20. Hilangkan parameter yang tidak dipakai, bukan literal
+null. Filter kitchen tenant lain/missing memberi items kosong. Tidak ada search,
+filter status atau sort kustom. Urutan created_at DESC lalu school_id DESC, hanya
+nondeleted tenant sendiri; ACTIVE/INACTIVE sama-sama terbaca. Pagination offset
+tidak menjamin snapshot stabil antarhalaman saat ada mutasi.
+
+DELETE query expected_version integer wajib, tidak nullable, 1..2147483647. Jika
+record masih dirujuk delivery_item, school_receiving atau complaint nondeleted,
+termasuk transaksi selesai, operasi ditolak 409. Tidak ada cascade; gunakan status
+INACTIVE jika master memiliki riwayat yang perlu dipertahankan.
+
+### Respons sukses
+
+POST 201; GET/PUT/DELETE 200. data snapshot berisi semua field definisi SchoolInput
+yang selalu hadir (termasuk optional null) dengan decimal sebagai string dan status
+string terbuka untuk data legacy, ditambah field berikut:
+
+| Field | Tipe / nullable | Makna |
+| --- | --- | --- |
+| school_id, tenant_id | UUID / tidak | Identitas sumber sekolah dan tenant, bukan asset_uuid registry |
+| version | integer / tidak | Awal 1; setiap PUT/DELETE naik satu, termasuk PUT identik |
+| created_at, updated_at | ISO 8601 UTC / tidak | Audit waktu server |
+| created_by, updated_by | UUID / ya | Audit actor; null mungkin pada data lama |
+| deleted_at | ISO 8601 UTC / ya | Null pada hasil biasa; terisi setelah DELETE |
+| deleted_by | UUID / ya | Actor penghapusan; nonnull pada DELETE sukses |
+
+Contoh POST 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "kitchen_id": "11111111-1111-4111-8111-111111111111",
+    "school_code": "SCHOOL_EXAMPLE",
+    "school_name": "Sekolah contoh",
+    "latitude": "-6.200000",
+    "longitude": "106.800000",
+    "address": null,
+    "student_count": 100,
+    "status": "ACTIVE",
+    "school_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "33333333-3333-4333-8333-333333333333",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "created_by": "44444444-4444-4444-8444-444444444444",
+    "updated_by": "44444444-4444-4444-8444-444444444444",
+    "deleted_at": null,
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET detail/PUT memakai schema sama dengan code 200 dan snapshot terbaru; PUT
+mengembalikan version yang harus dipakai operasi berikutnya. GET list memakai
+items array snapshot SchoolData, offset/limit integer dan next_offset integer
+atau null bila halaman berikutnya tidak ada. Tidak ada total/cursor. Contoh kosong:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 0,
+    "limit": 20,
+    "next_offset": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh DELETE 200 setelah PUT contoh di atas:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "kitchen_id": "11111111-1111-4111-8111-111111111111",
+    "school_code": "SCHOOL_EXAMPLE",
+    "school_name": "Sekolah diperbarui",
+    "latitude": "-6.200000",
+    "longitude": "106.800000",
+    "address": null,
+    "student_count": 100,
+    "status": "ACTIVE",
+    "school_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "33333333-3333-4333-8333-333333333333",
+    "version": 3,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "created_by": "44444444-4444-4444-8444-444444444444",
+    "updated_by": "44444444-4444-4444-8444-444444444444",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "deleted_by": "44444444-4444-4444-8444-444444444444"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+DELETE hanya mengisi deleted_at/deleted_by dan updated_at/updated_by serta version;
+field status/definisi tetap. Row fisik dipertahankan. Setelah sukses list menyembunyikan
+record; GET/PUT/DELETE ulang memberi 404 jika permission tersedia. Kode tetap
+tercadangkan; POST kode lama 409 dan tidak mengembalikan record terhapus otomatis.
+
+### Error dan efek samping
+
+| HTTP | message | Kondisi |
+| --- | --- | --- |
+| 400 | Validation Error | Field wajib, UUID, query, koordinat atau jumlah siswa invalid |
+| 400 | Invalid location input | Validasi ulang service gagal |
+| 400 | Request body must be empty | DELETE membawa body |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi nonaktif; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | School.Read/Write/Delete sesuai operasi belum diberikan/dicabut |
+| 404 | Location not found | ID hilang, deleted atau tenant lain |
+| 409 | Location code already exists in this scope | Kode sekolah tenant sudah terpakai |
+| 409 | Location changed; reload before retrying | expected_version kedaluwarsa |
+| 409 | Active parent location in this tenant required | Kitchen hilang, deleted, INACTIVE atau tenant lain |
+| 409 | Parent location cannot be changed | PUT mencoba mengganti kitchen_id |
+| 409 | Parent location unavailable | Constraint referensi gagal |
+| 409 | Master record is still referenced | Pengiriman/penerimaan/complaint masih merujuk sekolah |
+| 503 | Authentication unavailable | Konfigurasi autentikasi/database gagal |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh konflik penghapusan:
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Master record is still referenced",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+400 Validation Error mengisi errors seperti
+`[{"field":"body.school_name","message":"Field required"}]`; data null. Jika
+beberapa syarat dilanggar, urutan error tidak dijamin. Konflik versi memerlukan
+reload dan peninjauan, bukan retry dengan versi baru tanpa pemeriksaan.
+
+Create/update/soft delete school dan proyeksi digital_asset SCHOOL atomik; rollback
+membatalkan keduanya. Registry memakai UUID terpisah, tidak dikembalikan sebagai
+school_id. Tidak membuat delivery, school_receiving, complaint, event_log, movement,
+relationship atau notifikasi. POST belum memiliki idempotency key, duplicate retry
+409. Tidak ada history revisi khusus school baru. Hak runtime dibatasi insert dan
+update definisi/audit/version; kitchen_id/tenant tidak dapat diganti.
+
+
+## Kontrak kendaraan dan driver
+
+Status: sepuluh operasi CRUD aktif. Ini master pengiriman; API perjalanan/manifest,
+GPS ingestion, penjadwalan driver dan transaksi delivery masih TODO.
+
+| Method/path | Tujuan | Permission | Body | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/drivers | Daftar driver | Driver.Read | Tidak ada | offset/limit |
+| POST /api/v1/drivers | Buat driver | Driver.Write | DriverInput | Tidak ada |
+| GET /api/v1/drivers/{identifier} | Detail driver | Driver.Read | Tidak ada | identifier UUID driver wajib |
+| PUT /api/v1/drivers/{identifier} | Ganti definisi driver | Driver.Write | DriverInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/drivers/{identifier} | Soft delete driver | Driver.Delete | Kosong | identifier UUID; expected_version query |
+| GET /api/v1/vehicles | Daftar kendaraan | Vehicle.Read | Tidak ada | driver_id opsional; offset/limit |
+| POST /api/v1/vehicles | Buat kendaraan | Vehicle.Write | VehicleInput | Tidak ada |
+| GET /api/v1/vehicles/{identifier} | Detail kendaraan | Vehicle.Read | Tidak ada | identifier UUID kendaraan wajib |
+| PUT /api/v1/vehicles/{identifier} | Ganti definisi/tautan kendaraan | Vehicle.Write | VehicleInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/vehicles/{identifier} | Soft delete kendaraan | Vehicle.Delete | Kosong | identifier UUID; expected_version query |
+
+Semua wajib Authorization: Bearer <access_token> dengan sid aktif; tenant/actor dari
+sesi. POST/PUT memakai Content-Type: application/json. DELETE tidak memerlukan
+Content-Type dan menolak seluruh body termasuk {} atau null. X-Correlation-ID opsional
+(128 karakter pertama diteruskan). Respons JSON envelope, X-Request-ID,
+Cache-Control: no-store, Pragma: no-cache. Limiter auth sementara tidak mencakup API ini.
+
+Read/Write/Delete setiap modul independen. Write/Delete mengembalikan snapshot tanpa
+memerlukan Read. Enam permission sudah diberikan ke DEV_MAINTENANCE lokal; role lain
+perlu grant terpilih. Validasi driver/GPS tidak mensyaratkan Read parent tambahan;
+AssetRegistry.Sync tidak diperlukan untuk sinkronisasi vehicle internal.
+
+### Payload
+
+String di-trim, NUL/Unicode invalid ditolak. Field tambahan termasuk tenant_id,
+ID/audit/version ditolak. Optional yang dihilangkan pada PUT direset ke default
+karena PUT mengganti seluruh definisi, bukan PATCH. Semua PUT wajib expected_version
+integer 1..2147483647, nonnullable, bukan bool/string; POST tidak menerimanya.
+
+| DriverInput | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| driver_code | string / ya / tidak | 1..50, unik case-sensitive per tenant termasuk soft-deleted |
+| driver_name | string / ya / tidak | 1..200 |
+| phone | string / tidak / ya | Maksimal 30, default null; bukan validasi nomor negara tertentu |
+| status | enum string / tidak / tidak | ACTIVE/INACTIVE, default ACTIVE |
+
+| VehicleInput | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| vehicle_code | string / ya / tidak | 1..50, unik case-sensitive per tenant termasuk soft-deleted |
+| plate_number | string / ya / tidak | 1..30, unik case-sensitive per tenant termasuk soft-deleted; tidak dinormalisasi ke uppercase |
+| vehicle_type | string / ya / tidak | 1..50; tidak ada enum tertutup |
+| capacity | decimal / tidak / ya | 0..9999999999.99, maksimal 2 desimal, default null |
+| driver_id | UUID / tidak / ya | Driver nondeleted ACTIVE dalam tenant, default null |
+| gps_device | UUID / tidak / ya | device.device_id internal, bukan device_uuid publik; device nondeleted ACTIVE dan device_type=GPS dalam tenant; default null |
+| latitude | decimal / tidak / ya | -90..90, maksimal 6 desimal, default null |
+| longitude | decimal / tidak / ya | -180..180, maksimal 6 desimal, default null |
+| status | enum string / tidak / tidak | ACTIVE/INACTIVE, default ACTIVE |
+
+Decimal menerima angka JSON/string numerik finite, boolean ditolak. Gunakan string
+untuk presisi. Latitude/longitude harus berpasangan atau keduanya null. API menyimpan
+Point SRID 4326 dan mengembalikannya sebagai koordinat, bukan WKB/location mentah.
+Capacity hanya nilai kapasitas numerik sesuai schema saat ini; satuan/konversi kapasitas
+belum didefinisikan, jangan menafsirkannya otomatis sebagai kg, liter atau jumlah paket.
+Koordinat master bukan bukti GPS realtime dan tidak membuat gps_log.
+
+Driver/GPS boleh dipasang, diganti atau dilepas dengan null melalui PUT. Driver tidak
+harus unik pada satu kendaraan dan GPS tidak memiliki validasi eksklusivitas binding
+pada versi ini. INACTIVE driver/device tidak otomatis melepaskan tautan lama. Baca
+kendaraan tetap boleh; update yang masih mengirim parent nonaktif ditolak. Kirim null
+untuk melepas tautan bila dibutuhkan. Perubahan ini tidak mengubah driver/vehicle pada
+delivery lama. Endpoint CRUD device belum tersedia, jadi selector GPS memerlukan data
+perangkat yang sudah diprovision; jangan mengasumsikan GET /devices aktif.
+
+### Contoh request
+
+POST /api/v1/drivers:
+
+```json
+{
+  "driver_code": "DRIVER_EXAMPLE",
+  "driver_name": "Driver contoh",
+  "phone": null,
+  "status": "ACTIVE"
+}
+```
+
+PUT /api/v1/drivers/11111111-1111-4111-8111-111111111111:
+
+```json
+{
+  "driver_code": "DRIVER_EXAMPLE",
+  "driver_name": "Driver diperbarui",
+  "phone": null,
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+POST /api/v1/vehicles:
+
+```json
+{
+  "vehicle_code": "VEHICLE_EXAMPLE",
+  "plate_number": "EXAMPLE-001",
+  "vehicle_type": "VAN",
+  "capacity": "100.50",
+  "gps_device": null,
+  "driver_id": "11111111-1111-4111-8111-111111111111",
+  "latitude": "-6.200000",
+  "longitude": "106.800000",
+  "status": "ACTIVE"
+}
+```
+
+PUT /api/v1/vehicles/22222222-2222-4222-8222-222222222222 (contoh melepas driver/GPS):
+
+```json
+{
+  "vehicle_code": "VEHICLE_EXAMPLE",
+  "plate_number": "EXAMPLE-001",
+  "vehicle_type": "VAN",
+  "capacity": "100.50",
+  "gps_device": null,
+  "driver_id": null,
+  "latitude": "-6.200000",
+  "longitude": "106.800000",
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+GET/DELETE tanpa body, semuanya memakai header Bearer:
+
+```http
+GET /api/v1/drivers?offset=0&limit=20
+GET /api/v1/drivers/11111111-1111-4111-8111-111111111111
+GET /api/v1/vehicles?driver_id=11111111-1111-4111-8111-111111111111&offset=0&limit=20
+GET /api/v1/vehicles/22222222-2222-4222-8222-222222222222
+DELETE /api/v1/vehicles/22222222-2222-4222-8222-222222222222?expected_version=2
+DELETE /api/v1/drivers/11111111-1111-4111-8111-111111111111?expected_version=2
+```
+
+Query list: offset integer 0..2147483647 default 0, limit integer 1..100 default 20;
+semuanya opsional nonnullable. driver_id hanya di /vehicles, UUID opsional; ID tenant
+lain/missing memberi items kosong. Omit parameter yang tidak dipakai, bukan literal
+null. Tidak ada search/filter status atau sort kustom. Hanya nondeleted tenant sendiri,
+ACTIVE/INACTIVE sama-sama terbaca, created_at DESC lalu ID DESC. Tidak menjamin snapshot
+stabil antarhalaman. Query DELETE expected_version wajib integer 1..2147483647;
+body/missing/invalid query ditolak 400. Delete vehicle tidak memerlukan parent aktif.
+
+### Respons
+
+POST 201; GET/PUT/DELETE 200. Snapshot data memuat semua field input (termasuk optional
+null) ditambah field berikut. Decimal respons berupa string dan status string terbuka
+untuk kompatibilitas legacy. Seluruh field selalu hadir.
+
+| Field tambahan | Tipe / nullable | Makna |
+| --- | --- | --- |
+| driver_id / vehicle_id | UUID / tidak | ID sumber modul, bukan asset_uuid registry |
+| tenant_id | UUID / tidak | Tenant sesi |
+| version | integer / tidak | Create 1; setiap PUT/DELETE naik satu termasuk PUT identik |
+| created_at, updated_at | ISO 8601 UTC / tidak | Waktu audit server |
+| created_by, updated_by | UUID / ya | Actor audit, null mungkin pada data lama |
+| deleted_at | ISO 8601 UTC / ya | Null pada read biasa, terisi pada DELETE sukses |
+| deleted_by | UUID / ya | Actor penghapusan, nonnull pada DELETE sukses |
+
+Contoh POST driver 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "driver_code": "DRIVER_EXAMPLE",
+    "driver_name": "Driver contoh",
+    "phone": null,
+    "status": "ACTIVE",
+    "driver_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "33333333-3333-4333-8333-333333333333",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "created_by": "44444444-4444-4444-8444-444444444444",
+    "updated_by": "44444444-4444-4444-8444-444444444444",
+    "deleted_at": null,
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh POST vehicle 201:
+
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Success",
+  "data": {
+    "vehicle_code": "VEHICLE_EXAMPLE",
+    "plate_number": "EXAMPLE-001",
+    "vehicle_type": "VAN",
+    "capacity": "100.50",
+    "gps_device": null,
+    "driver_id": "11111111-1111-4111-8111-111111111111",
+    "latitude": "-6.200000",
+    "longitude": "106.800000",
+    "status": "ACTIVE",
+    "vehicle_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "33333333-3333-4333-8333-333333333333",
+    "version": 1,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T03:00:00Z",
+    "created_by": "44444444-4444-4444-8444-444444444444",
+    "updated_by": "44444444-4444-4444-8444-444444444444",
+    "deleted_at": null,
+    "deleted_by": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+GET detail dan PUT memakai snapshot schema sama dengan code 200; PUT memberi audit/
+version terbaru. GET list data berisi items array snapshot modul, offset/limit integer,
+next_offset integer atau null (habis). Tidak ada total/cursor. Contoh list kosong:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "items": [],
+    "offset": 0,
+    "limit": 20,
+    "next_offset": null
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh DELETE vehicle 200 setelah PUT melepas tautan:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "vehicle_code": "VEHICLE_EXAMPLE",
+    "plate_number": "EXAMPLE-001",
+    "vehicle_type": "VAN",
+    "capacity": "100.50",
+    "gps_device": null,
+    "driver_id": null,
+    "latitude": "-6.200000",
+    "longitude": "106.800000",
+    "status": "ACTIVE",
+    "vehicle_id": "22222222-2222-4222-8222-222222222222",
+    "tenant_id": "33333333-3333-4333-8333-333333333333",
+    "version": 3,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "created_by": "44444444-4444-4444-8444-444444444444",
+    "updated_by": "44444444-4444-4444-8444-444444444444",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "deleted_by": "44444444-4444-4444-8444-444444444444"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Contoh DELETE driver 200 setelah PUT:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "driver_code": "DRIVER_EXAMPLE",
+    "driver_name": "Driver diperbarui",
+    "phone": null,
+    "status": "ACTIVE",
+    "driver_id": "11111111-1111-4111-8111-111111111111",
+    "tenant_id": "33333333-3333-4333-8333-333333333333",
+    "version": 3,
+    "created_at": "2026-09-11T03:00:00Z",
+    "updated_at": "2026-09-11T04:00:00Z",
+    "created_by": "44444444-4444-4444-8444-444444444444",
+    "updated_by": "44444444-4444-4444-8444-444444444444",
+    "deleted_at": "2026-09-11T04:00:00Z",
+    "deleted_by": "44444444-4444-4444-8444-444444444444"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+Delete driver diblokir bila dirujuk vehicle/ delivery nondeleted. Delete vehicle
+diblokir delivery/gps_log nondeleted, termasuk perjalanan selesai dan bukti historis.
+Tidak ada cascade. Driver yang masih dipasang pada kendaraan harus dilepas lebih dahulu;
+riwayat pengiriman tetap menjadi penghalang. Gunakan INACTIVE bila master bersejarah
+perlu dihentikan pemakaiannya. Setelah DELETE, row fisik/status/definisi tetap; list
+menyembunyikannya dan GET/PUT/DELETE ulang 404. Kode/plat tetap tercadangkan; tidak ada
+restore atau reuse otomatis. Tidak ada history revisi khusus master baru.
+
+### Error dan efek samping
+
+| HTTP | message | Kondisi |
+| --- | --- | --- |
+| 400 | Validation Error | UUID/body/query/decimal/koordinat invalid |
+| 400 | Invalid location input | Validasi ulang service gagal |
+| 400 | Request body must be empty | DELETE membawa body |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi mati; WWW-Authenticate: Bearer |
+| 403 | Required permission is not granted | Permission operasi belum tersedia/dicabut |
+| 404 | Location not found | Missing/deleted/tenant lain |
+| 409 | Location code already exists in this scope | Kode driver/kendaraan atau plat sudah terpakai |
+| 409 | Location changed; reload before retrying | expected_version kedaluwarsa |
+| 409 | Active driver in this tenant required | Driver hilang/deleted/INACTIVE/tenant lain |
+| 409 | Active GPS device in this tenant required | ID internal perangkat hilang/deleted/nonaktif/tipe bukan GPS/tenant lain |
+| 409 | Parent location unavailable | Constraint referensi gagal |
+| 409 | Master record is still referenced | Delete masih memiliki referensi di atas |
+| 503 | Authentication unavailable | Konfigurasi autentikasi/database gagal |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Contoh konflik:
+
+```json
+{
+  "success": false,
+  "code": 409,
+  "message": "Active GPS device in this tenant required",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "55555555-5555-4555-8555-555555555555",
+    "correlation_id": "55555555-5555-4555-8555-555555555555",
+    "timestamp": "2026-09-11T03:00:00Z",
+    "execution_time_ms": 12.0
+  }
+}
+```
+
+400 validasi menggunakan data null dan errors field/message, misalnya
+`[{"field":"body.plate_number","message":"Field required"}]`. Pengecekan parent
+bisa mendahului lookup record; jangan bergantung pada urutan error untuk request
+dengan beberapa pelanggaran. Konflik versi memerlukan reload dan peninjauan.
+
+Vehicle serta proyeksi digital_asset VEHICLE disinkronkan atomik, termasuk soft delete;
+label registry berasal dari plate_number. Driver bukan tipe registry dan tidak membuat
+digital_asset. Rollback membatalkan mutasi; tidak membuat delivery, gps_log, movement,
+relationship, event_log atau notifikasi. Tidak ada realtime/event runtime baru.
+POST tanpa idempotency key: retry kode/plat yang sudah disimpan memberi 409.

@@ -73,7 +73,7 @@ Nilai 5/15 di atas contoh dari desain, bukan default keamanan pangan.
 | Nilai numerik | int/float finite dalam -1e12..1e12, bukan boolean atau string angka |
 | Field teks | storage_type, status |
 | Operator teks | eq, ne |
-| Nilai teks | String nonblank maksimal 200 karakter |
+| Nilai teks | String nonblank maksimal 200 karakter, valid UTF-8 tanpa NUL |
 
 Key tambahan, field/path bebas, ekspresi Python/SQL, operator lain, dan nilai null
 ditolak. Validator tidak menjalankan kode dari kondisi. Normalisasi unit,
@@ -91,6 +91,7 @@ Action memiliki tepat `dsl_version` integer 1 dan `steps` list 1–10 object:
 | discard_package | reason |
 | create_audit | code |
 
+Seluruh nilai teks action harus valid UTF-8 dan tanpa NUL.
 Tidak ada parameter opsional atau nullable pada grammar ini. Tipe aksi tidak
 berarti executor sudah tersedia. Keberadaan template, validitas transisi status,
 izin recall/discard, dan entity target belum divalidasi oleh validator struktur.
@@ -98,13 +99,12 @@ izin recall/discard, dan entity target belum divalidasi oleh validator struktur.
 ## Batas implementasi
 
 Validator sudah dipakai oleh service internal simpan/aktivasi dengan scope actor,
-tenant dan permission database. Autentikasi HTTP/JWT serta endpoint manajemen
-aturan belum dibuat. SQL langsung masih hanya memakai constraint JSON object lama;
-data draft lama tidak ditafsir ulang atau diaktifkan oleh migrasi. DSL ini belum
-merupakan payload HTTP frontend. Semua API aturan nantinya wajib melalui service.
+tenant dan permission database. Autentikasi HTTP/JWT dan endpoint manajemen
+holding dan alarm rule kini tersedia. SQL langsung masih hanya memakai constraint JSON object lama;
+data draft lama tidak ditafsir ulang atau diaktifkan oleh migrasi. DSL ini menjadi kontrak condition/action endpoint alarm. Semua API aturan melewati service.
 
-Simulasi, evaluasi telemetry, executor, execution log, publikasi event, dan API
-history tetap TODO. Tidak ada event runtime baru; snapshot revisi adalah data
+Simulasi, evaluasi telemetry, executor, execution log dan publikasi event tetap
+TODO; history holding/alarm sudah tersedia melalui HTTP. Tidak ada event runtime baru; snapshot revisi adalah data
 audit internal, bukan pesan WebSocket.
 
 ## Service internal dan permission
@@ -116,14 +116,16 @@ Service tidak commit/rollback dan tidak menjalankan action atau menerbitkan even
 
 | Method | Permission | Input/perilaku |
 | --- | --- | --- |
+| list(offset=0, limit=20) | AlarmRule.Read / HoldingRule.Read | Daftar tenant nondeleted, created_at/UUID menurun, limit 1..100 |
 | get(id) | AlarmRule.Read / HoldingRule.Read | Snapshot aturan aktif secara administratif (belum soft-deleted); alarm boleh enabled=false |
 | history(id, offset=0, limit=20) | AlarmRule.Read / HoldingRule.Read | Revisi menurun, limit 1..100, hanya tenant yang sama |
 | create(values) | AlarmRule.Write / HoldingRule.Write | Validasi seluruh definisi; alarm selalu enabled=false, version 1, audit actor otomatis |
 | save(id, values, expected_version=...) | AlarmRule.Write / HoldingRule.Write | Penggantian definisi lengkap, bukan PATCH; alarm harus nonaktif |
 | set_enabled(id, bool, expected_version=...) | AlarmRule.Activate | Hanya alarm; validasi ulang DSL saat enable; disable tetap boleh untuk DSL legacy invalid |
 
-Nama permission peka huruf besar/kecil. Seed/grant permission belum dilakukan
-otomatis pada database aplikasi; tanpa grant, operasi ditolak. Guard memeriksa
+Nama permission peka huruf besar/kecil. Seed DEV_MAINTENANCE memiliki grant aturan
+yang didokumentasikan; user lain memerlukan membership/grant eksplisit. Tanpa
+grant aktif, operasi ditolak. Guard memeriksa
 user/tenant aktif dan tidak soft-deleted, lalu rantai user_role/role/
 role_permission/permission dalam tenant yang sama, semuanya tidak soft-deleted.
 Role saat ini tidak memiliki kolom status aktif. Query menggunakan shared row
@@ -139,7 +141,8 @@ true tetap memvalidasi DSL. Tidak ada metode hard delete atau restore.
 (1..100), priority enum, condition object, action object. Semua wajib dan bukan
 null; teks metadata di-trim. `HoldingRuleInput` membutuhkan food_category (1..100)
 dan integer maximum_minutes > 0, warning_minutes >= 0, discard_minutes > 0,
-dengan warning <= maximum <= discard. Holding tidak memiliki enabled pada schema.
+dengan warning <= maximum <= discard dan nilai maksimal 2147483647; kategori
+harus UTF-8 valid tanpa NUL. Holding tidak memiliki enabled pada schema.
 Field tambahan termasuk actor/tenant/version/enabled ditolak. Threshold holding
 serta field DSL divalidasi sebelum INSERT/UPDATE; detail semantik executor
 (template, target entity, transisi bisnis) tetap pekerjaan engine.
@@ -148,8 +151,10 @@ Exception internal: InvalidActorError, PermissionDeniedError, RecordNotFoundErro
 (juga untuk tenant lain/soft delete), VersionConflictError, RuleStateError untuk
 edit alarm aktif, Pydantic ValidationError untuk definisi tidak valid, serta
 RuleDSLValidationError saat enable DSL tersimpan invalid. Error constraint unik
-database diteruskan sebagai IntegrityError; caller harus rollback. Belum ada
-pemetaan exception ini ke respons HTTP. Hasil berupa dict database, bukan DTO API.
+database diteruskan sebagai IntegrityError; caller harus rollback. Router holding/alarm
+memetakan permission/record/version/duplicate menjadi 403/404/409 sesuai
+[panduan frontend](frontend-api.md#kontrak-holding-rule-http). Service tetap
+mengembalikan dict; router memakai DTO terstruktur dan timestamp UTC.
 
 Contoh alur internal (identitas dan permission harus sudah valid):
 
@@ -165,3 +170,34 @@ async with session.begin():
 Jaga transaksi singkat dan jangan membuka transaction kedua jika caller sudah
 memiliki transaksi. Pengujian menggunakan data sementara dan rollback, sehingga
 tidak membuat user/permission/aturan nyata pada fsos.
+
+## Endpoint holding rule
+
+GET/POST /api/v1/holding-rules, GET/PUT /api/v1/holding-rules/{rule_id} dan
+GET /api/v1/holding-rules/{rule_id}/history sudah terhubung ke service ini.
+Dependency current_account memvalidasi bearer/sid dan mengelola transaksi sampai
+sebelum response dikirim. Router tidak membuka transaksi kedua. Data rule dan
+history dinormalisasi ke UTC pada respons; snapshot database tetap utuh.
+Tidak ada endpoint delete/restore/aktivasi holding; perubahan tidak menyalakan engine.
+
+37 tes terkait API, service/DSL dan autentikasi lulus setelah normalisasi timestamp.
+Tes HTTP berjalan dengan fsos_runtime: create/update/history, duplicate/version
+conflict, input invalid, tenant lain, permission Read dicabut dan Write terpisah.
+Semua fixture di-rollback di database uji; tidak ada holding rule contoh ditulis ke fsos.
+
+
+## Endpoint alarm rule
+
+GET/POST /api/v1/alarm-rules, GET/PUT /api/v1/alarm-rules/{rule_id},
+GET /api/v1/alarm-rules/{rule_id}/history dan PUT /api/v1/alarm-rules/{rule_id}/enabled
+sudah tersedia dengan bearer session dan permission Read/Write/Activate terpisah.
+Kontrak lengkap ada di [panduan frontend](frontend-api.md#kontrak-alarm-rule-http).
+Create selalu disabled; edit memerlukan disabled; enable memvalidasi DSL tersimpan.
+No-op enabled tetap memeriksa versi dan permission, tanpa revisi tambahan.
+Aturan legacy invalid dapat dinonaktifkan. Snapshot HTTP menormalkan timestamp UTC.
+Metadata serta teks DSL dengan NUL/Unicode invalid ditolak sebelum penulisan JSONB.
+Tidak ada perubahan schema, evaluator atau penerbitan event.
+
+Verifikasi: 39 tes HTTP/service/DSL/auth terkait lulus; setelah memperluas skenario
+legacy dan Activate tanpa Read/Write, dua tes HTTP alarm dijalankan ulang dan lulus.
+Pengujian menggunakan role fsos_runtime dan transaksi fixture yang di-rollback.

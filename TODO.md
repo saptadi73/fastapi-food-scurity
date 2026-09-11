@@ -4,6 +4,103 @@ Checklist instalasi dan roadmap berdasarkan docs/01–18. Tanggal awal: 2026-09-
 `[x]` berarti telah tersedia dan diperiksa; `[ ]` berarti belum selesai.
 Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 
+## Prioritas kerja aktif - modul bisnis lebih dahulu
+
+Arahan pengguna: dahulukan seluruh modul utama proses bisnis sebelum pekerjaan
+terpisah untuk perluasan tes, deployment production, seeding tambahan, dan
+penyempurnaan infrastruktur. Urutan di bagian ini mengesampingkan urutan label
+P0-P5 di bawah; bagian lama tetap menjadi inventaris dan riwayat penyelesaian.
+Schema yang tersedia belum berarti alur bisnis atau endpoint selesai.
+
+Urutan implementasi berdasarkan dependensi alur operasional:
+
+1. [ ] **Master data operasional.** API kitchen, storage/zone, supplier, bahan baku,
+   menu/food item, recipe, packaging type, school, vehicle dan driver; device/binding
+   yang diperlukan untuk mengaitkan pemantauan ke lokasi/perangkat. API kitchen dan
+   storage/zone serta supplier/bahan/relasi sudah tersedia. Master produksi dan
+   pengiriman menyusul sesuai tahap transaksi yang membutuhkannya.
+2. [ ] **Penerimaan bahan dan stok.** Receiving, item penerimaan, batch bahan,
+   validasi pemasok/lokasi/kuantitas serta pencatatan pergerakan dan ketersediaan
+   bahan sesuai desain. Selesaikan alur transaksi yang bisa dipakai melalui API.
+3. [ ] **Produksi.** Batch produksi, pemakaian bahan/resep, hasil produksi,
+   transisi status dan hubungan batch bahan dengan hasil produksi.
+4. [ ] **Pengemasan dan holding.** Paket, jenis kemasan, identitas/QR, alokasi hasil
+   produksi serta lifecycle holding start/update/finish/expired dan status kelayakan.
+5. [ ] **Pengiriman.** Manifest/alokasi paket, kendaraan/driver/tujuan sekolah,
+   keberangkatan, perjalanan dan penyelesaian pengiriman beserta movement.
+6. [ ] **Penerimaan sekolah dan konsumsi.** Verifikasi paket/manifest, hasil penerimaan,
+   kondisi/selisih serta pencatatan konsumsi dan status akhir paket.
+7. [ ] **Keluhan, investigasi dan recall.** Complaint, penelusuran batch/paket terdampak,
+   pembuatan/pelaksanaan/penyelesaian recall dan tindak lanjut sesuai desain.
+8. [ ] **Lengkapi modul pendukung bisnis utama.** Pemantauan device/storage/fleet,
+   ingestion telemetry, evaluasi rule/alarm, notifikasi operasional dan ringkasan
+   dashboard untuk alur di atas. Konfigurasi rule dan API bukti yang sudah tersedia
+   tidak menggantikan implementasi engine.
+
+Traceability, registry/relationship/movement dan pencatatan event bisnis dikerjakan
+bersama transaksi yang menghasilkannya. Traversal backward/forward, timeline,
+passport dan impact analysis dilengkapi untuk investigasi/recall. Engine holding
+serta validasi rule/action dikerjakan pada tahap bisnis yang membutuhkannya;
+jangan menunggu deployment untuk menyelesaikan logika bisnis.
+
+Ketentuan pelaksanaan:
+
+- Selesaikan alur modul secara utuh: operasi API, aturan/transisi bisnis, transaksi,
+  isolasi tenant, permission, audit/version serta integrasi data yang diperlukan.
+- Dokumentasi frontend tetap wajib bersamaan dengan fitur: endpoint, payload,
+  respons, error, auth, pagination dan efek samping; event catalog/changelog juga
+  diperbarui sesuai perubahan. Jangan menyatakan fitur aktif hanya karena tabel ada.
+- Pemeriksaan terarah yang diperlukan untuk kebenaran fitur tetap bagian implementasi.
+  Tunda proyek perluasan cakupan tes, stress/load, CI dan pengulangan suite luas
+  yang tidak diperlukan oleh perubahan yang sedang dikerjakan.
+- Tunda seeding/demo tambahan, bootstrap/provisioning umum, hardening dan deployment
+  production, backup/restore serta penyempurnaan scheduler/monitoring. Kerjakan hanya
+  dependensi minimum jika suatu modul tidak dapat berjalan tanpanya, lalu kembali
+  ke alur bisnis; jangan menjadikannya fokus giliran berikutnya.
+- Redis/Mosquitto tetap mengikuti keputusan integrasi/deployment; pemasangan layanan
+  tidak mendahului pekerjaan modul bisnis yang bisa diselesaikan tanpa layanan itu.
+- Integrasi eksternal ERP, AI/analytics lanjutan dan penyempurnaan visual/realtime
+  mengikuti kebutuhan setelah alur bisnis utama tersedia.
+
+- [x] API master kitchen/storage/zone: 15 operasi list/detail/create/replace/delete,
+  tenant dan permission terpisah, expected_version, parent aktif, koordinat/suhu,
+  audit serta sync registry kitchen/storage atomik. Soft delete tanpa cascade; induk tetap.
+- [x] Dokumentasi frontend dan event diperbarui; tujuh pemeriksaan terarah lulus,
+  dua tes HTTP diulang setelah menambah kasus tenant lain. Akses minimum lokal tersedia.
+
+- [x] API supplier/bahan baku/relasi pemasok-bahan: 15 operasi list/detail/create/replace/delete,
+  permission per modul, version, referensi aktif satu tenant, banyak pemasok per bahan,
+  validasi suhu/durasi/email, uom tetap dan registry supplier/material atomik.
+- [x] Kontrak frontend/event/changelog diperbarui; delapan pemeriksaan terarah lulus,
+  akses minimum lokal tersedia tanpa seeding bisnis atau migrasi baru.
+
+- [x] Lengkapi CRUD keenam master dengan DELETE soft delete, permission Delete
+  terpisah, expected_version query, proteksi referensi nondeleted dan registry atomik.
+  Tanpa cascade/hard delete/restore; kode dan pasangan lama tetap dicadangkan.
+- [x] Sepuluh pemeriksaan terarah lulus; dokumentasi seluruh kontrak DELETE,
+  event catalog, changelog dan grant minimum lokal diperbarui.
+
+### Sisa CRUD master utama yang belum dibuat
+
+Status dipisahkan dari migrasi/schema; tanda selesai hanya untuk API yang tersedia.
+Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cakupan-crud-dan-status-modul).
+
+- [x] CRUD sekolah (school): list/detail/create/replace/soft delete, kitchen aktif
+  satu tenant dan tidak dapat dipindahkan, koordinat/jumlah siswa, permission School.*,
+  version, registry atomik serta proteksi delivery_item/school_receiving/complaint.
+  Transaksi school receiving tetap belum dibuat. Dokumentasi dan akses minimum lokal diperbarui.
+- [x] CRUD kendaraan (vehicle) dan driver: 10 operasi, permission terpisah,
+  optional driver/GPS aktif satu tenant, koordinat/kapasitas, version dan soft delete.
+  Registry VEHICLE atomik; riwayat delivery/GPS melindungi penghapusan. Dokumentasi
+  frontend dan akses minimum lokal tersedia; 12 pemeriksaan terkait lulus.
+- [ ] CRUD menu/food item dan recipe.
+- [ ] CRUD jenis kemasan (packaging type).
+- [ ] CRUD master device dan binding; API sesi perangkat bukan CRUD device.
+- [ ] API pengelolaan tenant/user/role/permission bila diperlukan alur bisnis;
+  endpoint autentikasi dan CLI provisioning tidak menyelesaikan CRUD administrasi.
+
+**Pekerjaan berikutnya: transaksi receiving, item penerimaan dan batch bahan baku.**
+
 ## P0 — Fondasi instalasi FastAPI
 
 - [x] Perbaiki dan verifikasi venv Python 3.11 beserta pip.
@@ -65,8 +162,18 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   permission Read/Write/Activate, expected_version, audit dan history atomik.
 - [x] Uji service aturan pada PostgreSQL: permission terpisah/dicabut, actor/tenant
   nonaktif, referensi lintas tenant, payload invalid, lifecycle, version dan rollback.
-- [ ] Integrasikan autentikasi HTTP, seed permission dan endpoint manajemen aturan;
-  validasi semantik executor (template/target/transisi) sebelum menjalankan action.
+- [x] Hubungkan endpoint holding rule list/create/detail/replace/history ke
+  autentikasi bearer dan HoldingRule.Read/Write; seed role development sudah tersedia.
+- [x] Uji 37 tes API/service/DSL/auth terkait: scope tenant, izin terpisah/dicabut,
+  kategori/version conflict, validasi angka, history dan normalisasi timestamp UTC.
+- [x] Lengkapi enam endpoint alarm rule: list/create/detail/replace/history dan
+  aktivasi/nonaktif; bearer session, permission Read/Write/Activate terpisah,
+  DSL v1, expected_version dan history atomik, respons UTC/no-store.
+- [x] Verifikasi 39 tes terkait dan Ruff; dua tes HTTP alarm diperluas dan lulus
+  ulang untuk legacy invalid, pencabutan izin dan Activate tanpa Read/Write.
+  Kontrak frontend, event catalog, changelog dan panduan rule diperbarui.
+- [ ] Lengkapi validasi semantik executor (template/target/transisi) sebelum
+  menjalankan action; konfigurasi enabled belum menjalankan engine alarm.
 - [x] Uji upgrade/downgrade/upgrade pada database uji terpisah; periksa FK tenant,
   kode kitchen unik per tenant, koordinat, dan pelestarian extension saat downgrade.
 - [x] Terapkan role aplikasi terbatas pada development: login fsos_app dengan
@@ -124,6 +231,7 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 - [x] Jalankan seed actor/permission development dan backfill FSOS_DEV pada fsos:
   enam aset registry tersedia, pengulangan tidak menggandakan data.
 - [ ] Hubungkan service tulis modul lain ke sync dan backfill tenant tambahan bila ada.
+  Kitchen, storage, supplier dan bahan baku sudah tersinkron dari jalur tulis; modul lain tetap bertahap.
 - [x] Implementasikan rekonsiliasi registry per tenant/type: laporan sumber hilang,
   proyeksi berbeda, pagination UUID dan CLI tanpa mutasi bukti. Dokumentasikan
   payload hasil, izin, exit code, batas scan dan tindak lanjut operator.
@@ -146,10 +254,10 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 - [x] Tambahkan alarm_acknowledgment dan device_session_end append-only; uji tenant/actor,
   nilai sensor, waktu/duplikasi finalisasi, snapshot awal tetap utuh, trigger bukti,
   serta downgrade yang mempertahankan sensor berpartisi. Lima tes lulus.
-- [ ] Implementasikan pembacaan status efektif alarm/sesi dan API finalisasi
-  memakai tabel bukti tambahan, termasuk validasi payload/status serta reconnect.
-  **Sebagian selesai:** service baca/acknowledge/close tersedia dengan scope tenant,
-  permission, validasi waktu serta retry tanpa mengubah bukti pertama.
+- [x] Implementasikan pembacaan status efektif alarm/sesi dan API finalisasi
+  memakai tabel bukti tambahan, termasuk validasi payload/status. Service dan HTTP
+  baca/acknowledge/close tersedia dengan scope tenant, permission, validasi waktu
+  serta retry tanpa mengubah bukti pertama. Reconnect dilacak terpisah di bawah.
 - [x] Implementasikan dan uji status efektif alarm/sesi, snapshot impor, actor audit,
   penolakan tenant lain, permission mutasi terpisah, konflik waktu dan rollback.
 - [x] Tambahkan daftar alarm/sesi internal dengan permission Read, filter perangkat,
@@ -157,8 +265,19 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   Hasil daftar memakai proyeksi yang sama dengan detail, termasuk snapshot impor.
 - [x] Verifikasi 66 tes dan Ruff: filter status sebelum/sesudah finalisasi, tenant,
   rentang waktu, pagination, validasi input, izin dicabut dan role runtime terbatas.
-- [ ] Tambahkan API daftar/finalisasi berautentikasi, provisioning permission telemetry,
-  serta ingestion/reconnect yang membuka session_id baru.
+- [x] Tambahkan GET daftar/detail alarm telemetry dan POST acknowledgment dengan
+  bearer, Alarm.Read/Acknowledge terpisah, filter status efektif dan pagination.
+- [x] Verifikasi 26 tes terkait: scope tenant, permission dicabut, retry immutable,
+  snapshot impor, filter waktu/status dan runtime role; perbarui dokumentasi frontend.
+- [x] Tambahkan GET daftar/detail dan POST akhir sesi perangkat dengan bearer,
+  DeviceSession.Read/Close terpisah, filter efektif dan bukti finalisasi immutable.
+- [x] Sediakan CLI provisioning permission telemetry development dengan mode check,
+  apply eksplisit, idempotency, audit dan penolakan pemulihan grant yang dicabut.
+  Empat permission/grant diterapkan ke DEV_MAINTENANCE lokal; pengulangan membuat 0 row.
+- [x] Verifikasi 25 tes terkait, Ruff dan pemeriksaan grant runtime lokal; perbarui
+  kontrak frontend, changelog, event catalog dan runbook provisioning.
+- [ ] Implementasikan ingestion/reconnect yang membuka session_id baru serta
+  provisioning permission production dengan isolasi admin/secret yang sesuai.
 - [ ] Jadwalkan pembuatan partisi ke depan, tentukan backfill/archive/retention,
   dan implementasikan ingestion MQTT/idempotency; belum ada penghapusan data otomatis.
 - [x] Buat rolling check/ensure bulanan UTC, verifikasi batas partisi serta guard,

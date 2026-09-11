@@ -22,3 +22,19 @@ atau perilaku yang memengaruhi frontend harus memperbarui
 - Jangan menaruh kredensial atau data pribadi nyata dalam contoh.
 
 Pekerjaan API/event belum selesai sebelum dokumentasi terkait diperbarui.
+
+
+## Prioritas implementasi pengguna
+
+Dahulukan modul utama proses bisnis menurut bagian "Prioritas kerja aktif" di
+TODO.md: master operasional, receiving/stok, produksi, packaging/holding,
+pengiriman, penerimaan sekolah/konsumsi, complaint/recall dan pendukung bisnis.
+Implementasikan traceability, movement dan aturan bisnis bersama alur terkait.
+
+Jangan memilih perluasan tes, deploy production, seeding tambahan, provisioning
+umum atau penyempurnaan infrastruktur sebagai pekerjaan berikutnya selama modul
+bisnis utama masih belum selesai, kecuali dependensi minimum fitur yang dikerjakan.
+Pemeriksaan terarah untuk kebenaran fitur, auth/tenant dan integritas transaksi tetap
+dilakukan sebagai bagian implementasi. Dokumentasi frontend/event tetap wajib
+langsung diperbarui bersama perubahan kontrak. Jangan menandai schema sebagai
+penyelesaian fitur bisnis atau menunda modul demi pengulangan tes yang tidak perlu.
