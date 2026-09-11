@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.authentication.infrastructure.orm import Permission, Role, RolePermission, User
 from app.modules.master.infrastructure.orm import Tenant
 
-SUPPLY_PERMISSIONS = ('Supplier.Delete', 'RawMaterial.Delete', 'SupplierMaterial.Delete', 'Supplier.Read', 'Supplier.Write', 'RawMaterial.Read', 'RawMaterial.Write', 'SupplierMaterial.Read', 'SupplierMaterial.Write')
+SUPPLY_PERMISSIONS = ('PackagingType.Read', 'PackagingType.Write', 'PackagingType.Delete', 'FoodItem.Read', 'FoodItem.Write', 'FoodItem.Delete', 'Recipe.Read', 'Recipe.Write', 'Recipe.Delete', 'Supplier.Delete', 'RawMaterial.Delete', 'SupplierMaterial.Delete', 'Supplier.Read', 'Supplier.Write', 'RawMaterial.Read', 'RawMaterial.Write', 'SupplierMaterial.Read', 'SupplierMaterial.Write')
 
 
 class SupplyGrantConflictError(Exception):

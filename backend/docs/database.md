@@ -2,7 +2,7 @@
 
 PostgreSQL 18 lokal berjalan di localhost:5432. Database `fsos` yang disediakan
 pengguna telah dihubungkan melalui `backend/.env`. Kredensial tidak dicatat di
-dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0017`.
+dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0022`.
 
 [Profil privilege fsos_runtime](runtime-database-role.md) sudah diprovisioning
 sebagai grup NOLOGIN. Login fsos_app kini dipakai DATABASE_URL; migrasi/maintenance
@@ -458,3 +458,38 @@ index lookup serta hash token unik. Hanya hash refresh disimpan, bukan plaintext
 Profil runtime sudah diperluas untuk operasi sesi terbatas. Rincian lifecycle,
 rotasi bersamaan, revokasi dan kontrak transaksi ada di [panduan sesi](refresh-sessions.md).
 Upgrade/downgrade masuk pengujian roundtrip pada database terpisah.
+
+
+## Transaksi bisnis dan bukti (0018?0022)
+
+| Revisi | Perubahan schema | Kontrak aktif |
+|---|---|---|
+| 0018 | stock_entry: quantity, storage/batch, batch_version, tenant FK dan unique versi batch; ledger append-only | [Putaway/saldo](frontend-api.md#stok-batch-bahan-dan-putaway) |
+| 0019 | production_batch planned_quantity/actual_quantity/recipe_snapshot; production_item storage_id/batch_version, FK/constraints dan bukti immutable | [Produksi](frontend-api.md#kontrak-transaksi-produksi) |
+| 0020 | package quantity/holding_started_at/holding_finished_at; production_batch holding_policy JSONB | [Paket/holding](frontend-api.md#kontrak-kemasan-paket-dan-holding) |
+| 0021 | delivery kitchen_id/estimated_arrival_time, FK kitchen dan validasi ETA; delivery_item immutable | [Pengiriman](frontend-api.md#kontrak-pengiriman) |
+| 0022 | school_receiving expected/received_quantity, condition, notes, uom, timer_status; consumption school_receiving_id, consumed/discarded_quantity, notes, uom, timer_status; constraints/FK dan kedua bukti immutable | [Sekolah/konsumsi](frontend-api.md#kontrak-penerimaan-sekolah-dan-konsumsi) |
+
+Kolom baru pada tabel existing bersifat nullable agar bukti legacy tidak diisi
+asumsi/backfill. Service tidak menganggap legacy quantity/snapshot null sebagai
+transaksi executable. Consumption.school_receiving_id mempunyai FK tenant/id;
+kesesuaian package, acceptance, jumlah dan urutan waktu diperiksa service.
+School receiving tetap mempunyai FK tuple tenant/delivery/package/school ke manifest.
+Discrepancy_quantity dihitung sebagai expected - received dalam respons, bukan kolom.
+
+Constraints numeric dan FK tidak menggantikan transisi service, permission dan
+scope tenant. Row lock + expected_version paket/batch melindungi mutasi bersamaan.
+Bukti stock_entry, production_item, delivery_item, school_receiving dan consumption
+menolak UPDATE/DELETE baris serta TRUNCATE melalui trigger. Bukti holding memakai
+holding_log yang sudah immutable sejak schema telemetry; migrasi 0020 tidak membuat
+tabel holding baru. Trigger bukan perlindungan dari owner yang dapat mengubah DDL.
+
+Migrasi 0022 telah diterapkan lokal dan roundtrip upgrade/downgrade/upgrade diperiksa
+pada database uji terpisah. Jangan downgrade database aplikasi untuk verifikasi.
+Setelah `alembic upgrade head`, jalankan `backend/scripts/provision_runtime_role.py`
+melalui ADMIN_DATABASE_URL: profil saat ini memerlukan head tepat 0022. Pemberian
+permission RBAC terpisah, lihat [permission transaksi](receiving-permissions.md).
+
+Kontrak API dan event bukan konsekuensi otomatis schema. Complaint/recall sudah
+memiliki tabel tetapi belum API transaksi; source adapter juga bukan traversal
+atau impact analysis. Rincian event atomik pada [event catalog](event-catalog.md).

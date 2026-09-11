@@ -19,16 +19,16 @@ Urutan implementasi berdasarkan dependensi alur operasional:
    yang diperlukan untuk mengaitkan pemantauan ke lokasi/perangkat. API kitchen dan
    storage/zone serta supplier/bahan/relasi sudah tersedia. Master produksi dan
    pengiriman menyusul sesuai tahap transaksi yang membutuhkannya.
-2. [ ] **Penerimaan bahan dan stok.** Receiving, item penerimaan, batch bahan,
+2. [x] **Penerimaan bahan dan stok.** Receiving, item penerimaan, batch bahan,
    validasi pemasok/lokasi/kuantitas serta pencatatan pergerakan dan ketersediaan
    bahan sesuai desain. Selesaikan alur transaksi yang bisa dipakai melalui API.
-3. [ ] **Produksi.** Batch produksi, pemakaian bahan/resep, hasil produksi,
+3. [x] **Produksi.** Batch produksi, pemakaian bahan/resep, hasil produksi,
    transisi status dan hubungan batch bahan dengan hasil produksi.
-4. [ ] **Pengemasan dan holding.** Paket, jenis kemasan, identitas/QR, alokasi hasil
+4. [x] **Pengemasan dan holding.** Paket, jenis kemasan, identitas/QR, alokasi hasil
    produksi serta lifecycle holding start/update/finish/expired dan status kelayakan.
-5. [ ] **Pengiriman.** Manifest/alokasi paket, kendaraan/driver/tujuan sekolah,
+5. [x] **Pengiriman.** Manifest/alokasi paket, kendaraan/driver/tujuan sekolah,
    keberangkatan, perjalanan dan penyelesaian pengiriman beserta movement.
-6. [ ] **Penerimaan sekolah dan konsumsi.** Verifikasi paket/manifest, hasil penerimaan,
+6. [x] **Penerimaan sekolah dan konsumsi.** Verifikasi paket/manifest, hasil penerimaan,
    kondisi/selisih serta pencatatan konsumsi dan status akhir paket.
 7. [ ] **Keluhan, investigasi dan recall.** Complaint, penelusuran batch/paket terdampak,
    pembuatan/pelaksanaan/penyelesaian recall dan tindak lanjut sesuai desain.
@@ -88,13 +88,18 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [x] CRUD sekolah (school): list/detail/create/replace/soft delete, kitchen aktif
   satu tenant dan tidak dapat dipindahkan, koordinat/jumlah siswa, permission School.*,
   version, registry atomik serta proteksi delivery_item/school_receiving/complaint.
-  Transaksi school receiving tetap belum dibuat. Dokumentasi dan akses minimum lokal diperbarui.
+  Transaksi school receiving tersedia pada tahap penerimaan sekolah di bawah. Dokumentasi dan akses minimum lokal diperbarui.
 - [x] CRUD kendaraan (vehicle) dan driver: 10 operasi, permission terpisah,
   optional driver/GPS aktif satu tenant, koordinat/kapasitas, version dan soft delete.
   Registry VEHICLE atomik; riwayat delivery/GPS melindungi penghapusan. Dokumentasi
   frontend dan akses minimum lokal tersedia; 12 pemeriksaan terkait lulus.
-- [ ] CRUD menu/food item dan recipe.
-- [ ] CRUD jenis kemasan (packaging type).
+- [x] CRUD menu/food item dan recipe: 10 operasi, permission Read/Write/Delete,
+  quantity per unit hasil, uom sama dengan bahan, parent aktif satu tenant,
+  pair/uom menu tetap, version dan soft delete terlindungi referensi produksi.
+  Kontrak frontend/event/changelog diperbarui; enam tes terkait lulus.
+  Akses minimum runtime/development tersedia tanpa migrasi atau seeding bisnis.
+- [x] CRUD jenis kemasan: 5 operasi, volume milliliter, tenant/permission/version,
+  soft delete terlindungi paket dan kode tetap dicadangkan.
 - [ ] CRUD master device dan binding; API sesi perangkat bukan CRUD device.
 - [ ] API pengelolaan tenant/user/role/permission bila diperlukan alur bisnis;
   endpoint autentikasi dan CLI provisioning tidak menyelesaikan CRUD administrasi.
@@ -107,11 +112,62 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [x] Kontrak 7 endpoint baru, contoh payload/response, event catalog/changelog dan
   hak minimum runtime/development diperbarui tanpa migrasi atau data bisnis lokal.
   Sepuluh pemeriksaan terkait lulus; Ruff dan contoh OpenAPI/JSON diperiksa.
-- [ ] Stok penerimaan: putaway/alokasi storage, ledger/saldo dan ketersediaan bahan.
-  Status batch ACCEPTED belum berarti saldo siap digunakan produksi.
+- [x] Stok penerimaan: putaway parsial ke storage satu kitchen, ledger append-only,
+  saldo batch/per storage dan available quantity yang memperhitungkan expiry/status.
+  Version batch mencegah alokasi ganda; validasi quantity, tipe storage dan permission
+  Stock.Read/Putaway. Registry, movement STORAGE dan event stock.putaway atomik.
+- [x] Migrasi 0018 dan akses minimum runtime/development diterapkan lokal; kontrak
+  frontend/event/changelog diperbarui. Empat tes HTTP/regresi terkait lulus;
+  dua tes receiving diulang setelah kasus expiry, lintas tenant dan permission ditambah.
+  Ruff dan Alembic check bersih. Pemakaian produksi tersedia pada tahap berikut di bawah; reservasi, transfer dan
+  adjustment stok belum tersedia.
 
-**Pekerjaan berikutnya: alokasi penyimpanan dan stok batch bahan hasil receiving,
-kemudian master menu/resep dan alur produksi.**
+- [x] Produksi: create/list/detail/start/complete/cancel, snapshot resep dan kebutuhan
+  per hasil rencana, pengeluaran stok atomik, quantity hasil aktual, tenant/permission,
+  version produksi/bahan, edge USED dan movement ISSUE/PRODUCTION beserta event internal.
+- [x] Migrasi 0019, grant minimum runtime/development, GET stock-issues dan saldo
+  issued/available terintegrasi. Tes HTTP produksi, receiving/stok dan master menu
+  lulus; lint dan contoh kontrak diperiksa, upgrade/downgrade/upgrade uji bersih.
+  Legacy tanpa snapshot tidak dapat dieksekusi; reservasi/reversal stok belum tersedia.
+  Holding sudah tersedia pada tahap pengemasan berikut.
+
+- [x] Pengemasan: alokasi hasil aktual dengan version produksi, paket/nomor unik,
+  identitas QR + resolve bearer, registry/edge PACKAGED/movement dan event atomik.
+- [x] Holding start/update/finish dengan policy frozen, anchor cooking finish,
+  timer live SAFE/WARNING/EXPIRED/DISCARD_RECOMMENDED, release/discard dan log immutable.
+  Release tidak menghentikan deadline; discard tidak membebaskan hasil. Migrasi 0020
+  dan akses minimum lokal diterapkan; kontrak frontend/event/changelog diperbarui.
+  Delapan tes terkait lulus; enam tes packaging diulang setelah kasus frozen rule
+  dan delete master ditambah. Scheduler expiry, alarm/notification, telemetry adjustment
+  dan cetak label QR belum tersedia (QR payload sudah dapat dirender frontend).
+
+- [x] Manifest/pengiriman: create/list/detail/depart/complete/cancel, reservasi
+  paket/vehicle/driver, origin dan sekolah satu kitchen, validasi holding+ETA saat
+  depart, arrival terpisah dari acceptance sekolah, cancel hanya CREATED.
+- [x] Status/version paket terintegrasi; holding tidak menimpa paket yang sudah
+  dikelola pengiriman. Registry, edge LOADED/DELIVERED, movement dan event atomik.
+  Migrasi 0021 dan akses minimum lokal diterapkan; dokumentasi diperbarui. Delapan
+  tes terkait lulus; tes delivery diulang setelah isolasi tenant/rollback/immutability
+  ditambah. GPS, route/per-stop arrival dan validasi capacity bersatuan belum tersedia.
+
+- [x] Penerimaan sekolah: create/list/detail, verifikasi manifest COMPLETED, kondisi,
+  jumlah/selisih, keputusan dan bukti, version paket, tenant/permission; acceptance
+  GOOD + holding belum habis, rejection/shortage wajib alasan. Paket RECEIVED/REJECTED.
+- [x] Konsumsi/finalisasi: jumlah dikonsumsi+dibuang sama dengan diterima, holding
+  snapshot, unsafe holding dicatat dengan alasan, CONSUMED/DISCARDED. Bukti immutable,
+  registry/edge/movement/event atomik; effective_status terminal tidak ditimpa expiry.
+  Migrasi 0022 dan grant minimum runtime/development diterapkan lokal; 12 pemeriksaan
+  terkait lulus, 3 diulang setelah kasus rollback event ditambah. Ruff, contoh JSON
+  dan Alembic check bersih; upgrade/downgrade/upgrade database uji lulus.
+  Enam endpoint beserta dokumentasi frontend/event/changelog tersedia. Koreksi bukti,
+  backdated/partial reporting dan alarm otomatis belum tersedia.
+
+- [x] Sinkronisasi dokumentasi: README/indeks backend, schema dan runtime head 0022,
+  permission master/transaksi, registry serta status frontend/TODO. Hapus artefak
+  NUL README; verifikasi daftar operasi OpenAPI, permission dan tautan lokal.
+
+**Pekerjaan berikutnya: keluhan, penelusuran batch/paket terdampak, investigasi
+serta pembuatan/pelaksanaan/penyelesaian recall.**
 
 ## P0 — Fondasi instalasi FastAPI
 

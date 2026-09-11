@@ -9,7 +9,8 @@ from app.core.responses.envelope import Envelope, envelope
 from app.modules.authentication.api.router import DatabaseDep, current_account
 from app.modules.authentication.application.account_service import AuthenticatedAccount
 from app.modules.authentication.infrastructure.authorization import PermissionDeniedError
-from app.modules.receiving.application.service import ReceivingConflictError, ReceivingService
+from app.modules.receiving.application.service import ReceivingConflictError
+from app.modules.receiving.application.stock_service import StockService
 from app.modules.receiving.schemas.receiving import (
     BatchEnvelope,
     BatchPageEnvelope,
@@ -18,6 +19,13 @@ from app.modules.receiving.schemas.receiving import (
     ReceivingEnvelope,
     ReceivingInput,
     ReceivingPageEnvelope,
+)
+from app.modules.receiving.schemas.stock import (
+    PutawayInput,
+    StockBalanceEnvelope,
+    StockEntryEnvelope,
+    StockIssuePageEnvelope,
+    StockPageEnvelope,
 )
 
 router = APIRouter(tags=['Receiving'], responses={
@@ -34,7 +42,7 @@ router = APIRouter(tags=['Receiving'], responses={
 async def service_dependency(db: DatabaseDep,
     account: Annotated[AuthenticatedAccount, Depends(current_account, scope='function')]):
     try:
-        yield ReceivingService(db, ActorScope(account.tenant_id, account.user_id))
+        yield StockService(db, ActorScope(account.tenant_id, account.user_id))
     except PermissionDeniedError:
         raise HTTPException(403, 'Required permission is not granted') from None
     except RecordNotFoundError:
@@ -51,13 +59,13 @@ async def service_dependency(db: DatabaseDep,
         raise
 
 
-ServiceDep = Annotated[ReceivingService, Depends(service_dependency, scope='function')]
+ServiceDep = Annotated[StockService, Depends(service_dependency, scope='function')]
 Offset = Annotated[int, Query(ge=0, le=2147483647)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 
 
 @router.post('/receivings', status_code=201, response_model=ReceivingEnvelope,
-    description='Receiving.Write. Atomic header + 1..100 items/batches, registry and stored receiving.created event. Active tenant parents and supplier-material link required. UOM/tenant/operator are server-derived. No stock ledger yet.')
+    description='Receiving.Write. Atomic header + 1..100 items/batches, registry and stored receiving.created event. Active tenant parents and supplier-material link required. UOM/tenant/operator are server-derived. Stock allocation follows separately through batch putaway.')
 async def create_receiving(request: Request, payload: ReceivingInput, service: ServiceDep):
     return envelope(request, code=201, data=await service.create(payload))
 
@@ -102,3 +110,27 @@ async def list_batches(request: Request, service: ServiceDep, offset: Offset = 0
     description='RawMaterialBatch.Read. UUID path; no body/query. Missing/foreign/deleted returns 404. Batches are created/finalized only through receiving; no direct edit/delete endpoint.')
 async def get_batch(request: Request, identifier: UUID, service: ServiceDep):
     return envelope(request, data=await service.get(identifier, batch=True))
+
+
+@router.post('/raw-material-batches/{identifier}/putaway', status_code=201, response_model=StockEntryEnvelope,
+    description='Stock.Putaway. UUID batch; expected_version, storage_id, positive decimal quantity. Partial allocation of accepted unallocated stock to active storage in receiving kitchen, matching material storage type. Expiry uses UTC date. Atomic ledger, batch version, registry, STORAGE movement and stock.putaway event. Retry with old version returns 409.')
+async def putaway(request: Request, identifier: UUID, payload: PutawayInput, service: ServiceDep):
+    return envelope(request, code=201, data=await service.putaway(identifier, payload))
+
+
+@router.get('/raw-material-batches/{identifier}/stock', response_model=StockBalanceEnvelope,
+    description='Stock.Read. UUID batch; no body/query. Accepted, allocated, unallocated and available quantities in receiving UOM, with storage balances and current batch version. Availability excludes expired batches, inactive parents/storage and incompatible storage types. Available balance subtracts production issues; unallocated balance subtracts historical putaway, not issues. No reservation.')
+async def stock_balance(request: Request, identifier: UUID, service: ServiceDep):
+    return envelope(request, data=await service.balance(identifier))
+
+
+@router.get('/raw-material-batches/{identifier}/stock-entries', response_model=StockPageEnvelope,
+    description='Stock.Read. UUID batch; no body; offset>=0 (max 2147483647), limit 1..100 default 20. Immutable putaway ledger, batch_version descending, nullable next_offset. Missing/foreign batch returns 404.')
+async def stock_ledger(request: Request, identifier: UUID, service: ServiceDep, offset: Offset = 0, limit: Limit = 20):
+    return envelope(request, data=await service.ledger(identifier, offset=offset, limit=limit))
+
+
+@router.get('/raw-material-batches/{identifier}/stock-issues', response_model=StockIssuePageEnvelope,
+    description='Stock.Read. UUID batch; no body; offset/limit pagination. Immutable production issues backed by storage, batch_version descending; legacy items without storage excluded. Missing/foreign/deleted batch 404.')
+async def stock_issues(request: Request, identifier: UUID, service: ServiceDep, offset: Offset = 0, limit: Limit = 20):
+    return envelope(request, data=await service.issues(identifier, offset=offset, limit=limit))

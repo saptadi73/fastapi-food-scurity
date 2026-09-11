@@ -12,7 +12,7 @@ CLI development menggunakan ADMIN_DATABASE_URL:
 ```
 
 Default check tanpa penulisan; --apply membuat permission/grant yang belum ada.
---permission dapat diulang untuk subset sembilan kode di atas, tanpa duplikat. Actor/tenant
+--permission dapat diulang untuk subset 18 kode pada tabel di bawah, tanpa duplikat. Actor/tenant
 harus aktif, role harus nondeleted dalam tenant. Permission/grant soft-deleted ditolak,
 bukan dipulihkan. Kode di luar allowlist dan environment selain development ditolak.
 Semua target diperiksa sebelum insert; transaksi dan advisory lock tenant menjaga
@@ -35,7 +35,8 @@ fitur supplier/bahan, bukan pekerjaan provisioning umum/production. Lihat
 
 ## Permission Delete
 
-Allowlist kini sembilan kode: Read, Write dan Delete untuk Supplier, RawMaterial, SupplierMaterial.
+Read, Write dan Delete tersedia untuk Supplier, RawMaterial dan SupplierMaterial;
+allowlist lengkap kini mencakup enam master pada tabel di bawah.
 Permission Supplier.Delete, RawMaterial.Delete, SupplierMaterial.Delete telah ditambahkan
 ke DEV_MAINTENANCE lokal. Gunakan --permission <kode.Delete> pada CLI yang sama;
 check default, --apply eksplisit, revoked grant tetap tidak dipulihkan. Delete
@@ -44,3 +45,24 @@ independen dari Read/Write. Tidak ada membership/user/password baru.
 Profil runtime mengizinkan UPDATE deleted_at/deleted_by pada tabel terkait untuk
 soft delete. Tidak memberi privilege DELETE SQL. Kontrak respons dan proteksi
 referensi: [soft delete](frontend-api.md#soft-delete-master-operasional).
+
+
+## Allowlist terkini: 18 permission
+
+| Master | Permission eksplisit |
+|---|---|
+| Supplier | Supplier.Read, Supplier.Write, Supplier.Delete |
+| Bahan baku | RawMaterial.Read, RawMaterial.Write, RawMaterial.Delete |
+| Relasi pemasok-bahan | SupplierMaterial.Read, SupplierMaterial.Write, SupplierMaterial.Delete |
+| Menu | FoodItem.Read, FoodItem.Write, FoodItem.Delete |
+| Resep | Recipe.Read, Recipe.Write, Recipe.Delete |
+| Jenis kemasan | PackagingType.Read, PackagingType.Write, PackagingType.Delete |
+
+CLI yang sama menerima subset unik kode ini, tanpa wildcard atau pemberian otomatis
+seluruh permission. Penambahan menu/resep/jenis kemasan tidak mengubah mode check,
+aturan actor/tenant/role aktif atau larangan memulihkan grant revoked. Profil
+runtime terkini memerlukan migrasi 0022; tahap supplier awal tidak menambah migrasi.
+
+Kontrak [menu/resep](frontend-api.md#kontrak-menu-dan-resep) dan
+[kemasan](frontend-api.md#kontrak-kemasan-paket-dan-holding) memuat validasi CRUD.
+Permission transaksi stok/produksi sampai konsumsi memakai [CLI terpisah](receiving-permissions.md).

@@ -365,3 +365,105 @@ dampak kompatibilitas, tindakan frontend, dan verifikasi.
 - Tindakan frontend: belum perlu perubahan. Form kitchen menunggu API berautentikasi.
 - Verifikasi: tes PostgreSQL mencakup akses lintas tenant, actor/tenant tidak aktif,
   version lama, audit, soft delete, pembatasan field, pagination dan rollback.
+
+
+## 2026-09-11 ? Putaway dan stok penerimaan
+
+- Tiga endpoint batch baru: POST putaway, GET stock, GET stock-entries; permission
+  Stock.Putaway/Read terpisah. Migrasi 0018 menambahkan ledger immutable.
+- ACCEPTED belum menghasilkan saldo tersedia sampai putaway. Alokasi parsial,
+  version batch, lokasi kitchen/storage, status dan expiry UTC diperiksa atomik.
+- Frontend perlu memperbarui version batch dari respons/GET stock setelah putaway;
+  retry stale menghasilkan 409. Version header receiving tidak berubah.
+- Quantity decimal string; saldo per storage dan ketersediaan tidak mencakup
+  reservasi/pemakaian produksi. Storage bereferensi ledger tidak dapat dihapus.
+- Event stock.putaway internal serta movement STORAGE dicatat atomik; tidak ada
+  publisher realtime. Kontrak lengkap pada bagian stok di frontend-api.md.
+
+
+## 2026-09-11 ? Master menu dan resep
+
+- Sepuluh operasi list/detail/create/replace/soft-delete food-items/recipes aktif;
+  permission FoodItem/Recipe.Read, Write, Delete terpisah, tenant dan audit server.
+- Resep satu baris per pasangan menu?bahan, quantity positif per satu unit hasil
+  menu dan uom wajib sama dengan bahan. Parent aktif satu tenant; pasangan tetap.
+- Unit menu immutable; PUT optional yang dihilangkan reset default. Gunakan
+  expected_version pada PUT/body dan DELETE/query; stale 409, deleted/foreign 404.
+- Menu bereferensi recipe/production_batch tidak dapat dihapus. Kode/pasangan
+  terhapus tetap dicadangkan. Tidak ada event/registry/movement baru pada CRUD ini.
+- Cakupan OpenAPI kini 88 operasi, termasuk 55 CRUD sebelas master. Produksi dan
+  pemakaian stok tetap belum tersedia; lihat kontrak menu/resep untuk contoh lengkap.
+
+
+## 2026-09-11 ? Transaksi produksi dan pengeluaran stok
+
+- Enam endpoint production-batches aktif: create/list/detail/start/complete/cancel.
+  Snapshot resep saat create, kebutuhan HALF_UP 6 desimal, hasil aktual 0..planned.
+- Start memakai stok atomik sesuai snapshot, version produksi dan version batch bahan;
+  parent aktif satu tenant/kitchen, expiry, UOM, quantity dan saldo diperiksa.
+- GET stock menambah issued_quantity total/per storage dan available kini dikurangi
+  pemakaian. Quantity storage dan putaway_quantity tetap historis; jangan memakai
+  keduanya sebagai saldo tersisa. GET stock-issues baru dengan Stock.Read.
+- Migration 0019 menambah snapshot/rencana/hasil, storage/version pada item produksi,
+  constraint serta trigger immutable. Legacy tanpa snapshot tetap read-only melalui API.
+- Event production.* internal, edge USED, movement ISSUE/PRODUCTION dan registry atomik;
+  belum ada package/holding atau publikasi realtime. OpenAPI kini 95 operasi.
+
+
+## 2026-09-11 ? Jenis kemasan, paket dan holding
+
+- 13 operasi baru: 5 CRUD packaging-types, create/list/detail/resolve paket,
+  allocation summary, holding start/update/finish. Total OpenAPI 108 operasi.
+- Package quantity dibatasi hasil aktual produksi; expected_version create mengacu
+  produksi, holding mengacu paket. Discard tidak membebaskan alokasi.
+- Snapshot produksi v1 menambah nullable food_category/holding_limit_minutes;
+  policy dibekukan saat pengemasan pertama dan clock berawal dari cooking finished.
+- Frontend gunakan effective_status/timer_status/holding_eligible, bukan status
+  tersimpan saja. Release tidak menghentikan countdown. QR payload hanya identitas;
+  rendering QR pada client, resolve tetap membutuhkan bearer.
+- Migrasi 0020 dan grant minimum; package/holding events serta holding_log atomik.
+  Tidak ada background expiry notification, scheduler, telemetry adjustment atau
+  auto discard; GET live dan POST update materialisasi tersedia.
+
+
+## 2026-09-11 ? Manifest dan perjalanan pengiriman
+
+- Enam endpoint deliveries create/list/detail/depart/complete/cancel; permission
+  independen. Total OpenAPI kini 114 operasi, migrasi 0021 menambah origin/ETA dan
+  proteksi manifest immutable.
+- Create mencadangkan driver/kendaraan/paket; package ALLOCATED, depart IN_TRANSIT,
+  complete DELIVERED. Expected_version item create mengacu paket, aksi mengacu delivery.
+- Depart memeriksa ulang timer dan ETA sebelum expiry. Complete tetap mencatat
+  kedatangan expired/terlambat; tidak otomatis membuat penerimaan sekolah.
+- Aksi holding paket yang dikelola pengiriman kini 409; GET/QR tetap live. Cancel
+  CREATED melepas paket ke RELEASED/EXPIRED, tidak mereset timer atau menghapus sejarah.
+- Registry, edge LOADED/DELIVERED, movement dan delivery.* internal atomik; GPS,
+  routing/per-stop proof, acceptance sekolah dan publisher realtime belum tersedia.
+
+
+## 2026-09-11 ? Penerimaan sekolah dan konsumsi
+
+- Enam endpoint create/list/detail school-receivings dan consumptions aktif;
+  total OpenAPI 120 operasi. Permission SchoolReceiving.Read/Write dan
+  Consumption.Read/Write, bearer/tenant, expected_version paket dan pagination.
+- Inspeksi manifest yang selesai, quantity expected/received/discrepancy,
+  condition, accepted, temperature/photo/notes; shortage atau rejection wajib alasan.
+  Acceptance memerlukan GOOD dan holding SAFE/WARNING; paket RECEIVED/REJECTED.
+- Finalisasi consumed+discarded=received dengan snapshot holding; konsumsi setelah
+  deadline boleh dicatat sebagai kejadian dengan safe=false dan notes wajib.
+  safe=null untuk semua dibuang, bukan jaminan keamanan makanan. Paket terminal
+  CONSUMED/DISCARDED; GET effective_status terminal tidak ditimpa expiry.
+- Event school_receiving.recorded/consumption.recorded, registry, relationships
+  dan movements atomik; bukti immutable. Tidak ada edit/delete/backdated/automatic alarm.
+- Migrasi 0022 menambah kolom nullable untuk legacy tanpa backfill, constraints dan
+  immutable triggers. Frontend reload package version setelah transaksi; gunakan
+  daftar bukti berfilter package_id sebelum retry. Foto hanya referensi, bukan upload.
+
+
+## 2026-09-11 ? Sinkronisasi dokumentasi operasional
+
+README/indeks backend kini merangkum 120 operasi dan dua belas master. Panduan
+database/koneksi/runtime diselaraskan ke head 0022; permission supply diperluas
+pada dokumentasi menjadi 18 kode dan transaksi menjadi 26 kode. Status registry,
+penerimaan sekolah, konsumsi, stok dan pengiriman diperbarui; artefak NUL README
+dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.

@@ -24,10 +24,12 @@ class Delivery(AuditMixin, Base):
                              name="fk_delivery_vehicle", ondelete="RESTRICT"),
         ForeignKeyConstraint(["tenant_id", "driver"], ["driver.tenant_id", "driver.driver_id"],
                              name="fk_delivery_driver", ondelete="RESTRICT"),
+        ForeignKeyConstraint(['tenant_id', 'kitchen_id'], ['kitchen.tenant_id', 'kitchen.kitchen_id'], name='fk_delivery_kitchen', ondelete='RESTRICT'),
         UniqueConstraint("tenant_id", "delivery_id", name="uq_delivery_tenant_id"),
         CheckConstraint("arrival_time IS NULL OR (departure_time IS NOT NULL AND arrival_time >= departure_time)",
                         name="ck_delivery_time_order"),
         CheckConstraint("version >= 1", name="ck_delivery_version"),
+        CheckConstraint('estimated_arrival_time IS NULL OR (departure_time IS NOT NULL AND estimated_arrival_time > departure_time)', name='ck_delivery_eta'),
         Index("ix_delivery_tenant_vehicle", "tenant_id", "vehicle"),
         Index("ix_delivery_tenant_driver", "tenant_id", "driver"),
         Index("ix_delivery_departure_time", "departure_time"),
@@ -37,6 +39,8 @@ class Delivery(AuditMixin, Base):
     tenant_id: Mapped[UUID]
     vehicle: Mapped[UUID]
     driver: Mapped[UUID]
+    kitchen_id: Mapped[UUID | None]
+    estimated_arrival_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     departure_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     arrival_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(30), default="CREATED", server_default="CREATED")
@@ -76,6 +80,8 @@ class SchoolReceiving(AuditMixin, Base):
         UniqueConstraint("tenant_id", "school_receiving_id", name="uq_school_receiving_tenant_id"),
         UniqueConstraint("tenant_id", "delivery_id", "package", name="uq_school_receiving_package"),
         CheckConstraint("temperature IS NULL OR temperature <> 'NaN'::numeric", name="ck_school_receiving_temperature"),
+        CheckConstraint("expected_quantity IS NULL OR (expected_quantity > 0 AND expected_quantity < 'Infinity'::numeric)", name="ck_school_receiving_expected_quantity"),
+        CheckConstraint("received_quantity IS NULL OR (received_quantity >= 0 AND received_quantity <= expected_quantity AND received_quantity < 'Infinity'::numeric)", name="ck_school_receiving_received_quantity"),
         CheckConstraint("version >= 1", name="ck_school_receiving_version"),
         Index("ix_school_receiving_tenant_school", "tenant_id", "school"),
         Index("ix_school_receiving_tenant_package", "tenant_id", "package"),
@@ -91,3 +97,9 @@ class SchoolReceiving(AuditMixin, Base):
     temperature: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     accepted: Mapped[bool | None]
     photo: Mapped[str | None] = mapped_column(String(1024))
+    expected_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    received_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    condition: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(String(2000))
+    uom: Mapped[str | None] = mapped_column(String(30))
+    timer_status: Mapped[str | None] = mapped_column(String(30))

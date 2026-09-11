@@ -1,6 +1,6 @@
 # Event catalog FSOS
 
-Terakhir diperbarui: 2026-09-11. Status: **event receiving tersimpan di database; belum ada event yang dipublikasikan ke transport**.
+Terakhir diperbarui: 2026-09-11. Status: **event receiving, stok, produksi, paket, holding dan pengiriman tersimpan internal; belum dipublikasikan ke transport**.
 
 Endpoint login/refresh/logout terhubung ke SessionService dan mengubah database,
 tanpa event bus/notifikasi. Log operasional mencatat action/outcome/request_id;
@@ -57,7 +57,7 @@ runtime. Nama `updated` tidak berarti bukti telemetry boleh diubah.
 | --- | --- | --- | --- | --- |
 | `temperature.updated` | Rencana | Sampel suhu baru tervalidasi dan tersimpan | Telemetry ingestion | Rule engine, tampilan storage |
 | `gps.updated` | Rencana | Posisi baru tersimpan | Telemetry ingestion | Fleet, peta |
-| `holding.updated` | Rencana | Snapshot holding baru tersimpan | Holding engine | Tampilan holding, notifikasi |
+| `holding.updated` | Aktif internal, lihat kontrak paket/holding | POST refresh | PackageService | Publisher/notifikasi belum tersedia |
 | `heartbeat.updated` | Rencana | Heartbeat baru tersimpan | Telemetry ingestion | Digital twin, status device |
 | `alarm.created` | Rencana | Bukti alarm baru tersimpan | Alarm/rule engine | Tampilan alarm, notifikasi |
 | `device.connected` | Rencana | Sesi perangkat mulai tercatat | Pengelola sesi device | Digital twin, tampilan device |
@@ -232,7 +232,7 @@ perubahan deleted_at registry. Frontend memperbarui daftar dari respons/GET.
 
 ## Cakupan modul sekolah dan master lain
 
-CRUD sekolah kini tersedia. Kendaraan/driver juga kini memiliki CRUD. Menu/resep, jenis kemasan serta
+CRUD sekolah kini tersedia. Kendaraan/driver juga kini memiliki CRUD. Menu/resep kini memiliki CRUD. Jenis kemasan kini memiliki CRUD;
 master device/binding belum memiliki endpoint. Keberadaan tabel, registry source adapter atau referensi
 penghalang delete tidak berarti terdapat producer/event runtime dari modul tersebut.
 Matriks HTTP terverifikasi ada di [cakupan frontend](frontend-api.md#cakupan-crud-dan-status-modul).
@@ -368,3 +368,253 @@ menggunakan struktur sama dengan snapshot final dan actor penyelesaian:
   }
 }
 ```
+
+
+## Event stok tersimpan
+
+`stock.putaway` **aktif internal**: producer `StockService.putaway`, trigger POST
+batch putaway sukses, disimpan atomik bersama ledger, audit/version, registry dan
+movement STORAGE di PostgreSQL `event_log`. Entity type RAW_MATERIAL_BATCH,
+entity_uuid = ID batch. Consumer eksternal, bus, MQTT/WebSocket, retry publisher,
+replay dan notifikasi belum diimplementasikan; bukan channel realtime frontend.
+Tenant dari bearer account dengan permission Stock.Putaway; payload actor sama dengan
+created_by. Tidak membawa kredensial. Event immutable, tidak boleh dipindahkan tenant.
+Ordering per batch memakai entry.batch_version, bukan created_at; lock batch dan
+expected_version mencegah event ganda untuk write version sama. UUID event unik;
+retry sukses dengan version lama 409, rollback tidak menyisakan event/ledger/movement.
+Tidak ada urutan global atau jaminan delivery eksternal.
+
+Payload v1 required: schema_version integer 1, actor_id UUID string, entry object
+schema StockEntryData (semua field persis respons putaway), uom string snapshot
+receiving item. Contoh konstruksi payload dari respons putaway:
+
+```javascript
+const payload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  entry: putawayResponse.data,
+  uom: "kg"
+};
+```
+
+Contoh JSON entry lengkap tersedia pada [kontrak putaway](frontend-api.md#stok-batch-bahan-dan-putaway).
+Movement STORAGE memakai asset_uuid registry batch/kitchen/storage, remarks UUID
+entry. Qty parsial terdapat pada entry.quantity; event ini tidak menyatakan seluruh
+batch berada di satu storage. Tidak ada event baru saat GET saldo, expiry tanggal,
+atau master menjadi inactive; saldo available dihitung saat baca. Pemakaian bahan tersedia melalui production.started;
+transfer dan adjustment ledger/event tetap rencana.
+
+
+## CRUD menu dan resep
+
+Status: 10 operasi HTTP aktif pada food-items/recipes. Producer tulis adalah
+FoodService dengan tenant/actor bearer dan permission FoodItem/Recipe.Read, Write,
+Delete terpisah. Quantity resep adalah kebutuhan per satu unit food_item.uom;
+uom resep sama dengan bahan. Audit dan version berubah atomik, delete bersifat soft.
+**Tidak ada event baru** pada CRUD ini: tidak menulis event_log, movement atau
+registry FOOD_ITEM/RECIPE (tipe belum didukung). Relasi recipe merupakan FK, bukan
+asset_relationship. Consumer, transport/channel, payload event, ordering,
+deduplikasi/retry/replay tidak berlaku. Production snapshot/usage event kini tersimpan internal seperti bagian produksi
+di bawah, bukan subscription frontend aktif. Contoh request/response ada di
+[kontrak menu/resep](frontend-api.md#kontrak-menu-dan-resep).
+
+
+## Event produksi tersimpan
+
+Status **aktif internal PostgreSQL event_log**, producer ProductionService.
+Entity type PRODUCTION_BATCH, entity_uuid ID batch. Empat event:
+
+| Event | Trigger/permission | Efek atomik |
+|---|---|---|
+| production.created | POST create, Production.Write | Rencana CREATED, snapshot resep, registry |
+| production.started | POST start, Production.Start | RUNNING, ledger production_item, version bahan, edge USED, movement ISSUE, registry |
+| production.completed | POST complete, Production.Complete | COMPLETED, actual quantity, waktu, registry dan movement PRODUCTION di kitchen |
+| production.cancelled | POST cancel CREATED, Production.Cancel | CANCELLED, registry; tanpa stok/movement |
+
+Semua payload v1: schema_version integer 1, actor_id UUID string,
+production object persis ProductionDetail pada respons action. Field, required,
+nullable, contoh snapshot/header/item lengkap di [kontrak produksi](frontend-api.md#kontrak-transaksi-produksi).
+Tenant dari bearer dan tenant_id EventLog; actor sama dengan audit write. Consumer
+internal dapat membaca bukti, tetapi tidak ada subscriber/worker/transport MQTT atau
+WebSocket yang diimplementasikan. Channel saat ini tabel event_log, bukan event bus.
+Tidak ada retry publisher/replay otomatis atau ordering global.
+
+Ordering per produksi memakai production.version; version 1 created, 2 started
+atau cancelled, 3 completed. Issue juga menyimpan batch_version bahan setelah write.
+Row lock dan expected_version menjaga sekali transisi, retry stale 409; event_uuid
+unik. Gagal transaksi membatalkan stok, edge, movement, version dan event sekaligus.
+Consumer masa depan harus deduplikasi event_uuid; delivery eksternal belum dijamin.
+
+Contoh payload created (production adalah objek contoh data create lengkap pada kontrak):
+
+```javascript
+const payload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  production: createProductionResponse.data
+};
+```
+
+Started menyertakan item sumber, quantity/UOM/storage dan batch_version; completed
+menyertakan hasil aktual tanpa mengembalikan stok untuk yield loss, cancelled tidak
+memiliki item. Movement ISSUE menggunakan asset_uuid batch bahan/storage/kitchen,
+remarks UUID production_item; movement PRODUCTION menggunakan asset_uuid hasil dan
+kitchen. Snapshot tidak berubah ketika resep master diperbarui. Tidak ada event
+Stock.Read/GET atau event terpisah stock.issued; bukti pengeluaran ada pada
+production.started. Event paket/holding kini tersedia internal seperti bagian berikut; traversal API belum tersedia.
+
+
+## Paket dan holding internal
+
+Status: **aktif internal**, producer PackageService, tabel PostgreSQL event_log,
+entity_type PACKAGE dan entity_uuid package_id. Tenant/actor dari bearer, tidak ada
+credential pada QR/payload. Master PackagingType CRUD hanya audit/version, tidak
+menghasilkan event/registry. Event berikut memakai payload schema_version 1,
+actor_id UUID string dan package object persis PackageData respons aksi (termasuk
+calculated_at, timer, frozen policy dan QR). Field/nullable dan contoh record lengkap
+ada di [kontrak paket/holding](frontend-api.md#kontrak-kemasan-paket-dan-holding).
+
+| Event | Trigger/permission | Efek transaksi |
+|---|---|---|
+| package.created | POST packages / Package.Write | Alokasi hasil, version produksi, policy frozen, package registry, PACKAGED edge, PACKAGING movement |
+| holding.started | POST holding/start / Holding.Start | Paket PACKAGED, anchor cooking finish, version, registry, holding_log |
+| holding.updated | POST holding/update / Holding.Update | Refresh timer, version, registry, holding_log; termasuk refresh EXPIRED yang sudah tercatat |
+| holding.expired | POST holding/update pertama menjadi EXPIRED / Holding.Update | Materialisasi expiry, version, registry, holding_log |
+| holding.finished | POST holding/finish / Holding.Finish | RELEASED atau DISCARDED, finish timestamp, version, registry, holding_log |
+
+Lima nama event (holding.finished memiliki dua outcome). Holding update setelah
+release tetap mengukur deadline awal; release tidak memperpanjang umur paket.
+Discard recommendation bukan auto discard. GET/list/resolve selalu menghitung waktu
+terkini tetapi tidak menulis log/event. Tanpa POST update, expiry dapat hanya terlihat
+pada effective_status respons; belum ada background scheduler/alarm publisher.
+
+Ordering per paket memakai package.version (create=1, setiap aksi +1), bukan urutan
+calculated_at global. Version produksi ikut naik setiap alokasi; package.created
+menunjuk produksi tetapi tidak menggantikan GET allocation untuk memperoleh version
+produksi terkini. Expected_version dan row lock mencegah pengulangan mutasi sukses;
+retry stale 409, event_uuid unik. Duplikasi code/number atau kegagalan log/event
+membatalkan seluruh write/alokasi/version. Consumer masa depan harus deduplikasi
+UUID event. Belum ada consumer runtime eksternal, channel MQTT/WebSocket, retry
+publisher, replay atau jaminan delivery ke frontend.
+
+Contoh payload dari respons aksi yang lengkap:
+
+```javascript
+const payload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  package: packageResponse.data
+};
+```
+
+Transport sekarang hanya penyimpanan atomik di DB. HoldingLog menggunakan package_id,
+recorded_at UTC, elapsed/remaining_minutes, effective_status dan timer_status pada
+warning_level; mqtt_message_id null karena aksi HTTP. Log append-only. Timer memakai
+policy yang dibekukan saat alokasi pertama, bukan rule terbaru. Snapshot produksi
+v1 bertambah field nullable food_category/holding_limit_minutes; payload produksi
+lama tetap valid dan dibaca default null, tidak dibackfill.
+
+
+## Event pengiriman internal
+
+Status **aktif internal PostgreSQL event_log**, producer DeliveryService. Entity type
+DELIVERY, entity_uuid ID delivery. Tenant dan actor berasal dari bearer dan permission
+aksi, tidak dari payload. Empat event memakai schema_version 1, actor_id UUID string,
+delivery object persis DeliveryDetail saat aksi selesai (header, items dan PackageData
+nested termasuk timer/calculated_at). Field/nullable dan contoh snapshot lengkap pada
+[kontrak pengiriman](frontend-api.md#kontrak-pengiriman).
+
+| Event | Trigger/permission | Efek atomik |
+|---|---|---|
+| delivery.created | POST deliveries / Delivery.Write | Reservasi vehicle/driver/paket, ALLOCATED dan version paket, manifest, registry; tanpa movement |
+| delivery.departed | POST depart / Delivery.Depart | IN_TRANSIT, departure/ETA, package versions, registry, edge LOADED dan movement VEHICLE_LOADING |
+| delivery.completed | POST complete / Delivery.Complete | COMPLETED dan arrival time, paket DELIVERED, registry, edge/movement DELIVERED/DELIVERY |
+| delivery.cancelled | POST cancel CREATED / Delivery.Cancel | CANCELLED, paket RELEASED atau EXPIRED, resource bebas, registry; manifest tetap, tanpa movement |
+
+Ordering per delivery memakai delivery.version: create=1, depart/cancel=2,
+complete=3. Package.version juga naik setiap reservasi/transisi, bukan version item
+manifest. Row locks parent/paket dan expected_version mencegah reservasi ganda serta
+retry mutasi sukses; retry stale 409. Event UUID unik; kegagalan item, reference,
+registry atau event membatalkan semua write dalam transaksi. Consumer masa depan
+harus deduplikasi event_uuid, tetapi subscriber/worker, transport MQTT/WebSocket,
+retry publisher/replay dan delivery eksternal belum tersedia. Channel saat ini tabel
+DB internal, bukan subscription frontend. GET tidak menulis event atau movement.
+
+Contoh payload dari respons aksi:
+
+```javascript
+const payload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  delivery: deliveryResponse.data
+};
+```
+
+Snapshot event mempertahankan kondisi saat transisi, sedangkan GET detail memuat
+keadaan paket terkini (termasuk setelah cancel/reassignment). LOADED menghubungkan
+registry package -> delivery; DELIVERED package -> school. Movement memakai
+asset_uuid kitchen/vehicle/school dan remarks delivery_item_id. Complete yang terlambat
+tetap mencatat kedatangan dengan nested package effective_status EXPIRED; event tidak
+berarti sekolah menerima atau makanan aman. Tidak membuat school_receiving/event
+acceptance/konsumsi. Holding action paket ALLOCATED/IN_TRANSIT/DELIVERED ditolak;
+timer tetap dapat dievaluasi lewat GET tanpa menghasilkan holding.expired otomatis.
+
+
+## Event penerimaan sekolah dan konsumsi internal
+
+Status **aktif internal PostgreSQL event_log**, producer `SchoolWorkflowService`.
+Consumer aktif: penyimpanan audit internal; belum ada subscriber, publisher,
+notifikasi/alarm otomatis, MQTT/WebSocket, endpoint replay atau channel frontend.
+Tenant/actor berasal dari bearer yang masih aktif dan permission DB saat transaksi.
+Event memiliki event_uuid unik, entity_uuid ID bukti, audit tenant serta payload
+schema_version=1, actor_id UUID string dan snapshot bukti sesuai kontrak frontend.
+
+| Event | Trigger/auth | Entity type | Payload snapshot |
+|---|---|---|---|
+| school_receiving.recorded | POST /school-receivings; SchoolReceiving.Write | SCHOOL_RECEIVING | school_receiving: ReceiptData lengkap termasuk discrepancy_quantity |
+| consumption.recorded | POST /consumptions; Consumption.Write | CONSUMPTION | consumption: ConsumptionData lengkap termasuk quantities, safe dan timer_status |
+
+Field/nullable serta contoh data lengkap pada
+[kontrak sekolah/konsumsi](frontend-api.md#kontrak-penerimaan-sekolah-dan-konsumsi).
+Contoh payload persis dari respons POST yang sukses:
+
+```javascript
+const receiptEventPayload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  school_receiving: receivingResponse.data
+};
+const consumptionEventPayload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  consumption: consumptionResponse.data
+};
+```
+
+Penerimaan memutasi PACKAGE ke RECEIVED/REJECTED, version+1, registry,
+edge RECEIVED package -> school hanya accepted, dan movement SCHOOL_RECEIVING
+untuk semua keputusan. Movement ini bukti inspeksi di sekolah, termasuk paket
+missing/rejected, tidak mengklaim kedatangan fisik baru. Remarks=school_receiving_id.
+Tidak membuat registry asset SCHOOL_RECEIVING tersendiri.
+
+Finalisasi memutasi PACKAGE ke CONSUMED bila consumed_quantity>0, selainnya
+DISCARDED, version+1. Membuat registry CONSUMPTION; edge CONSUMED package ->
+consumption dan movement CONSUMED hanya jika consumed>0, movement DISCARD jika
+discarded>0; remarks=consumption_id. Mixed outcome memiliki kedua movement.
+Quantity disimpan di bukti, bukan ledger stok bahan. `safe` adalah snapshot holding
+saat pencatatan; false pada konsumsi setelah deadline/unknown dengan notes wajib,
+null jika semua dibuang. Tidak berarti hasil pemeriksaan keamanan menyeluruh.
+
+Row locks school/delivery/package dan expected_version paket menjaga urutan per
+paket: delivery completion -> satu receipt -> satu consumption untuk accepted.
+Version bukti immutable selalu 1 untuk record API baru, bukan sequence event global.
+Timestamps received_time/consumed_at server tidak mendahului tahap sebelumnya;
+created_at bukan jaminan ordering lintas paket. Bukti, package version, registry,
+edge/movement dan event commit/rollback atomik, termasuk kegagalan penulisan event.
+Update/delete/truncate bukti ditolak DB. Retry POST sukses menghasilkan 409 karena
+version/status/uniqueness, tanpa event kedua; belum ada idempotency key. Setelah
+hasil request tidak pasti, klien membaca bukti berdasarkan package_id. Consumer
+masa depan harus deduplikasi event_uuid; retry publisher/replay belum tersedia.
+GET tidak membuat event. Snapshot event tidak berubah ketika timer paket bergerak.
+Effective_status paket terminal CONSUMED/REJECTED/DISCARDED kini tetap terminal,
+sedangkan timer_status dan remaining di GET tetap live.

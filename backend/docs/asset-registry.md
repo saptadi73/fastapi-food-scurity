@@ -1,8 +1,10 @@
 # Registry digital asset
 
 Status 2026-09-11: adapter sumber, service sinkronisasi, backfill administratif,
-rekonsiliasi laporan sumber, dan integrasi transaksi KitchenRepository tersedia. Tidak ada endpoint baru,
-publisher event, atau traversal graph. Tidak memerlukan migrasi baru.
+rekonsiliasi laporan sumber, integrasi master operasional serta transaksi receiving,
+stok, produksi, paket/holding, pengiriman dan konsumsi tersedia. Registry sendiri
+belum memiliki endpoint HTTP/traversal atau publisher eksternal. Service bisnis
+menulis registry dan event dalam transaksi yang sama; schema proyek kini head 0022.
 
 ## Pemetaan sumber
 
@@ -252,3 +254,22 @@ rekonsiliasi administratif diperlukan, bukan pembuatan relasi berdasarkan UUID a
 Event receiving disimpan internal dalam transaksi yang sama, belum ada publisher.
 Lihat [kontrak receiving](frontend-api.md#kontrak-receiving-dan-batch-bahan).
 Traversal/timeline API dan saldo stok tetap belum diimplementasikan.
+
+
+## Integrasi alur bisnis aktif
+
+Sinkronisasi internal oleh service bisnis mengikuti permission aksinya; tidak
+mewajibkan AssetRegistry.Sync tambahan kepada pengguna endpoint transaksi.
+Permission AssetRegistry.Sync tetap untuk RegistryService/CLI administratif.
+Paket dan produksi/pengiriman memakai status sumber, sedangkan consumption tanpa
+kolom status diproyeksikan RECORDED. Registry tidak menghitung live holding timer;
+GET package menghitung timer/effective_status terpisah dari status yang tersimpan.
+
+SCHOOL_RECEIVING bukan adapter registry. Bukti penerimaan tertaut pada manifest,
+package/school dan consumption; movement inspeksi memakai asset PACKAGE. Edge
+RECEIVED hanya dibuat untuk accepted. Registry CONSUMPTION dibuat saat finalisasi,
+edge CONSUMED hanya bila ada jumlah dikonsumsi. Detail arah edge/movement dan
+kasus discarded/mixed ada di [event catalog](event-catalog.md#event-penerimaan-sekolah-dan-konsumsi-internal).
+
+Adapter COMPLAINT/RECALL yang sudah tercantum belum berarti API keluhan/recall
+aktif. Traversal backward/forward, timeline/passport dan impact analysis masih TODO.

@@ -6,8 +6,9 @@ diimplementasikan. DATABASE_URL lokal kini memakai login fsos_app dengan members
 fsos_runtime. Migrasi, seed dan maintenance memakai ADMIN_DATABASE_URL terpisah.
 Lihat [panduan koneksi](database-connections.md) untuk bootstrap dan pengelolaan secret.
 
-Sudah diterapkan pada fsos bersama migrasi 0016 pada 2026-09-11. Seluruh 53 tes
-lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema.
+Profil terkini mensyaratkan head `20260911_0022`, diterapkan pada fsos pada
+2026-09-11. Sumber daftar hak adalah `app/core/database/runtime_role.py`. Angka
+pemeriksaan pada bagian riwayat merujuk tahap tersebut, bukan total suite terkini.
 
 ## Hak yang diberikan
 
@@ -20,6 +21,11 @@ lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema
 | alarm_acknowledgment, device_session_end | INSERT |
 | receiving, raw_material_batch | INSERT; UPDATE hanya status, updated_at, updated_by, version |
 | receiving_item | INSERT; UPDATE hanya accepted, updated_at, updated_by, version |
+| food_item, recipe, packaging_type | INSERT; UPDATE definisi/audit/version dan soft delete sesuai allowlist kolom |
+| stock_entry, production_item, holding_log, delivery_item, school_receiving, consumption | INSERT; bukti immutable, tidak ada UPDATE bisnis |
+| production_batch | INSERT; UPDATE status, waktu start/finish/holding, actual_quantity, holding_policy dan audit/version |
+| package | INSERT; UPDATE status, remaining_minutes, holding_started_at/holding_finished_at dan audit/version |
+| delivery | INSERT; UPDATE status, departure/arrival/ETA dan audit/version |
 | asset_relationship, asset_movement, event_log | INSERT; SELECT yang sudah ada, tanpa UPDATE/DELETE |
 | auth_session, refresh_token | SELECT/INSERT; UPDATE hanya revoked_at atau used_at masing-masing |
 | Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
@@ -54,7 +60,7 @@ DSL atau input pengguna. Profil runtime tidak mendapat hak membuat/mengganti tri
 
 ## Provisioning
 
-Setelah migrasi 0017, jalankan dengan koneksi administratif dari root proyek:
+Setelah migrasi 0022, jalankan dengan koneksi administratif dari root proyek:
 
 ```powershell
 .\venv\Scripts\python.exe -m alembic upgrade head
@@ -73,7 +79,7 @@ berlaku pada database target, sehingga login lain yang bergantung pada grant PUB
 tersebut memerlukan grant administratif eksplisit. Owner/superuser lokal tetap
 bisa menjalankan migrasi dan maintenance.
 
-Script mensyaratkan head tepat 0017 sebagai pagar peninjauan. Saat schema/service
+Script mensyaratkan head tepat 0022 sebagai pagar peninjauan. Saat schema/service
 berubah, tinjau serta perbarui profil dan tes sebelum provisioning ulang. Script
 tidak memberikan LOGIN, mengubah password, mengubah ownership objek, memberi
 membership kepada user existing, atau mengalihkan DATABASE_URL.
@@ -131,7 +137,7 @@ Soft delete master: UPDATE deleted_at/deleted_by kini diberikan pada storage,
 storage_zone, supplier, raw_material dan supplier_material (kitchen sudah tersedia).
 Service mengisi audit/version dan memeriksa referensi sebelum menandai terhapus.
 Tidak ada privilege DELETE SQL baru, cascade atau DDL. Grant sudah diterapkan pada
-fsos sebagai dependensi API DELETE; schema tetap 0017 tanpa migrasi.
+fsos sebagai dependensi API DELETE; perubahan soft delete tersebut tidak menambah migrasi pada tahap 0017.
 
 School kini mendapatkan INSERT dan UPDATE kolom definisi/audit/version termasuk
 soft delete, tanpa UPDATE kitchen_id/tenant_id atau hard delete. Ini dependensi
@@ -151,3 +157,18 @@ receiving atau akun baru. CLI `backend/scripts/provision_receiving_permissions.p
 mengikuti pola administratif development yang ada: --tenant, --actor, --role,
 --permission berulang dan --apply untuk write; default check, tidak merestore grant
 revoked. Gunakan ADMIN_DATABASE_URL untuk CLI, DATABASE_URL terbatas untuk API.
+
+
+## Profil transaksi bisnis (0018?0022)
+
+Grant minimum stok/produksi/paket/pengiriman/penerimaan sekolah/konsumsi tersedia.
+Kolom jumlah alokasi paket, recipe_snapshot, planned_quantity dan item manifest
+bukan kolom UPDATE runtime. Bukti penerimaan/konsumsi dapat memiliki nullable legacy,
+tetapi API memeriksa kelayakan sebelum transaksi. Trigger immutable tetap berlaku
+pada consumption meski UPDATE(version) diperlukan adapter registry untuk locking.
+
+Provisioning profil database tidak memberikan permission RBAC aplikasi. CLI
+`provision_receiving_permissions.py` kini mencakup 26 permission transaksi, bukan
+hanya receiving. Lihat [daftar dan penggunaan](receiving-permissions.md). CLI
+supply mencakup 18 permission enam master, termasuk food item/resep/jenis kemasan;
+lihat [permission master supply](supply-permissions.md). Tidak membuat user baru.

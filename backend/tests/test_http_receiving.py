@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from uuid import UUID, uuid4
 
 import httpx
@@ -6,6 +7,7 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.database.development_seed import seed_development, seed_id
@@ -19,7 +21,13 @@ from app.modules.authentication.api import router as auth
 from app.modules.authentication.infrastructure.access_tokens import AccessTokenCodec
 from app.modules.authentication.infrastructure.orm import Permission, RolePermission, User
 from app.modules.authentication.infrastructure.passwords import hash_password_async
-from app.modules.master.infrastructure.orm import Supplier, SupplierMaterial, Tenant
+from app.modules.master.infrastructure.orm import (
+    Kitchen,
+    Storage,
+    Supplier,
+    SupplierMaterial,
+    Tenant,
+)
 from app.modules.receiving.infrastructure.orm import RawMaterialBatch
 from app.modules.traceability.infrastructure.orm import (
     AssetMovement,
@@ -112,6 +120,57 @@ async def test_receiving_business_flow():
                     events = (await c.execute(select(EventLog.event_type, EventLog.payload).where(EventLog.entity_uuid == UUID(rid)))).all()
                     assert {e.event_type for e in events} == {'receiving.created', 'receiving.completed'}
                     assert next(e.payload['receiving'] for e in events if e.event_type == 'receiving.completed') == done
+                    stock = f'/api/v1/raw-material-batches/{bid}'
+                    balance = (await client.get(stock + '/stock', headers=headers)).json()['data']
+                    assert balance['available_quantity'] == '0'
+                    assert balance['unallocated_quantity'] == '2.500000'
+                    allocation = {'expected_version': 2, 'storage_id': str(seed_id('storage')), 'quantity': '1.5'}
+                    rejected_id = next(i['raw_material_batch_id'] for i in done['items'] if not i['accepted'])
+                    assert (await client.post(f'/api/v1/raw-material-batches/{rejected_id}/putaway', headers=headers, json=allocation)).status_code == 409
+                    await c.execute(text('RESET ROLE'))
+                    other_kitchen, wrong_storage, foreign_storage = uuid4(), uuid4(), uuid4()
+                    await c.execute(insert(Kitchen).values(kitchen_id=other_kitchen, tenant_id=seed_id('tenant'), kitchen_code='OTHER', kitchen_name='Other'))
+                    await c.execute(insert(Storage).values(storage_id=wrong_storage, tenant_id=seed_id('tenant'), kitchen_id=other_kitchen, storage_code='OTHER', storage_name='Other', storage_type='COLD_STORAGE'))
+                    foreign_kitchen = uuid4()
+                    await c.execute(insert(Kitchen).values(kitchen_id=foreign_kitchen, tenant_id=other, kitchen_code='FOREIGN', kitchen_name='Foreign'))
+                    await c.execute(insert(Storage).values(storage_id=foreign_storage, tenant_id=other, kitchen_id=foreign_kitchen, storage_code='FOREIGN', storage_name='Foreign', storage_type='COLD_STORAGE'))
+                    await c.execute(text('SET LOCAL ROLE fsos_runtime'))
+                    for sid in (wrong_storage, foreign_storage):
+                        assert (await client.post(stock + '/putaway', headers=headers, json={**allocation, 'storage_id': str(sid)})).status_code == 409
+
+                    assert (await client.post(stock + '/putaway', headers=headers, json={**allocation, 'quantity': '3'})).status_code == 409
+                    assert (await client.post(stock + '/putaway', headers=headers, json={**allocation, 'storage_id': str(uuid4())})).status_code == 409
+                    assert (await client.post(stock + '/putaway', headers=headers, json={**allocation, 'quantity': '-1'})).status_code == 400
+                    put = await client.post(stock + '/putaway', headers=headers, json=allocation)
+                    assert put.status_code == 201, put.text
+                    assert put.json()['data']['batch_version'] == 3
+                    assert (await client.post(stock + '/putaway', headers=headers, json=allocation)).status_code == 409
+                    remaining = {**allocation, 'expected_version': 3, 'quantity': '1'}
+                    assert (await client.post(stock + '/putaway', headers=headers, json=remaining)).status_code == 201
+                    balance = (await client.get(stock + '/stock', headers=headers)).json()['data']
+                    assert balance['available_quantity'] == '2.500000'
+                    assert balance['unallocated_quantity'] == '0.000000'
+                    assert balance['version'] == 4
+                    assert (await client.post(stock + '/putaway', headers=headers, json={**remaining, 'expected_version': 4})).status_code == 409
+                    # Expiry affects availability, without rewriting historical quantities.
+                    await c.execute(text('RESET ROLE'))
+                    await c.execute(update(RawMaterialBatch).where(RawMaterialBatch.raw_material_batch_id == UUID(bid)).values(expired_date=date(2020, 1, 1)))
+                    await c.execute(text('SET LOCAL ROLE fsos_runtime'))
+                    expired = (await client.get(stock + '/stock', headers=headers)).json()['data']
+                    assert expired['available_quantity'] == '0' and expired['putaway_quantity'] == '2.500000'
+                    assert (await client.post(stock + '/putaway', headers=headers, json={**remaining, 'expected_version': 4})).status_code == 409
+                    await c.execute(text('RESET ROLE'))
+                    await c.execute(update(RawMaterialBatch).where(RawMaterialBatch.raw_material_batch_id == UUID(bid)).values(expired_date=None))
+                    for statement in ('UPDATE stock_entry SET quantity=1', 'DELETE FROM stock_entry', 'TRUNCATE stock_entry'):
+                        with pytest.raises(DBAPIError):
+                            async with c.begin_nested():
+                                await c.execute(text(statement))
+                    await c.execute(text('SET LOCAL ROLE fsos_runtime'))
+                    ledger = (await client.get(stock + '/stock-entries', params={'limit': 1}, headers=headers)).json()['data']
+                    assert ledger['next_offset'] == 1 and ledger['items'][0]['batch_version'] == 4
+                    assert (await client.get(f'/api/v1/raw-material-batches/{foreign}/stock', headers=headers)).status_code == 404
+                    assert await c.scalar(select(func.count()).select_from(AssetMovement).where(AssetMovement.asset_uuid == asset)) == 3
+                    assert await c.scalar(select(func.count()).select_from(EventLog).where(EventLog.entity_uuid == UUID(bid), EventLog.event_type == 'stock.putaway')) == 2
                     cancelled = await client.post(url, headers=headers, json={**body, 'items': [{**body['items'][0], 'batch_code': 'CANCEL'}]})
                     assert cancelled.status_code == 201, cancelled.text
                     cancel_id = cancelled.json()['data']['receiving_id']
@@ -125,6 +184,12 @@ async def test_receiving_business_flow():
                     await c.execute(text('SET LOCAL ROLE fsos_runtime'))
                     assert (await client.get(f'{url}/{rid}', headers=headers)).status_code == 403
                     assert (await client.get(f'/api/v1/raw-material-batches/{bid}', headers=headers)).status_code == 200
+                    await c.execute(text('RESET ROLE'))
+                    await c.execute(update(RolePermission).where(RolePermission.permission_id.in_(select(Permission.permission_id).where(Permission.permission_code == 'Stock.Putaway'))).values(deleted_at=func.now()))
+                    await c.execute(text('SET LOCAL ROLE fsos_runtime'))
+                    assert (await client.post(stock + '/putaway', headers=headers, json={**remaining, 'expected_version': 4})).status_code == 403
+                    assert (await client.get(stock + '/stock', headers=headers)).status_code == 200
+
             finally:
                 await outer.rollback()
     finally:
@@ -134,7 +199,7 @@ async def test_receiving_business_flow():
 def test_receiving_openapi():
     schema = create_app().openapi()
     paths = {p: ops for p, ops in schema['paths'].items() if p.startswith(('/api/v1/receivings', '/api/v1/raw-material-batches'))}
-    assert sum(len(ops) for ops in paths.values()) == 7
+    assert sum(len(ops) for ops in paths.values()) == 11
     for ops in paths.values():
         for operation in ops.values():
             assert '422' not in operation['responses']

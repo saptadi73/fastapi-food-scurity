@@ -14,17 +14,20 @@ from app.modules.master.infrastructure.orm import (
     SupplierMaterial,
     Vehicle,
 )
-from app.modules.production.infrastructure.orm import ProductionBatch
-from app.modules.receiving.infrastructure.orm import RawMaterialBatch, Receiving
+from app.modules.production.infrastructure.orm import Package, ProductionBatch, ProductionItem
+from app.modules.receiving.infrastructure.orm import RawMaterialBatch, Receiving, StockEntry
 from app.modules.telemetry.infrastructure.orm import GPSLog, TemperatureLog
 from app.modules.traceability.infrastructure.registry import sync_source
 
 REFERENCES = {
+    'packaging_type': ((Package, 'package_type_id'),),
+    'food_item': ((Recipe, 'food_item_id'), (ProductionBatch, 'menu')),
+    'recipe': (),
     'driver': ((Vehicle, 'driver_id'), (Delivery, 'driver')),
     'vehicle': ((Delivery, 'vehicle'), (GPSLog, 'vehicle_uuid')),
     'school': ((DeliveryItem, 'school_id'), (SchoolReceiving, 'school'), (Complaint, 'school_id')),
-    'kitchen': ((Storage, 'kitchen_id'), (School, 'kitchen_id'), (Receiving, 'kitchen_id'), (ProductionBatch, 'kitchen')),
-    'storage': ((StorageZone, 'storage_id'), (TemperatureLog, 'storage_uuid')),
+    'kitchen': ((Delivery, 'kitchen_id'), (Storage, 'kitchen_id'), (School, 'kitchen_id'), (Receiving, 'kitchen_id'), (ProductionBatch, 'kitchen')),
+    'storage': ((ProductionItem, 'storage_id'), (StockEntry, 'storage_id'), (StorageZone, 'storage_id'), (TemperatureLog, 'storage_uuid')),
     'storage_zone': ((Device, 'zone_id'),),
     'supplier': ((SupplierMaterial, 'supplier_id'), (Receiving, 'supplier_id')),
     'raw_material': ((SupplierMaterial, 'raw_material_id'), (Recipe, 'raw_material_id'), (RawMaterialBatch, 'raw_material_id')),

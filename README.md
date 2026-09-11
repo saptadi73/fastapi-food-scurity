@@ -4,6 +4,23 @@ Fondasi FastAPI berdasarkan dokumen desain di [docs](docs). Python development
 menggunakan **3.11** dan virtual environment `venv` di root proyek.
 Pelacakan pekerjaan ada di [TODO.md](TODO.md).
 
+## Status dan peta dokumentasi
+
+Status implementasi 2026-09-11: **120 operasi HTTP**, termasuk 60 operasi CRUD
+untuk dua belas master. Alur penerimaan bahan/stok, produksi, pengemasan/holding,
+pengiriman, penerimaan sekolah dan konsumsi tersedia. Complaint, investigasi/recall,
+device/binding dan ingestion/engine pemantauan masih bertahap.
+
+- [Indeks dokumentasi backend](backend/docs/README.md): pilih panduan sesuai pekerjaan.
+- [Kontrak frontend](backend/docs/frontend-api.md): endpoint aktif, permission, payload dan contoh.
+- [Event catalog](backend/docs/event-catalog.md): event internal aktif dan transport yang masih rencana.
+- [Changelog frontend](backend/docs/frontend-changelog.md): riwayat perubahan kontrak.
+- [Database](backend/docs/database.md) dan [role runtime](backend/docs/runtime-database-role.md): migrasi head `20260911_0022` dan hak service.
+- [Permission transaksi](backend/docs/receiving-permissions.md): akses receiving sampai konsumsi.
+
+Dokumen `docs/01` sampai `docs/18` adalah desain; keberadaan endpoint dalam desain
+atau tabel dalam schema tidak berarti fitur aktif. Gunakan kontrak frontend untuk integrasi.
+
 ## Menjalankan di Windows PowerShell
 
 Dari `C:\projek\fastapi-Food-Security`:
@@ -58,7 +75,7 @@ atau folder `backend`. `.env` dan `venv` diabaikan Git.
 | Kebutuhan | Dependensi Python | Status awal |
 | --- | --- | --- |
 | REST, validasi, WebSocket | FastAPI, Uvicorn, Pydantic v2 | Fondasi API tersedia |
-| PostgreSQL 18 | SQLAlchemy 2 async, asyncpg, Alembic | Schema hingga revisi 0017, termasuk telemetry, history aturan dan sesi autentikasi |
+| PostgreSQL 18 | SQLAlchemy 2 async, asyncpg, Alembic | Schema hingga revisi 0022, termasuk stok, produksi, pengiriman dan konsumsi |
 | PostGIS | GeoAlchemy2 | Extension aktif; lokasi kitchen berupa Point SRID 4326 |
 | Redis | redis | Client tersedia; koneksi dan cache belum diimplementasikan |
 | Mosquitto MQTT | aiomqtt | Client tersedia; worker dan broker belum diimplementasikan |
@@ -102,11 +119,15 @@ dengan trigger perlindungan riwayat. `20260911_0012` melengkapi operational
 event_log beserta index timeline dan perlindungan riwayat. `20260911_0013`
 menambahkan empat sensor log berpartisi bulanan dan pesan MQTT. Partisi awal
 September–November 2026; panduan menambah bulan ada di dokumentasi database.
+Revisi 0015?0017 melengkapi history aturan, profil runtime dan sesi autentikasi.
+Revisi 0018?0022 melengkapi ledger stok, produksi, pengemasan/holding, pengiriman
+dan bukti penerimaan sekolah/konsumsi; rincian ada di panduan database.
 Model terdaftar di
 `backend/alembic/env.py`. Untuk menerapkan revisi yang sudah tersedia:
 
 ```powershell
 .\venv\Scripts\python.exe -m alembic -c backend\alembic.ini upgrade head
+.\venv\Scripts\python.exe backend\scripts\provision_runtime_role.py
 .\venv\Scripts\python.exe -m alembic -c backend\alembic.ini check
 .\venv\Scripts\python.exe backend\scripts\check_database.py
 ```
@@ -128,7 +149,7 @@ Schema telemetry docs/08 kini lengkap melalui migrasi `20260911_0014`, termasuk
 health, alarm, holding, signal, battery, dan device session. Acknowledgment alarm
 dan penutupan sesi memakai tabel bukti tambahan yang append-only. Detail satuan
 dan cara membaca status efektif tersedia di [panduan database](backend/docs/database.md).
-Ingestion MQTT dan API bisnis lainnya masih dalam TODO. Holding rule memiliki
+Ingestion MQTT, complaint/recall dan modul pendukung yang belum tersedia masih dalam TODO. Holding rule memiliki
 [endpoint manajemen dan history](backend/docs/frontend-api.md#kontrak-holding-rule-http).
 Alarm rule memiliki [enam endpoint konfigurasi termasuk aktivasi](backend/docs/frontend-api.md#kontrak-alarm-rule-http); engine dan executor masih TODO.
 
@@ -158,7 +179,7 @@ untuk pengembangan berikutnya. Modul bisnis harus mengikuti struktur
 Envelope mengikuti docs/16 yang lebih khusus untuk API: metadata memakai
 `request_id`, `correlation_id`, `timestamp`, dan `execution_time_ms`. Validasi input
 menghasilkan HTTP 400. Request ID dan JSON logging ke console sudah tersedia;
-rotasi file, audit log, dan event bus masih TODO.
+event bisnis tersimpan atomik di event_log; rotasi file, audit menyeluruh dan event bus masih TODO.
 
 Development Windows memakai Uvicorn. Deployment Linux mengikuti docs/18:
 Gunicorn, empat worker, Nginx, dan HTTPS. Dependensi Linux ada di
@@ -174,23 +195,19 @@ Konfigurasi production tersebut belum diuji atau dideploy. Gunakan paket
 [dokumentasi Uvicorn](https://www.uvicorn.org/deployment/).
 Referensi instalasi: [FastAPI](https://fastapi.tiangolo.com/tutorial/),
 [SQLAlchemy async](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html).
-#   f a s t a p i - f o o d - s c u r i t y 
- 
- 
-
 API kejadian alarm: [kontrak frontend](backend/docs/frontend-api.md#kontrak-alarm-telemetry-http). Empat permission telemetry sudah diprovision ke DEV_MAINTENANCE lokal. [API sesi perangkat](backend/docs/frontend-api.md#kontrak-sesi-perangkat-http) dan [runbook provisioning](backend/docs/telemetry-permissions.md) tersedia.
 
-Master operasional kitchen/storage/zone: [15 operasi API dan kontrak frontend](backend/docs/frontend-api.md#kontrak-master-kitchen-storage-zone). Supplier/bahan/relasi juga tersedia; berikutnya transaksi receiving.
+Master operasional kitchen/storage/zone: [15 operasi API dan kontrak frontend](backend/docs/frontend-api.md#kontrak-master-kitchen-storage-zone). Supplier/bahan/relasi serta transaksi receiving dan stok juga tersedia.
 
 [Kontrak supplier dan bahan baku](backend/docs/frontend-api.md#kontrak-supplier-bahan-dan-relasi): 15 operasi termasuk soft delete untuk persiapan receiving.
 
 CRUD keenam master kini mencakup [DELETE soft delete](backend/docs/frontend-api.md#soft-delete-master-operasional), dengan permission Delete, version dan proteksi referensi.
 
-[Cakupan CRUD per modul](backend/docs/frontend-api.md#cakupan-crud-dan-status-modul): CRUD lengkap saat ini sembilan master termasuk sekolah, kendaraan dan driver. Menu/resep, jenis kemasan dan master device masih belum memiliki CRUD HTTP.
+[Cakupan CRUD per modul](backend/docs/frontend-api.md#cakupan-crud-dan-status-modul): CRUD lengkap saat ini dua belas master, termasuk sekolah, kendaraan/driver, menu/resep dan jenis kemasan. Master device/binding belum memiliki CRUD HTTP.
 
-[CRUD master sekolah](backend/docs/frontend-api.md#kontrak-crud-sekolah) tersedia: list/detail/create/replace/soft delete. Transaksi penerimaan sekolah masih TODO.
+[CRUD master sekolah](backend/docs/frontend-api.md#kontrak-crud-sekolah) tersedia: list/detail/create/replace/soft delete. Transaksi penerimaan sekolah dan konsumsi sudah tersedia.
 
-[CRUD kendaraan dan driver](backend/docs/frontend-api.md#kontrak-kendaraan-dan-driver) tersedia; transaksi delivery dan GPS ingestion tetap TODO.
+[CRUD kendaraan dan driver](backend/docs/frontend-api.md#kontrak-kendaraan-dan-driver) tersedia; transaksi delivery sudah tersedia; GPS ingestion masih TODO.
 
 
 ### Penerimaan bahan
@@ -198,4 +215,4 @@ CRUD keenam master kini mencakup [DELETE soft delete](backend/docs/frontend-api.
 API receiving kini menyediakan create header/item/batch, inspeksi complete, cancel
 CREATED dan list/detail receiving/batch. Lihat [panduan frontend receiving](backend/docs/frontend-api.md#kontrak-receiving-dan-batch-bahan)
 serta [event tersimpan](backend/docs/event-catalog.md#event-receiving-tersimpan).
-Batch accepted mencatat movement/traceability; saldo stok dan putaway masih TODO.
+Batch accepted mencatat movement/traceability; putaway, saldo stok dan ledger sudah tersedia.

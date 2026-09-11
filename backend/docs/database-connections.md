@@ -10,11 +10,11 @@ Konfigurasi memisahkan dua pool SQLAlchemy:
 Pool dibuat secara lazy dan ditutup terpisah. Jalur administratif **tidak fallback**
 ke DATABASE_URL ketika ADMIN_DATABASE_URL kosong. API tidak perlu membuat pool admin
 untuk health/readiness atau service bisnis. Kedua URL tetap memakai driver
-postgresql+asyncpg. Schema saat ini revisi 0017 (sesi dan refresh token).
+postgresql+asyncpg. Schema saat ini revisi 0022 (hingga penerimaan sekolah dan konsumsi).
 
 ## Bootstrap development lokal
 
-Dari root proyek, setelah role/profile migrasi 0017 tersedia:
+Dari root proyek, setelah role/profile migrasi 0022 tersedia:
 
 ```powershell
 .\venv\Scripts\python.exe backend\scripts\configure_runtime_login.py
@@ -27,7 +27,7 @@ file lokal tidak diarahkan ke database lain tanpa sengaja.
 Urutannya:
 
 1. Pilih ADMIN_DATABASE_URL atau, pada instalasi lama, DATABASE_URL owner yang ada.
-2. Provisioning ulang profil fsos_runtime sesuai revisi 0017.
+2. Provisioning ulang profil fsos_runtime sesuai revisi 0022.
 3. Buat login fsos_app dengan secret acak 48 byte dari generator kriptografis,
    disimpan PostgreSQL sebagai SCRAM-SHA-256. LOGIN bukan superuser, owner objek,
    pembuat database/role, replication, atau BYPASSRLS. Membership hanya fsos_runtime.
@@ -85,7 +85,7 @@ DATABASE_URL/ADMIN_DATABASE_URL ke variabel frontend, browser storage, atau repo
 User dev-maintenance tetap actor internal tanpa password login. Dokumentasi
 [API frontend](frontend-api.md) tetap menjadi daftar endpoint yang dapat dipanggil.
 
-## Hasil verifikasi lokal (2026-09-11)
+## Riwayat verifikasi pemisahan koneksi (2026-09-11)
 
 Konfigurasi fsos sudah dialihkan ke fsos_app; bootstrap ulang tidak mereset password.
 Seluruh 55 tes lulus. Readiness mengembalikan 200, backfill registry berhasil melalui

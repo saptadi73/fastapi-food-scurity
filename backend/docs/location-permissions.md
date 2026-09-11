@@ -28,7 +28,8 @@ Profil database runtime telah diperbarui sebagai dependensi minimum fitur:
 INSERT storage/storage_zone; UPDATE hanya definisi/audit/version yang diperlukan,
 tanpa perubahan kitchen_id/storage_id induk, tenant, hard delete atau DDL.
 Jalankan backend/scripts/provision_runtime_role.py dengan konfigurasi admin saat
-memperbarui lingkungan development lain. Schema tetap Alembic 0017; tidak ada migrasi.
+memperbarui lingkungan development lain. Perubahan permission lokasi ini tidak menambah migrasi pada tahap 0017.
+Untuk instalasi sekarang gunakan head 0022 dan [profil runtime terkini](runtime-database-role.md).
 
 Frontend muat ulang /auth/me untuk snapshot permission terbaru. Endpoint mengecek
 permission DB setiap request; Read/Write independen dan tidak memerlukan grant

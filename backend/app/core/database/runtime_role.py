@@ -9,8 +9,14 @@ from app.modules.traceability.infrastructure.registry import SOURCES
 
 ROLE = 'fsos_runtime'
 MARKER = 'FSOS managed runtime role v1'
-INSERT_TABLES = ('receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
+INSERT_TABLES = ('school_receiving', 'consumption', 'delivery', 'delivery_item', 'package', 'packaging_type', 'holding_log', 'production_batch', 'production_item', 'food_item', 'recipe', 'stock_entry', 'receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
 UPDATES = {
+    'delivery': 'status,departure_time,arrival_time,estimated_arrival_time,updated_at,updated_by,version',
+    'package': 'status,remaining_minutes,holding_started_at,holding_finished_at,updated_at,updated_by,version',
+    'packaging_type': 'code,name,material,volume,updated_at,updated_by,deleted_at,deleted_by,version',
+    'production_batch': 'holding_policy,holding_started_at,holding_expired_at,status,started_at,finished_at,actual_quantity,updated_at,updated_by,version',
+    'food_item': 'food_code,food_name,category,holding_limit_minutes,status,updated_at,updated_by,deleted_at,deleted_by,version',
+    'recipe': 'quantity,uom,updated_at,updated_by,deleted_at,deleted_by,version',
     'receiving': 'status,updated_at,updated_by,version',
     'receiving_item': 'accepted,updated_at,updated_by,version',
     'raw_material_batch': 'status,updated_at,updated_by,version',
@@ -33,8 +39,8 @@ UPDATES = {
 
 async def provision_runtime_role(connection):
     await connection.execute(text('SELECT pg_advisory_xact_lock(20260911, 17)'))
-    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260911_0017')")):
-        raise ValueError('Runtime grant profile requires migration 0017; review it when schema changes')
+    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260911_0022')")):
+        raise ValueError('Runtime grant profile requires migration 0022; review it when schema changes')
     existing = (await connection.execute(text("""
         SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
                shobj_description(oid, 'pg_authid') AS marker FROM pg_roles WHERE rolname='fsos_runtime'
@@ -75,4 +81,4 @@ async def provision_runtime_role(connection):
         await connection.execute(text(f'GRANT UPDATE (version) ON public.{table} TO fsos_runtime'))
     await connection.execute(text('REVOKE ALL ON FUNCTION public.fsos_create_telemetry_partitions(date, integer) FROM PUBLIC, fsos_runtime'))
     await connection.execute(text('GRANT EXECUTE ON FUNCTION public.fsos_capture_rule_revision() TO fsos_runtime'))
-    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260911_0017'}
+    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260911_0022'}

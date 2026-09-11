@@ -98,3 +98,25 @@ class ReceivingItem(AuditMixin, Base):
     uom: Mapped[str] = mapped_column(String(30))
     temperature: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     accepted: Mapped[bool | None]
+
+
+class StockEntry(AuditMixin, Base):
+    """Immutable putaway ledger; balances are derived, never separately overwritten."""
+    __tablename__ = 'stock_entry'
+    __table_args__ = (
+        ForeignKeyConstraint(['tenant_id', 'raw_material_batch_id'],
+                             ['raw_material_batch.tenant_id', 'raw_material_batch.raw_material_batch_id'],
+                             ondelete='RESTRICT'),
+        ForeignKeyConstraint(['tenant_id', 'storage_id'], ['storage.tenant_id', 'storage.storage_id'], ondelete='RESTRICT'),
+        CheckConstraint("quantity > 0 AND quantity <> 'NaN'::numeric", name='ck_stock_quantity'),
+        CheckConstraint('batch_version >= 1', name='ck_stock_batch_version'),
+        CheckConstraint('deleted_at IS NULL AND deleted_by IS NULL', name='ck_stock_not_deleted'),
+        UniqueConstraint('tenant_id', 'raw_material_batch_id', 'batch_version', name='uq_stock_batch_version'),
+        Index('ix_stock_storage', 'tenant_id', 'storage_id'),
+    )
+    stock_entry_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID]
+    raw_material_batch_id: Mapped[UUID]
+    storage_id: Mapped[UUID]
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 6))
+    batch_version: Mapped[int]

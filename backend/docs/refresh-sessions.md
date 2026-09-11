@@ -26,7 +26,8 @@ Token bukan JWT dan tidak membawa claim yang dipercaya aplikasi.
 
 Runtime mendapat SELECT/INSERT pada kedua tabel, UPDATE(revoked_at) pada
 session dan UPDATE(used_at) pada refresh_token. Tidak ada UPDATE identitas/hash,
-DELETE/TRUNCATE/DDL baru. Profil provisioning mensyaratkan head 0017. Pembatasan
+DELETE/TRUNCATE/DDL baru. Fitur sesi diperkenalkan pada 0017; profil provisioning saat ini mensyaratkan
+head 0022, lihat [role runtime](runtime-database-role.md). Pembatasan
 service bukan RLS; SQL langsung dengan credential database tetap memiliki grant
 yang disebutkan. Revokasi monotonic dijaga service, bukan trigger immutable.
 
@@ -113,7 +114,8 @@ izin selesai; tidak membatalkan transaksi yang sedang berjalan.
 
 ## Deployment, frontend dan pekerjaan tersisa
 
-Sesudah upgrade 0017 jalankan provision_runtime_role.py melalui ADMIN_DATABASE_URL.
+Sesudah upgrade ke head terkini (0022), jalankan provision_runtime_role.py melalui
+ADMIN_DATABASE_URL; jangan berhenti di 0017 saat menggunakan profil runtime terkini.
 API/service memakai DATABASE_URL. Tidak ada Redis/MQTT atau event baru. Schema dan
 service kini terhubung ke login HTTP. Cookie/CSRF, rate limiting lintas worker,
 audit persisten, bootstrap production dan cleanup sesi tetap perlu dibuat.

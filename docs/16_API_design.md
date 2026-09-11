@@ -2,6 +2,10 @@
 
 # 16_API_Design.md
 
+> Dokumen ini desain draft, bukan daftar endpoint aktif. Implementasi hingga
+> penerimaan sekolah/konsumsi dicatat di [kontrak frontend](../backend/docs/frontend-api.md)
+> dan [indeks backend](../backend/docs/README.md).
+
 Version : 1.0
 
 Status :
