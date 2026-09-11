@@ -22,7 +22,7 @@ TEST_URL = os.environ.get("FSOS_TEST_DATABASE_URL", "")
 async def test_migration_roundtrip_and_constraints():
     assert (make_url(TEST_URL).database or "").startswith("fsos_test")
     engine = create_async_engine(TEST_URL)
-    env = {**os.environ, "DATABASE_URL": TEST_URL}
+    env = {**os.environ, "DATABASE_URL": TEST_URL, "ADMIN_DATABASE_URL": TEST_URL}
 
     def migrate(target):
         result = subprocess.run(

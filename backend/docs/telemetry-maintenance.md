@@ -133,3 +133,10 @@ laporan maintenance melalui API. CLI/admin harus memantau hasil task terpisah.
 hilang, ensure berulang, batas bulan salah, serta guard dinonaktifkan pada database
 uji. Pemeriksaan fsos setelah ensure melaporkan 24 partisi siap dan Alembic check
 tanpa perubahan schema.
+
+## Koneksi administratif
+
+Script create/maintain partitions dan task Windows kini mengambil
+ADMIN_DATABASE_URL dari konfigurasi backend, bukan pool runtime DATABASE_URL.
+Task lokal sudah dijalankan ulang setelah pemisahan dan selesai LastTaskResult=0.
+Lihat [panduan koneksi](database-connections.md) untuk konfigurasi deployment.

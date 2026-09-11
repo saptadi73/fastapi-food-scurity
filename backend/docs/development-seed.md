@@ -22,9 +22,10 @@ diberikan tetap kosong; tidak menetapkan ambang keamanan pangan contoh sebagai d
 
 Actor pemeliharaan tidak diberi password (`password_hash` awal NULL). Actor ini
 dipakai CLI/service administratif melalui akses database tepercaya, **bukan akun
-login frontend**. Endpoint login/JWT belum tersedia. Implementasi login nantinya
-harus menolak actor tanpa password/credential autentikasi yang sah. Bootstrap admin
-manusia dengan password pilihan pengguna tetap pekerjaan P2.
+login frontend**. Endpoint login/JWT kini tersedia dan menolak actor tanpa
+password/credential autentikasi yang sah dengan 401. Bootstrap akun
+manusia development dengan password pilihan pengguna tersedia melalui
+[panduan CLI](human-bootstrap.md); bootstrap admin production tetap pekerjaan P2.
 
 ID fixture menggunakan UUID v5 deterministik pada namespace proyek agar stabil
 ketika seed diulang. UUID ini bukan secret atau token autentikasi:
@@ -40,7 +41,7 @@ Migrasi head harus sudah terpasang. Dari root proyek:
 .\venv\Scripts\python.exe backend\scripts\seed_development.py
 ```
 
-Script menggunakan DATABASE_URL dari konfigurasi lokal. Hasil JSON berisi
+Script menggunakan ADMIN_DATABASE_URL dari konfigurasi lokal. Hasil JSON berisi
 tenant_id, actor_id, created (record fixture baru), serta registry_processed per
 tipe aset. Pengulangan normal menghasilkan created=0. registry_processed menghitung
 sumber yang diperiksa, bukan jumlah aset baru. Exit 0 berarti commit berhasil,

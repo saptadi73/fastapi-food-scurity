@@ -13,11 +13,19 @@ class Base(DeclarativeBase):
 
 @lru_cache
 def get_engine():
-    url = get_settings().database_url.get_secret_value()
+    return _create_engine(get_settings().database_url.get_secret_value(), 'DATABASE_URL')
+
+
+@lru_cache
+def get_admin_engine():
+    return _create_engine(get_settings().admin_database_url.get_secret_value(), 'ADMIN_DATABASE_URL')
+
+
+def _create_engine(url: str, setting: str):
     if not url:
-        raise RuntimeError("Isi DATABASE_URL di backend/.env terlebih dahulu.")
+        raise RuntimeError(f"Isi {setting} untuk koneksi yang diminta.")
     if not url.startswith("postgresql+asyncpg://"):
-        raise ValueError("DATABASE_URL harus menggunakan postgresql+asyncpg://")
+        raise ValueError(f"{setting} harus menggunakan postgresql+asyncpg://")
     return create_async_engine(url, pool_pre_ping=True)
 
 
@@ -29,6 +37,7 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def close_database() -> None:
-    if get_engine.cache_info().currsize:
-        await get_engine().dispose()
-        get_engine.cache_clear()
+    for factory in (get_engine, get_admin_engine):
+        if factory.cache_info().currsize:
+            await factory().dispose()
+            factory.cache_clear()

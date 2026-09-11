@@ -1,5 +1,98 @@
 # Perubahan kontrak frontend
 
+## 2026-09-11 - Bootstrap akun manusia development
+
+- CLI administratif membuat akun ACTIVE baru dan membership role tenant yang
+  dipilih, dengan password tersembunyi dan hash bcrypt. Akun existing tidak diubah.
+- --check memeriksa profil/tenant/actor/role tanpa insert atau prompt password.
+  [Panduan lengkap](human-bootstrap.md) mencakup command, input/output dan error.
+- Login/me memakai kontrak yang sama; tidak ada signup HTTP, event atau email baru.
+  Actor dev-maintenance tetap tanpa password. Bootstrap production masih TODO.
+- Verifikasi: 113 tes lulus, Ruff bersih; --check lokal tidak membuat akun contoh.
+
+## 2026-09-11 - Endpoint autentikasi HTTP aktif
+
+- POST /api/v1/auth/login, /auth/refresh, /auth/logout serta GET /auth/me tersedia.
+  Payload JSON, respons data terstruktur, bearer, error 400/401/429/503 dan contoh
+  lengkap ada pada [panduan frontend](frontend-api.md#kontrak-autentikasi-http).
+- Response token hanya dikirim sesudah commit; refresh reuse commit revokasi
+  sebelum 401. Logout selalu 200 logged_out=true untuk token lolos schema.
+- /me memeriksa sid/akun/tenant dan membaca RBAC terkini. Tidak ada cookie auth.
+- Semua respons auth no-store. Limiter sementara 100 request/menit/IP per proses
+  mengirim Retry-After; CORS tetap tersedia pada 429. OpenAPI auth memakai 400,
+  tanpa 422 otomatis, serta schema respons yang terstruktur.
+- JWT_SECRET acak disiapkan hanya di .env lokal yang diabaikan Git; restart proses
+  lama untuk memuat konfigurasi. Tidak ada password akun manusia yang dibuat.
+- Log operasional auth tanpa secret tersedia; tidak ada event bus baru. Audit
+  persisten dan limiter Redis lintas worker tetap TODO.
+- Verifikasi: suite 103 tes lulus; sesudah perbaikan urutan CORS, 20 tes API,
+  readiness dan autentikasi dijalankan ulang dan lulus (104 kasus tersedia).
+
+## 2026-09-11 - Penyimpanan dan rotasi refresh token
+
+- Migrasi 0017 menambah auth_session dan refresh_token dengan hash, tanpa plaintext.
+- SessionService menyediakan login internal, rotasi, deteksi reuse, logout keluarga
+  dan resolver access yang memeriksa sid. Expiry keluarga tetap tujuh hari.
+- Tidak ada endpoint HTTP/event baru. [Panduan sesi](refresh-sessions.md) menjelaskan
+  hasil/error, commit revokasi, refresh bersamaan serta langkah integrasi frontend.
+- Verifikasi: 99 tes lulus, migrasi/grant 0017 diterapkan pada fsos, Alembic check bersih.
+
+## 2026-09-11 - Autentikasi akun melalui database
+
+- AccountService memverifikasi username/password per tenant dan menghasilkan
+  identitas serta snapshot RBAC aktif. Kegagalan kredensial memakai pesan seragam
+  dan bcrypt dummy untuk akun tidak ditemukan atau hash tidak tersedia.
+- resolve_access memvalidasi JWT dan akun/tenant terkini; permission operasi tetap
+  diperiksa dari database. Password reset belum mencabut JWT lama secara otomatis.
+- Kontrak input/hasil/error dan transaksi tersedia di [autentikasi](authentication.md).
+  Belum ada endpoint login/refresh/logout, event atau respons HTTP baru.
+- Verifikasi: suite 93 tes lulus; setelah empat kasus input baru, lima tes akun
+  dijalankan ulang dan lulus. Ruff bersih.
+
+## 2026-09-11 - Primitive password dan access JWT
+
+- bcrypt cost 12, kebijakan panjang UTF-8, salt acak serta wrapper async tersedia.
+- Codec access JWT 15 menit memvalidasi signature/algoritma, issuer/audience,
+  tujuan token, claim wajib dan UUID. RBAC tetap perlu dibaca dari database.
+- Belum ada endpoint login/refresh/logout atau bearer dependency. Tidak ada akun
+  diberi password, perubahan secret lokal, kontrak HTTP atau event baru.
+- [Panduan autentikasi](authentication.md) mencatat parameter, hasil, error dan
+  pekerjaan integrasi yang masih diperlukan sebelum frontend dapat login.
+- Verifikasi: 89 tes lulus, Ruff dan pip check bersih.
+
+## 2026-09-11 - Daftar status efektif alarm dan sesi
+
+- Service list_alarms/list_sessions menambahkan pagination, filter UUID publik
+  perangkat, status efektif dan rentang waktu. Daftar/detail memakai proyeksi sama.
+- Alarm dari snapshot impor atau bukti acknowledgment termasuk dalam filter
+  acknowledged=True; sesi impor/ditutup melalui bukti termasuk is_open=False.
+- [Input, hasil, permission dan error](telemetry-lifecycle.md#daftar-alarm-dan-sesi-service-internal)
+  didokumentasikan sebagai kontrak internal. Belum ada endpoint/payload HTTP
+  frontend atau event baru; integrasi browser menunggu autentikasi dan route.
+- Verifikasi: 66 tes lulus dan Ruff bersih, termasuk kesesuaian daftar/detail
+  serta akses dengan role database terbatas. Tidak ada migrasi baru.
+
+## 2026-09-11 - Rekonsiliasi sumber digital asset
+
+- Service internal dan CLI mendeteksi sumber hilang serta perbedaan proyeksi per
+  tenant/type; scope actor/permission tetap diwajibkan dan hasil dipaginasi.
+- Tidak ada endpoint, request/response HTTP, event atau channel subscribe baru.
+  Frontend belum dapat mengambil laporan ini melalui API.
+- Payload CLI, status temuan, cursor, error dan langkah tindak lanjut tersedia
+  pada [panduan registry](asset-registry.md#rekonsiliasi-registry-laporan-tanpa-mutasi).
+- Pemeriksaan tidak mengubah UUID/version atau menghapus bukti traceability.
+- Verifikasi: 56 tes lulus; scan runtime FSOS_DEV atas 15 tipe menemukan enam
+  registry sinkron. Health/readiness dan kontrak HTTP tetap diuji dalam suite.
+
+## 2026-09-11 — Pemisahan koneksi API dan admin
+
+- API/readiness/backfill memakai pool DATABASE_URL; migrasi, seed, provisioning
+  serta maintenance memakai pool ADMIN_DATABASE_URL tanpa fallback ke runtime.
+- Bootstrap lokal fsos_app menghasilkan secret tanpa mencetaknya, memverifikasi
+  hak runtime, dan memperbarui konfigurasi lokal. Akun ini bukan login frontend.
+- Tidak ada endpoint, payload, respons HTTP, atau event runtime baru.
+  Proses backend yang sudah berjalan perlu restart agar konfigurasi baru terbaca.
+
 ## 2026-09-11 — Profil privilege runtime database
 
 - Migrasi 0016 memperketat fungsi capture history aturan; grup fsos_runtime

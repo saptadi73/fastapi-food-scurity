@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database.development_seed import seed_development, seed_id
+from app.core.database.runtime_login import provision_runtime_login
 from app.core.database.runtime_role import provision_runtime_role
 from app.core.database.scope import ActorScope
 from app.modules.master.application.rule_service import RuleService
@@ -28,6 +29,11 @@ async def test_runtime_role_services_and_denied_operations():
                     await seed_development(session, environment='development')
                     await provision_runtime_role(c)
                     await provision_runtime_role(c)
+                    assert await provision_runtime_login(c, 'test-only-generated-secret-that-is-not-a-default-password') is True
+                    assert await provision_runtime_login(c, 'not-rotated', allow_existing=True) is False
+                    with pytest.raises(ValueError):
+                        await provision_runtime_login(c, 'unrequested-password-reset')
+                    assert await session.scalar(text("SELECT pg_has_role('fsos_app','fsos_runtime','MEMBER')")) is True
                     await c.execute(text('SET LOCAL ROLE fsos_runtime'))
                     scope = ActorScope(seed_id('tenant'), seed_id('actor'))
                     repo = KitchenRepository(session, scope)
@@ -35,6 +41,8 @@ async def test_runtime_role_services_and_denied_operations():
                     changed = await repo.update(seed_id('kitchen'), {'kitchen_name': 'Runtime edit'}, expected_version=kitchen['version'])
                     assert changed['kitchen_name'] == 'Runtime edit'
                     assert (await RegistryService(session, scope).backfill('KITCHEN'))['processed'] == 1
+                    report = await RegistryService(session, scope).reconcile('KITCHEN')
+                    assert report['processed'] == 1 and report['issue_count'] == 0
                     service = RuleService(session, scope, 'alarm')
                     rule = await service.create({
                         'rule_code': 'RUNTIME_TEST', 'rule_name': 'Runtime', 'rule_category': 'TEMPERATURE', 'priority': 'HIGH',

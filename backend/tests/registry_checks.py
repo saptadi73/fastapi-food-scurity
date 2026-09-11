@@ -50,6 +50,9 @@ async def verify_registry(c, tenant, other_tenant):
                     cursor = batch['last_id']
                     seen.append(cursor)
                 assert set(seen) == set(ids) and len(seen) == len(ids)
+                report = await service.reconcile(kind)
+                by_source = {item['entity_uuid']: item for item in report['items']}
+                assert all(by_source[identifier]['state'] == 'IN_SYNC' for identifier in ids), kind
             foreign = await session.scalar(select(Kitchen.kitchen_id).where(Kitchen.tenant_id == other_tenant))
             with pytest.raises(RecordNotFoundError):
                 await service.sync('KITCHEN', foreign)

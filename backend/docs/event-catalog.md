@@ -2,6 +2,16 @@
 
 Terakhir diperbarui: 2026-09-11. Status: **belum ada event yang diterbitkan runtime**.
 
+Endpoint login/refresh/logout terhubung ke SessionService dan mengubah database,
+tanpa event bus/notifikasi. Log operasional mencatat action/outcome/request_id;
+ini bukan audit persisten atau event untuk subscription frontend. REUSED adalah status internal, bukan event frontend.
+Autentikasi akun, resolusi identitas, primitive password dan access JWT belum
+menerbitkan event login/logout; belum ada audit keamanan persisten atau transport baru. GET /auth/me tidak mengubah data atau menerbitkan event.
+
+Bootstrap akun manusia development membuat user/membership serta kolom audit,
+tanpa event user.created, email, token atau sesi otomatis. Mode --check tidak
+menulis data. Tidak ada producer/consumer atau channel frontend baru.
+
 Tabel `event_log` dan bukti telemetry sudah tersedia. Event bus, publisher,
 transactional outbox, worker, MQTT ingestion, WebSocket, dan SSE belum tersedia.
 Insert database tidak otomatis menerbitkan event. Frontend belum memiliki channel
@@ -12,16 +22,23 @@ History revisi alarm/holding rule dicatat trigger database; ini tidak menerbitka
 event perubahan aturan ke frontend. Validator DSL juga tidak menjalankan aksi.
 Service simpan/aktivasi aturan menggunakan trigger history yang sama dan belum
 memiliki publisher/outbox. enabled=true tidak memulai evaluator atau notifikasi.
+Rekonsiliasi registry hanya menghasilkan laporan CLI/service; SOURCE_MISSING dan
+PROJECTION_MISMATCH adalah status temuan, bukan event yang diterbitkan. Tidak ada
+producer, transport, retry/replay atau channel frontend untuk hasil scan.
 Sync/backfill registry digital asset juga hanya memperbarui database. Integrasi
 KitchenRepository belum menerbitkan event registry atau perubahan kitchen.
 Seed development dan backfill FSOS_DEV juga tidak menerbitkan event ke frontend;
 penambahan fixture database bukan contoh delivery/replay event runtime.
+Pembacaan daftar/detail alarm dan sesi memakai status efektif, tanpa mutasi bukti
+atau event. Filter status dan pagination tidak membuat subscription atau channel.
 Service acknowledgment alarm dan penutupan sesi juga belum menerbitkan event.
 device.disconnected pada daftar rencana belum otomatis dikirim ketika close_session dipanggil.
 Maintenance partisi tidak menerbitkan event atau notifikasi frontend; hasilnya
 berupa laporan JSON lokal dan exit code proses/task scheduler.
 Provisioning role runtime dan pengerasan fungsi history tidak menerbitkan event
 frontend. Trigger aturan tetap menyimpan snapshot internal, bukan delivery event.
+Bootstrap login PostgreSQL dan pemisahan pool database juga tidak menerbitkan
+event ke frontend atau membuat event login user aplikasi.
 
 Tautan: [API frontend](frontend-api.md), [changelog](frontend-changelog.md),
 [TODO](../../TODO.md).

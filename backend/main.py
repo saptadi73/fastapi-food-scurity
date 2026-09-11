@@ -14,6 +14,8 @@ from app.core.config.settings import get_settings
 from app.core.database.readiness import check_readiness
 from app.core.database.session import close_database
 from app.core.responses.envelope import Envelope, envelope
+from app.modules.authentication.api.rate_limit import AuthLimitMiddleware, AuthRateLimiter
+from app.modules.authentication.api.router import router as auth_router
 
 logger = logging.getLogger("fsos")
 
@@ -36,16 +38,30 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
-        description="Fondasi backend FSOS. Modul bisnis belum diimplementasikan.",
+        description="Backend FSOS dengan endpoint sistem dan autentikasi sesi. API bisnis belum tersedia.",
         lifespan=lifespan,
     )
+    app.state.auth_limiter = AuthRateLimiter()
+    app.include_router(auth_router, prefix=settings.api_prefix)
+    original_openapi = app.openapi
+
+    def documented_openapi():
+        schema = original_openapi()
+        for path, operations in schema['paths'].items():
+            if path.startswith(f'{settings.api_prefix}/auth/'):
+                for operation in operations.values():
+                    operation.get('responses', {}).pop('422', None)
+        return schema
+
+    app.openapi = documented_openapi
+    app.add_middleware(AuthLimitMiddleware, prefix=f'{settings.api_prefix}/auth/')
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Correlation-ID"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=["X-Request-ID", "Retry-After"],
     )
 
     @app.middleware("http")
@@ -55,6 +71,7 @@ def create_app() -> FastAPI:
             "X-Correlation-ID", request.state.request_id
         )[:128]
         request.state.started_at = perf_counter()
+        is_auth = request.url.path.startswith(f'{settings.api_prefix}/auth/')
         try:
             response = await call_next(request)
         except Exception:
@@ -66,6 +83,9 @@ def create_app() -> FastAPI:
                 status_code=500,
             )
         response.headers["X-Request-ID"] = request.state.request_id
+        if is_auth:
+            response.headers['Cache-Control'] = 'no-store'
+            response.headers['Pragma'] = 'no-cache'
         logger.info(
             "HTTP request",
             extra={

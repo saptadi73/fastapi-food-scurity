@@ -7,12 +7,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.database.runtime_role import provision_runtime_role
-from app.core.database.session import close_database, get_engine
+from app.core.database.session import close_database, get_admin_engine
 
 
 async def main():
     try:
-        async with get_engine().begin() as connection:
+        async with get_admin_engine().begin() as connection:
             result = await provision_runtime_role(connection)
         print(json.dumps(result))
         return 0

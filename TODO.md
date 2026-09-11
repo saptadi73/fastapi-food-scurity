@@ -69,10 +69,14 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   validasi semantik executor (template/target/transisi) sebelum menjalankan action.
 - [x] Uji upgrade/downgrade/upgrade pada database uji terpisah; periksa FK tenant,
   kode kitchen unik per tenant, koordinat, dan pelestarian extension saat downgrade.
-- [ ] Siapkan role aplikasi dengan hak terbatas sebelum production (akun lokal saat ini superuser).
-  **Sebagian selesai:** grup NOLOGIN fsos_runtime sudah diprovisioning di fsos,
-  dengan grant terpilih dan tanpa DDL/hard delete/truncate. Login/secret runtime
-  serta pemisahan koneksi API dari migrasi/maintenance belum diterapkan.
+- [x] Terapkan role aplikasi terbatas pada development: login fsos_app dengan
+  grup NOLOGIN fsos_runtime; DATABASE_URL runtime dipisah dari ADMIN_DATABASE_URL
+  untuk migrasi, seed dan maintenance. Secret acak disimpan hanya di konfigurasi lokal.
+- [x] Verifikasi 55 tes, pool terpisah tanpa fallback admin, bootstrap berulang,
+  readiness 200, backfill runtime, Alembic check dan task partisi admin berhasil.
+- [ ] Siapkan isolasi secret production, owner migrasi khusus tanpa superuser,
+  rotasi credential serta pengujian TLS/deployment. File .env development masih
+  menyimpan kedua koneksi; proses API production hanya boleh menerima secret runtime.
 - [x] Terapkan migrasi `20260911_0016` untuk capture history aturan SECURITY DEFINER
   dengan target tetap/search_path terbatas, tanpa INSERT history langsung untuk runtime.
 - [x] Uji runtime role pada database terpisah: service kitchen/registry/aturan berjalan;
@@ -119,8 +123,14 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   perubahan sumber, soft delete dan rollback; sediakan CLI backfill per tipe/tenant.
 - [x] Jalankan seed actor/permission development dan backfill FSOS_DEV pada fsos:
   enam aset registry tersedia, pengulangan tidak menggandakan data.
-- [ ] Hubungkan service tulis modul lain ke sync, backfill tenant tambahan bila ada,
-  dan implementasikan rekonsiliasi sumber yang hilang.
+- [ ] Hubungkan service tulis modul lain ke sync dan backfill tenant tambahan bila ada.
+- [x] Implementasikan rekonsiliasi registry per tenant/type: laporan sumber hilang,
+  proyeksi berbeda, pagination UUID dan CLI tanpa mutasi bukti. Dokumentasikan
+  payload hasil, izin, exit code, batas scan dan tindak lanjut operator.
+- [x] Verifikasi 56 tes dan Ruff; scan runtime FSOS_DEV untuk 15 tipe memeriksa
+  enam registry dengan issue_count=0, tanpa perubahan data.
+- [ ] Implementasikan pemulihan sumber hilang setelah investigasi, scheduler/alert
+  rekonsiliasi serta endpoint laporan berautentikasi.
 - [ ] Implementasikan event idempotency, pembangunan relationship dan traversal graph.
 - [x] Buat migrasi telemetry, index, dan partisi bulanan (docs/08).
   **Status: schema selesai** melalui revisi 0013–0014, termasuk health/alarm/holding/
@@ -142,8 +152,13 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   permission, validasi waktu serta retry tanpa mengubah bukti pertama.
 - [x] Implementasikan dan uji status efektif alarm/sesi, snapshot impor, actor audit,
   penolakan tenant lain, permission mutasi terpisah, konflik waktu dan rollback.
-- [ ] Tambahkan API finalisasi berautentikasi, provisioning permission telemetry,
-  daftar/pagination, serta ingestion/reconnect yang membuka session_id baru.
+- [x] Tambahkan daftar alarm/sesi internal dengan permission Read, filter perangkat,
+  status efektif dan waktu, urutan timestamp/UUID serta pagination 1..100.
+  Hasil daftar memakai proyeksi yang sama dengan detail, termasuk snapshot impor.
+- [x] Verifikasi 66 tes dan Ruff: filter status sebelum/sesudah finalisasi, tenant,
+  rentang waktu, pagination, validasi input, izin dicabut dan role runtime terbatas.
+- [ ] Tambahkan API daftar/finalisasi berautentikasi, provisioning permission telemetry,
+  serta ingestion/reconnect yang membuka session_id baru.
 - [ ] Jadwalkan pembuatan partisi ke depan, tentukan backfill/archive/retention,
   dan implementasikan ingestion MQTT/idempotency; belum ada penghapusan data otomatis.
 - [x] Buat rolling check/ensure bulanan UTC, verifikasi batas partisi serta guard,
@@ -182,13 +197,43 @@ Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
   dalam setiap perubahan kontrak API/event; wajib sebelum menandai fitur selesai.
 - [ ] Buat BaseEntity domain, interface repository, BaseService, pagination/filter/sort.
 - [ ] Buat event bus dan worker dengan retry, idempotency, serta penanganan gagal.
-- [ ] Implementasikan login JWT: access 15 menit, refresh 7 hari.
-- [ ] Simpan dan rotasi refresh token; sediakan revoke, blacklist, dan logout.
-- [ ] Implementasikan bcrypt cost 12 dan kebijakan panjang password.
+- [x] Implementasikan endpoint login/refresh/logout dan /auth/me: access 15 menit,
+  refresh 7 hari, bearer berbasis sid dan snapshot RBAC database aktif.
+- [x] Terapkan migrasi 20260911_0017 dan grant runtime sesi pada fsos; Alembic
+  check tanpa perbedaan. Seluruh 99 tes lulus termasuk dua refresh bersamaan.
+- [x] Simpan hash refresh token, rotasi dan deteksi reuse dengan pencabutan
+  keluarga sesi; logout per sesi dan resolver sid tersedia melalui service internal.
+- [x] Hubungkan login/refresh/logout ke HTTP; commit sebelum token/401 reuse,
+  error seragam, no-store, OpenAPI terstruktur dan limiter sementara per proses.
+- [ ] Lengkapi audit persisten, limiter lintas worker, revokasi semua perangkat
+  saat reset password, dan kebijakan retensi token; blacklist per-jti
+  belum tersedia (pencabutan saat ini per keluarga sesi).
+- [x] Implementasikan bcrypt cost 12 dan kebijakan 12 karakter sampai 72 byte UTF-8,
+  tanpa truncation/trim, salt acak, verifikasi hash ketat dan wrapper async.
+- [x] Implementasikan codec access JWT 15 menit: HS256 tetap, issuer/audience,
+  claim wajib, tujuan access, UUID dan validasi waktu; tanpa secret bawaan.
+- [x] Verifikasi 89 tes (23 primitive autentikasi), Ruff dan pip check bersih.
+- [x] Hubungkan primitive password ke autentikasi akun internal: username per tenant,
+  status actor/tenant, shared lock/recheck hash dan snapshot RBAC aktif.
+- [x] Tambahkan bcrypt dummy untuk kredensial invalid dan resolusi access JWT
+  ke actor/tenant aktif; permission operasi tetap diperiksa dari database.
+- [x] Verifikasi suite 93 tes; empat kasus username invalid ditambahkan dan lima
+  tes akun dijalankan ulang lulus (97 kasus tersedia), Ruff bersih.
+- [x] Hubungkan autentikasi akun ke dependency current_account dan endpoint HTTP
+  refresh/revoke; log action/outcome tersanitasi dan limiter 100/menit/IP per proses.
+- [x] Verifikasi 103 tes; setelah tes CORS tambahan, 20 tes API/auth/readiness
+  dijalankan ulang lulus (104 kasus tersedia). Ruff bersih.
+- [ ] Lengkapi audit login persisten dan verifikasi mitigasi enumerasi/timing menyeluruh.
 - [ ] Implementasikan RBAC/permission serta validasi tenant setiap akses.
 - [ ] Buat seed role/permission dan bootstrap admin tanpa password bawaan.
   Seed role/permission development selesai; bootstrap admin manusia/production
-  dan credential autentikasi tetap belum dibuat. Actor maintenance tidak punya password.
+  masih TODO. CLI bootstrap akun manusia development dengan password tersembunyi
+  dan role terpilih tersedia; actor maintenance tetap tanpa password.
+- [x] Sediakan CLI bootstrap manusia development dan --check: identitas unik,
+  actor/tenant aktif, role tenant yang dipilih, bcrypt dan membership atomik;
+  existing user/password/grant tidak diubah.
+- [x] Verifikasi 113 tes dan Ruff; --check FSOS_DEV berhasil tanpa membuat akun
+  contoh atau mengubah password actor maintenance.
 - [ ] Tambahkan FK/validasi actor audit sesuai tenant; kolom created_by/updated_by/deleted_by
   saat ini masih UUID tanpa FK.
 - [ ] Implementasikan API key device, OAuth2 client credentials, dan service identity.

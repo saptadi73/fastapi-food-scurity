@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.scope import ActorScope, RecordNotFoundError
@@ -54,6 +54,49 @@ def source_adapter(asset_type: str) -> SourceAdapter:
     if type(asset_type) is not str or asset_type not in SOURCES:
         raise ValueError('Unsupported asset type')
     return SOURCES[asset_type]
+
+
+async def inspect_registry(session: AsyncSession, scope: ActorScope, asset_type: str,
+                           *, after_id: UUID | None, limit: int) -> dict:
+    """One statement snapshot of a registry page; caller authorizes the trusted scope."""
+    adapter = source_adapter(asset_type)
+    source, registry = adapter.model.__table__, DigitalAsset.__table__
+    fields = {
+        'name': source.c[adapter.label] if adapter.label else literal(None),
+        'status': source.c.status if 'status' in source.c else literal('RECORDED'),
+        'deleted_at': source.c.deleted_at, 'deleted_by': source.c.deleted_by,
+    }
+    query = select(
+        registry, source.c[adapter.key].label('source_id'),
+        *(value.label(f'source_{key}') for key, value in fields.items()),
+    ).select_from(registry.outerjoin(source,
+        (source.c.tenant_id == registry.c.tenant_id)
+        & (source.c[adapter.key] == registry.c.entity_uuid),
+    )).where(registry.c.tenant_id == scope.tenant_id, registry.c.asset_type == asset_type)
+    if after_id is not None:
+        query = query.where(registry.c.asset_uuid > after_id)
+    rows = (await session.execute(query.order_by(registry.c.asset_uuid).limit(limit + 1))).mappings().all()
+    items = []
+    for row in rows[:limit]:
+        missing = row['source_id'] is None
+        expected = {key: row[f'source_{key}'] for key in fields}
+        if not adapter.label:
+            expected['name'] = f"{asset_type} {row['entity_uuid']}"
+        changed = [] if missing else [key for key in fields if row[key] != expected[key]]
+        items.append({
+            'asset_uuid': row['asset_uuid'], 'entity_uuid': row['entity_uuid'],
+            'version': row['version'],
+            'state': 'SOURCE_MISSING' if missing else ('PROJECTION_MISMATCH' if changed else 'IN_SYNC'),
+            'changed_fields': changed,
+            'source_deleted': None if missing else row['source_deleted_at'] is not None,
+        })
+    last_id = items[-1]['asset_uuid'] if items else None
+    return {
+        'asset_type': asset_type, 'processed': len(items),
+        'issue_count': sum(item['state'] != 'IN_SYNC' for item in items),
+        'items': items, 'last_id': last_id,
+        'next_cursor': last_id if len(rows) > limit else None,
+    }
 
 
 async def sync_source(session: AsyncSession, scope: ActorScope, asset_type: str, entity_id: UUID) -> dict:

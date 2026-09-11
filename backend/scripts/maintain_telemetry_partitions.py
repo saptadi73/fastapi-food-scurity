@@ -11,14 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import text
 
 from app.core.database.partitions import month_range, partition_report
-from app.core.database.session import close_database, get_engine
+from app.core.database.session import close_database, get_admin_engine
 
 
 async def run(args):
     first = args.start or datetime.now(UTC).date().replace(day=1)
     try:
         month_range(first, args.months)
-        async with get_engine().connect() as connection, connection.begin() as transaction:
+        async with get_admin_engine().connect() as connection, connection.begin() as transaction:
             await connection.execute(text("SET LOCAL lock_timeout = '5s'"))
             await connection.execute(text("SET LOCAL statement_timeout = '30s'"))
             if args.ensure:

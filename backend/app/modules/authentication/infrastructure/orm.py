@@ -1,7 +1,9 @@
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -102,3 +104,35 @@ class RolePermission(AuditMixin, Base):
     tenant_id: Mapped[UUID]
     role_id: Mapped[UUID]
     permission_id: Mapped[UUID]
+
+
+class AuthSession(Base):
+    __tablename__ = 'auth_session'
+    __table_args__ = (
+        ForeignKeyConstraint(['tenant_id', 'user_id'], ['app_user.tenant_id', 'app_user.user_id'], ondelete='RESTRICT', name='fk_auth_session_user'),
+        UniqueConstraint('tenant_id', 'session_id', name='uq_auth_session_tenant'),
+        CheckConstraint('expires_at > created_at', name='ck_auth_session_expiry'),
+        Index('ix_auth_session_user', 'tenant_id', 'user_id'),
+    )
+    session_id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID]
+    user_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RefreshToken(Base):
+    __tablename__ = 'refresh_token'
+    __table_args__ = (
+        ForeignKeyConstraint(['tenant_id', 'session_id'], ['auth_session.tenant_id', 'auth_session.session_id'], ondelete='RESTRICT', name='fk_refresh_session'),
+        UniqueConstraint('token_hash', name='uq_refresh_hash'),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name='ck_refresh_hash'),
+        Index('ix_refresh_session', 'tenant_id', 'session_id'),
+    )
+    token_id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID]
+    session_id: Mapped[UUID]
+    token_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

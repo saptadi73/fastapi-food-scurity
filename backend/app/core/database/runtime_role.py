@@ -9,8 +9,10 @@ from app.modules.traceability.infrastructure.registry import SOURCES
 
 ROLE = 'fsos_runtime'
 MARKER = 'FSOS managed runtime role v1'
-INSERT_TABLES = ('kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end')
+INSERT_TABLES = ('kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
 UPDATES = {
+    'auth_session': 'revoked_at',
+    'refresh_token': 'used_at',
     'kitchen': 'kitchen_code,kitchen_name,latitude,longitude,address,capacity,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'digital_asset': 'name,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'alarm_rule': 'rule_code,rule_name,rule_category,priority,condition,action,enabled,updated_at,updated_by,version',
@@ -20,8 +22,8 @@ UPDATES = {
 
 async def provision_runtime_role(connection):
     await connection.execute(text('SELECT pg_advisory_xact_lock(20260911, 17)'))
-    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260911_0016')")):
-        raise ValueError('Runtime grant profile requires migration 0016; review it when schema changes')
+    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260911_0017')")):
+        raise ValueError('Runtime grant profile requires migration 0017; review it when schema changes')
     existing = (await connection.execute(text("""
         SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
                shobj_description(oid, 'pg_authid') AS marker FROM pg_roles WHERE rolname='fsos_runtime'
@@ -62,4 +64,4 @@ async def provision_runtime_role(connection):
         await connection.execute(text(f'GRANT UPDATE (version) ON public.{table} TO fsos_runtime'))
     await connection.execute(text('REVOKE ALL ON FUNCTION public.fsos_create_telemetry_partitions(date, integer) FROM PUBLIC, fsos_runtime'))
     await connection.execute(text('GRANT EXECUTE ON FUNCTION public.fsos_capture_rule_revision() TO fsos_runtime'))
-    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260911_0016'}
+    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260911_0017'}

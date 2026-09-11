@@ -2,8 +2,9 @@
 
 Profil `fsos_runtime` adalah grup privilege PostgreSQL **NOLOGIN**, bukan user
 frontend atau role RBAC aplikasi. Profil disiapkan untuk service yang sudah
-diimplementasikan. Koneksi lokal DATABASE_URL masih menggunakan akun owner lama;
-provisioning ini tidak mengganti password/URL atau mengubah task maintenance.
+diimplementasikan. DATABASE_URL lokal kini memakai login fsos_app dengan membership
+fsos_runtime. Migrasi, seed dan maintenance memakai ADMIN_DATABASE_URL terpisah.
+Lihat [panduan koneksi](database-connections.md) untuk bootstrap dan pengelolaan secret.
 
 Sudah diterapkan pada fsos bersama migrasi 0016 pada 2026-09-11. Seluruh 53 tes
 lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema.
@@ -17,6 +18,7 @@ lulus pada database uji, dan Alembic check fsos tidak menemukan perubahan schema
 | alembic_version | SELECT saja |
 | kitchen, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
 | alarm_acknowledgment, device_session_end | INSERT |
+| auth_session, refresh_token | SELECT/INSERT; UPDATE hanya revoked_at atau used_at masing-masing |
 | Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
 | History revisi aturan | SELECT; INSERT hanya melalui fungsi trigger yang diperketat |
 
@@ -49,7 +51,7 @@ DSL atau input pengguna. Profil runtime tidak mendapat hak membuat/mengganti tri
 
 ## Provisioning
 
-Setelah migrasi 0016, jalankan dengan koneksi administratif dari root proyek:
+Setelah migrasi 0017, jalankan dengan koneksi administratif dari root proyek:
 
 ```powershell
 .\venv\Scripts\python.exe -m alembic upgrade head
@@ -68,24 +70,23 @@ berlaku pada database target, sehingga login lain yang bergantung pada grant PUB
 tersebut memerlukan grant administratif eksplisit. Owner/superuser lokal tetap
 bisa menjalankan migrasi dan maintenance.
 
-Script mensyaratkan head tepat 0016 sebagai pagar peninjauan. Saat schema/service
+Script mensyaratkan head tepat 0017 sebagai pagar peninjauan. Saat schema/service
 berubah, tinjau serta perbarui profil dan tes sebelum provisioning ulang. Script
 tidak memberikan LOGIN, mengubah password, mengubah ownership objek, memberi
 membership kepada user existing, atau mengalihkan DATABASE_URL.
 
-## Pemisahan koneksi sebelum production
+## Pemisahan koneksi runtime dan admin
 
-Masih harus diselesaikan: buat login aplikasi khusus dengan secret yang dikelola
-secara aman, berikan membership hanya ke fsos_runtime, lalu gunakan login itu untuk
-pool API. Login tidak boleh menjadi owner database/tabel, superuser, atau mewarisi
-role administratif lain. Gunakan koneksi berbeda untuk migrasi, seed, provisioning,
-dan maintenance partisi. Jangan mengganti DATABASE_URL bersama saat ini tanpa
-memisahkan konfigurasi skrip/task maintenance; runtime memang tidak memiliki hak DDL.
+Pemisahan sudah diterapkan pada development: fsos_app memakai grant grup NOLOGIN
+fsos_runtime dan koneksi owner dipakai hanya pada jalur administratif. Script
+configure_runtime_login.py membuat login dan mengalihkan konfigurasi lokal setelah
+verifikasi. provision_runtime_role.py sendiri hanya mengelola profil grant.
 
-NOLOGIN membuat grup ini tidak dapat dipakai sebagai username koneksi langsung.
-Pengujian memakai SET LOCAL ROLE pada database terpisah untuk memverifikasi grant,
-bukan uji password/TLS/login baru. Pengujian autentikasi koneksi tetap diperlukan
-setelah login runtime dan pengelolaan secret disiapkan.
+Tes grant memakai SET LOCAL ROLE pada database terpisah. Koneksi fsos_app lokal
+juga telah diverifikasi langsung: readiness berhasil, backfill registry berjalan,
+dan password salah gagal terhubung. Seluruh 55 tes lulus. Task partisi melalui
+koneksi administratif selesai dengan LastTaskResult=0. Production masih memerlukan
+isolasi secret dari proses API, owner migrasi khusus dan pengujian TLS/deployment.
 
 ## Batas keamanan dan frontend
 
@@ -104,3 +105,10 @@ history tercatat meskipun INSERT history langsung ditolak, serta penolakan DDL,
 TEMP, disable trigger, truncate, hard delete, perubahan user/grant dan maintenance.
 Upgrade/downgrade fungsi diuji pada database terpisah. Profil belum menyatakan
 seluruh konfigurasi production sudah selesai.
+
+## Perluasan profil sesi (0017)
+
+Profil grant diperbarui dan diprovisioning ulang setelah migrasi sesi. Runtime
+mendapat INSERT auth_session/refresh_token serta UPDATE hanya kolom revokasi atau
+pemakaian; tidak mendapat hak mengubah user/tenant, hash atau waktu expiry sesi.
+Grant ini tidak membuat endpoint login. Lihat [sesi refresh](refresh-sessions.md).

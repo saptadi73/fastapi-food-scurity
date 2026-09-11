@@ -9,12 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import text
 
-from app.core.database.session import close_database, get_engine
+from app.core.database.session import close_database, get_admin_engine
 
 
 async def main(start: date, months: int):
     try:
-        async with get_engine().begin() as connection:
+        async with get_admin_engine().begin() as connection:
             await connection.execute(text("SELECT public.fsos_create_telemetry_partitions(:start, :months)"),
                                      {"start": start, "months": months})
         print(f"Partisi siap: {start:%Y-%m}, {months} bulan, empat tabel sensor (UTC).")

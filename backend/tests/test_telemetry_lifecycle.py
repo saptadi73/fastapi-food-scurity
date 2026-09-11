@@ -3,11 +3,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database.development_seed import seed_development, seed_id
+from app.core.database.runtime_role import provision_runtime_role
 from app.core.database.scope import ActorScope, RecordNotFoundError
 from app.modules.authentication.infrastructure.authorization import PermissionDeniedError
 from app.modules.authentication.infrastructure.orm import Permission, RolePermission
@@ -55,6 +56,10 @@ async def test_telemetry_lifecycle():
                         await service.get_alarm(alarm)
                     with pytest.raises(PermissionDeniedError):
                         await service.acknowledge(alarm)
+                    with pytest.raises(PermissionDeniedError):
+                        await service.list_alarms()
+                    with pytest.raises(PermissionDeniedError):
+                        await service.list_sessions()
 
                     async def grant(code):
                         permission = uuid4()
@@ -66,6 +71,10 @@ async def test_telemetry_lifecycle():
                         await grant(code)
                     assert (await service.get_alarm(alarm))['effective_acknowledged'] is False
                     assert (await service.get_session(session_id))['is_open'] is True
+                    assert [r['alarm_id'] for r in (await service.list_alarms(acknowledged=False))['items']] == [alarm]
+                    assert [r['alarm_id'] for r in (await service.list_alarms(acknowledged=True))['items']] == [imported_alarm]
+                    assert [r['session_id'] for r in (await service.list_sessions(is_open=True))['items']] == [session_id]
+                    assert [r['session_id'] for r in (await service.list_sessions(is_open=False))['items']] == [imported_session]
                     with pytest.raises(PermissionDeniedError):
                         await service.acknowledge(alarm)
                     with pytest.raises(PermissionDeniedError):
@@ -113,8 +122,58 @@ async def test_telemetry_lifecycle():
                             await service.acknowledge(identifier)
                         with pytest.raises(RecordNotFoundError):
                             await service.close_session(identifier, disconnected_at=ended)
+                    # Shared projection: list filters include both imported and separately completed evidence.
+                    for method, key, ids, status in (
+                        (service.list_alarms, 'alarm_id', [alarm, imported_alarm], {'acknowledged': True}),
+                        (service.list_sessions, 'session_id', [session_id, imported_session], {'is_open': False}),
+                    ):
+                        page = await method(limit=1, since=connected, until=ended, device_uuid=device, **status)
+                        next_page = await method(limit=1, offset=page['next_offset'], **status)
+                        assert page['next_offset'] == 1 and next_page['next_offset'] is None
+                        assert [page['items'][0][key], next_page['items'][0][key]] == sorted(ids, reverse=True)
+                        for row in (page['items'][0], next_page['items'][0]):
+                            detail = await (service.get_alarm(row[key]) if key == 'alarm_id' else service.get_session(row[key]))
+                            assert row == detail
+                        assert (await method(offset=2))['items'] == []
+                        assert (await method(until=connected))['items'] == []
+                        assert (await method(since=connected + timedelta(microseconds=1)))['items'] == []
+                        assert (await method(device_uuid=other_device))['items'] == []
+                        assert (await method(device_uuid=uuid4()))['items'] == []
+                        assert (await method(**{k: not v for k, v in status.items()}))['items'] == []
+                    assert await session.scalar(select(func.count()).select_from(AlarmAcknowledgment)) == 1
+                    assert await session.scalar(select(func.count()).select_from(DeviceSessionEnd)) == 1
+                    await provision_runtime_role(c)
+                    await c.execute(text('SET LOCAL ROLE fsos_runtime'))
+                    assert len((await service.list_alarms())['items']) == 2
+                    assert len((await service.list_sessions())['items']) == 2
+                    await c.execute(text('RESET ROLE'))
+                    await session.execute(update(RolePermission.__table__).where(RolePermission.tenant_id == tenant).values(deleted_at=func.now()))
+                    for method in (service.list_alarms, service.list_sessions):
+                        with pytest.raises(PermissionDeniedError):
+                            await method()
             finally:
                 await transaction.rollback()
             assert await c.scalar(select(AlarmLog.alarm_id).where(AlarmLog.alarm_id == alarm)) is None
     finally:
         await engine.dispose()
+
+
+@pytest.mark.parametrize('kwargs', [
+    {'offset': -1}, {'offset': True}, {'limit': 0}, {'limit': 101}, {'limit': False},
+    {'device_uuid': 'invalid'}, {'since': '2026-09-11'},
+    {'until': datetime(2026, 1, 1)},  # noqa: DTZ001 - intentional invalid input
+    {'since': datetime(2026, 1, 1, tzinfo=UTC), 'until': datetime(2026, 1, 1, tzinfo=UTC)},
+])
+async def test_telemetry_list_invalid_parameters(kwargs):
+    service = TelemetryLifecycleService(None, ActorScope(uuid4(), uuid4()))
+    for method in (service.list_alarms, service.list_sessions):
+        with pytest.raises(ValueError):
+            await method(**kwargs)
+
+
+async def test_telemetry_list_strict_boolean_filters():
+    service = TelemetryLifecycleService(None, ActorScope(uuid4(), uuid4()))
+    with pytest.raises(ValueError):
+        await service.list_alarms(acknowledged=1)
+    with pytest.raises(ValueError):
+        await service.list_sessions(is_open='false')

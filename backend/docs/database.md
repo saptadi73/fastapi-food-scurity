@@ -2,11 +2,12 @@
 
 PostgreSQL 18 lokal berjalan di localhost:5432. Database `fsos` yang disediakan
 pengguna telah dihubungkan melalui `backend/.env`. Kredensial tidak dicatat di
-dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0016`.
+dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0017`.
 
 [Profil privilege fsos_runtime](runtime-database-role.md) sudah diprovisioning
-sebagai grup NOLOGIN. Koneksi lokal masih owner; login runtime dan pemisahan
-koneksi migrasi/maintenance belum dialihkan. Migrasi 0016 memperketat capture history
+sebagai grup NOLOGIN. Login fsos_app kini dipakai DATABASE_URL; migrasi/maintenance
+memakai ADMIN_DATABASE_URL. Lihat [pemisahan koneksi](database-connections.md).
+Migrasi 0016 memperketat capture history
 aturan sehingga runtime tidak memerlukan INSERT langsung pada tabel history.
 
 [Seed development](development-seed.md) sudah diterapkan pada tenant FSOS_DEV:
@@ -426,8 +427,9 @@ Pastikan database target memang milik aplikasi. Untuk database dengan nama/user
 lain yang sudah ada, administrator cukup menjalankan `enable_extensions.sql`
 pada database target, kemudian mengisi `.env` dan menerapkan Alembic.
 
-User lokal yang diberikan saat ini memiliki hak superuser. Gunakan role aplikasi
-terbatas dan pisahkan provisioning administratif pada deployment production.
+Koneksi runtime lokal menggunakan fsos_app dengan hak terbatas. Koneksi admin
+lokal masih memakai owner superuser; production membutuhkan owner migrasi khusus
+dan isolasi secret administratif dari proses API.
 
 ## Tes integrasi
 
@@ -448,3 +450,11 @@ Database utama fsos tidak pernah di-downgrade dalam verifikasi tersebut.
 
 Referensi: [psql PostgreSQL 18](https://www.postgresql.org/docs/18/app-psql.html)
 dan [Alembic async migrations](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic).
+
+## Sesi autentikasi (0017)
+
+Migrasi 20260911_0017 menambahkan auth_session dan refresh_token, FK tenant/user/session,
+index lookup serta hash token unik. Hanya hash refresh disimpan, bukan plaintext.
+Profil runtime sudah diperluas untuk operasi sesi terbatas. Rincian lifecycle,
+rotasi bersamaan, revokasi dan kontrak transaksi ada di [panduan sesi](refresh-sessions.md).
+Upgrade/downgrade masuk pengujian roundtrip pada database terpisah.

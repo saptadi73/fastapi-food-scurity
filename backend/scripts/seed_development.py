@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config.settings import get_settings
 from app.core.database.development_seed import seed_development
-from app.core.database.session import close_database, get_engine
+from app.core.database.session import close_database, get_admin_engine
 
 
 async def main():
@@ -18,7 +18,7 @@ async def main():
         # Check before connecting, too: production must not acquire a seed connection.
         if get_settings().environment != 'development':
             raise ValueError('Development only')
-        async with async_sessionmaker(get_engine())() as session, session.begin():
+        async with async_sessionmaker(get_admin_engine())() as session, session.begin():
             result = await seed_development(session, environment=get_settings().environment)
         print(json.dumps(result, indent=2))
         return 0

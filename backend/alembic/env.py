@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from alembic import context
 from app.core.config.settings import get_settings
-from app.core.database.session import Base, get_engine
+from app.core.database.session import Base, get_admin_engine
 from app.core.events import orm as event_orm  # noqa: F401
 from app.modules.authentication.infrastructure import orm as auth_orm  # noqa: F401
 from app.modules.complaint.infrastructure import orm as complaint_orm  # noqa: F401
@@ -28,9 +28,9 @@ def include_object(obj, name, type_, reflected, compare_to):
 
 
 def run_migrations_offline():
-    url = get_settings().database_url.get_secret_value()
+    url = get_settings().admin_database_url.get_secret_value()
     if not url:
-        raise RuntimeError("Isi DATABASE_URL di backend/.env terlebih dahulu.")
+        raise RuntimeError("Isi ADMIN_DATABASE_URL untuk migrasi.")
     context.configure(
         url=url, target_metadata=target_metadata, literal_binds=True,
         dialect_opts={"paramstyle": "named"}, compare_type=True,
@@ -61,7 +61,7 @@ def do_run_migrations(connection):
 
 
 async def run_migrations_online():
-    engine = get_engine()
+    engine = get_admin_engine()
     try:
         async with engine.connect() as connection:
             await connection.run_sync(do_run_migrations)

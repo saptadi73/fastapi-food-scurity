@@ -1,7 +1,8 @@
 # Panduan integrasi frontend FSOS
 
 Terakhir diperbarui: 2026-09-11. Versi aplikasi: 0.1.0.
-Status: dua endpoint sistem tersedia; API bisnis dan autentikasi belum tersedia.
+Status: dua endpoint sistem dan empat endpoint autentikasi tersedia. API bisnis
+(master, aturan, telemetry, dan lainnya) belum tersedia.
 
 Dokumen ini menjelaskan implementasi yang dapat dipanggil sekarang.
 [Desain API](../../docs/16_API_design.md) adalah roadmap draft, bukan daftar
@@ -23,8 +24,8 @@ Tautan: [Event catalog](event-catalog.md), [perubahan kontrak](frontend-changelo
 
 Route dokumentasi berada di origin backend, di luar prefix API. Seluruh route
 dokumentasi saat ini publik dan tanpa payload/path/query parameter aplikasi.
-OpenAPI sudah mencantumkan endpoint serta envelope; `data` masih bertipe bebas
-pada schema OpenAPI, sehingga detail field per endpoint ada di panduan ini.
+OpenAPI mencantumkan endpoint dan envelope. Data respons autentikasi memiliki
+schema terstruktur; data endpoint sistem masih bertipe bebas di OpenAPI.
 
 Origin frontend harus tercantum di `CORS_ORIGINS` backend; contoh konfigurasi
 development adalah `["http://localhost:5173"]`. Default kode adalah daftar kosong.
@@ -38,12 +39,15 @@ Perbedaan host atau port berarti origin berbeda. CORS bukan autentikasi.
 | `X-Correlation-ID` | Request opsional | Menghubungkan request satu aktivitas; dipotong maksimal 128 karakter |
 | `X-Request-ID` | Response | UUID baru setiap request; tersedia untuk JavaScript melalui CORS |
 | `Content-Type: application/json` | Response API | Format envelope |
-| `Cache-Control: no-store` | Response `/ready` | Hasil probe tidak boleh disimpan cache |
+| `Cache-Control: no-store` | Response `/ready` dan `/auth/*` | Respons tidak boleh disimpan cache |
+| `Content-Type: application/json` | Request POST autentikasi | Body JSON wajib; bukan form OAuth |
+| `Authorization: Bearer <access_token>` | Request `/auth/me` | Access JWT dengan sesi aktif |
+| `Retry-After` | Response 429 autentikasi | Detik sebelum mencoba lagi; diekspos lewat CORS |
+| `WWW-Authenticate: Bearer` | Response 401 autentikasi | Challenge bearer |
 
 Kedua endpoint sistem tidak membutuhkan token, API key, tenant ID, atau permission
-khusus. Login JWT, refresh/logout, RBAC, dan API key device masih TODO.
-Header `Authorization`/`X-API-Key` yang diizinkan CORS belum berarti autentikasi
-sudah berfungsi. Jangan memasukkan kredensial PostgreSQL/MQTT ke frontend.
+khusus. Login JWT, refresh, logout dan /auth/me sudah aktif. API key device
+masih TODO. Permission bisnis tetap harus diperiksa per operasi dari database. Jangan memasukkan kredensial PostgreSQL/MQTT ke frontend.
 
 ## Envelope API
 
@@ -69,6 +73,10 @@ error dari proxy/jaringan dapat berada di luar envelope aplikasi.
 | --- | --- | --- | --- | --- |
 | GET | `/api/v1/health` | Liveness proses API | Tidak ada | 200 |
 | GET | `/api/v1/ready` | Kesiapan database aplikasi | Tidak ada | 200 atau 503 |
+| POST | `/api/v1/auth/login` | Autentikasi akun dalam tenant | tenant_id, username, password | 200 |
+| POST | `/api/v1/auth/refresh` | Rotasi token sesi | refresh_token | 200 |
+| POST | `/api/v1/auth/logout` | Cabut satu sesi | refresh_token | 200 |
+| GET | `/api/v1/auth/me` | Identitas dan RBAC aktif | Tidak ada; bearer header | 200 |
 
 ### GET /api/v1/health
 
@@ -229,7 +237,7 @@ Contoh **404** untuk `GET /api/v1/missing`:
 `field` adalah lokasi input dipisahkan titik dan `message` menjelaskan validasi.
 Contoh field ini hanya ilustrasi handler, bukan payload endpoint bisnis aktif.
 Detail input sensitif tidak disalin ke daftar errors. 401/403/409/422 bisnis dalam
-desain belum merupakan perilaku endpoint aktif.
+bisnis belum menjadi kontrak aktif; 401 autentikasi dijelaskan di bawah.
 
 ## Contoh pemanggilan frontend
 
@@ -268,6 +276,29 @@ menganggap `ready: true` sebagai autentikasi atau kesiapan semua fitur bisnis.
 
 ## API bisnis dan realtime
 
+[Sesi dan refresh token](refresh-sessions.md) terhubung ke endpoint autentikasi di
+atas. Browser memakai JSON dan bearer; tidak ada cookie refresh otomatis. Lihat
+bagian kontrak autentikasi di bawah untuk payload, respons dan error lengkap.
+
+[Daftar alarm/sesi](telemetry-lifecycle.md#daftar-alarm-dan-sesi-service-internal)
+kini tersedia pada service internal dengan filter perangkat, status efektif,
+rentang waktu dan pagination. Belum ada endpoint HTTP untuk memanggilnya dari
+browser; query parameter dan JSON HTTP belum menjadi kontrak aktif. Panduan
+service merinci input/hasil, izin, error dan batas pagination. Perubahan ini
+tidak mengubah respons health/ready atau menyediakan subscription realtime.
+
+
+[Rekonsiliasi digital asset](asset-registry.md#rekonsiliasi-registry-laporan-tanpa-mutasi)
+tersedia sebagai service internal/CLI dengan hasil IN_SYNC, SOURCE_MISSING, atau
+PROJECTION_MISMATCH dan pagination UUID registry. Hasil tersebut bukan response
+HTTP aktif: belum ada endpoint untuk dashboard, payload browser, atau subscription.
+Scan tidak mengubah data maupun menghasilkan event; kontrak health/ready tetap.
+
+
+[Pemisahan koneksi database](database-connections.md) memakai DATABASE_URL runtime
+dan ADMIN_DATABASE_URL administratif. fsos_app adalah login PostgreSQL backend,
+bukan akun frontend. Perubahan ini tidak menambah endpoint atau mengubah envelope.
+
 [Role PostgreSQL runtime](runtime-database-role.md) kini dipisahkan sebagai profil
 privilege NOLOGIN. Ini konfigurasi backend, bukan role login frontend. Tidak ada
 payload/response HTTP baru dan credential database tetap tidak boleh dikirim ke browser.
@@ -303,10 +334,10 @@ Belum ada route kitchen atau kontrak payload `expected_version` untuk HTTP.
 Error internal repository belum dipetakan ke status HTTP bisnis; frontend
 menunggu endpoint, schema, auth/permission, dan dokumentasinya saat diimplementasikan.
 
-Login, master data, device, telemetry, receiving, production, package, holding,
+Master data, device, telemetry, receiving, production, package, holding,
 traceability, fleet, school, complaint, recall, dashboard, analytics, dan QR
-belum memiliki endpoint aktif. Pagination, filter, sort, upload, serta endpoint
-acknowledgment alarm/akhir sesi belum diimplementasikan. Payloadnya belum menjadi
+belum memiliki endpoint aktif. Pagination, filter, sort, upload, serta
+acknowledgment alarm/akhir sesi belum tersedia melalui HTTP. Payloadnya belum menjadi
 kontrak; akan ditambahkan saat endpoint dibuat.
 
 Tidak ada route WebSocket atau SSE aktif. Frontend belum dapat berlangganan
@@ -318,3 +349,282 @@ Perubahan API wajib memperbarui halaman ini, OpenAPI/schema, contoh respons,
 tes perilaku yang relevan, dan [changelog](frontend-changelog.md) dalam pekerjaan
 yang sama. Jika ada event, perbarui catalog juga. Aturan proyek disimpan di
 [AGENTS.md](../../AGENTS.md) agar berlaku pada pengembangan berikutnya.
+
+## Kontrak autentikasi HTTP
+
+Seluruh path berikut memakai prefix API yang dapat dikonfigurasi. Tidak ada path
+parameter atau query parameter. Semua POST menerima JSON, bukan form-urlencoded.
+Field tambahan body ditolak. Tidak ada cookie yang dipasang/dibaca untuk auth.
+Request dan response membawa secret hanya pada body/header yang disebutkan;
+jangan masukkan token/password ke URL, correlation ID atau log frontend.
+
+Persiapan: JWT_SECRET backend minimal 32 byte (gunakan secret acak), lifetime
+konfigurasi harus 15 menit/7 hari dan schema 0017 beserta grant runtime tersedia.
+Secret acak lokal telah disiapkan di .env yang diabaikan Git. Akun manusia perlu
+password bcrypt yang sah; dev-maintenance tetap tanpa password dan tidak bisa
+login. [Bootstrap akun manusia development](human-bootstrap.md) tersedia melalui CLI
+administratif, bukan endpoint signup; pengguna memilih profil/password di terminal. Health/ready tidak memeriksa secret
+JWT, rate limiter atau kelengkapan akun, sehingga readiness 200 tidak menjamin login.
+
+### POST /api/v1/auth/login
+
+Tujuan: memverifikasi username/password pada tenant dan membuat sesi baru.
+Auth: publik, tanpa Authorization dan tanpa permission bisnis prasyarat.
+User dan tenant harus ACTIVE serta belum soft-deleted. Username dicocokkan tanpa
+membedakan case dan mengabaikan spasi ASCII tepi; email login belum didukung.
+Password tidak di-trim/dinormalisasi. Sesi dan hash refresh di-commit sebelum token
+dikirim. Request login baru membuat keluarga sesi baru, bukan memakai sesi lama.
+
+| Body field | Tipe | Required / nullable | Validasi |
+| --- | --- | --- | --- |
+| tenant_id | string UUID | Ya / tidak | UUID tenant; bukan tenant_code |
+| username | string | Ya / tidak | 1..100 karakter; angka/field tambahan ditolak |
+| password | string secret | Ya / tidak | 1..72 karakter pada schema; kredensial harus memenuhi kebijakan 12 karakter sampai 72 byte UTF-8, tanpa NUL |
+
+Password terlalu pendek menurut kebijakan, terlalu panjang dalam byte UTF-8,
+username blank/NUL, akun tanpa hash, user tidak aktif, tenant salah dan password
+salah menghasilkan 401 seragam. Panjang/tipenya melanggar schema, UUID tidak valid
+atau JSON rusak menghasilkan 400. Tidak ada password default aplikasi.
+
+Contoh request (nilai ilustratif, bukan akun yang sudah dibuat):
+
+```http
+POST /api/v1/auth/login HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "tenant_id": "11111111-1111-4111-8111-111111111111",
+  "username": "operator",
+  "password": "contoh passphrase pengguna"
+}
+```
+
+Respons sukses 200 lengkap (token placeholder harus diganti hasil server):
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "access_token": "<ACCESS_JWT>",
+    "refresh_token": "<OPAQUE_REFRESH_TOKEN>",
+    "refresh_expires_at": "2026-09-18T10:00:00Z",
+    "token_type": "Bearer",
+    "expires_in": 900
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "22222222-2222-4222-8222-222222222222",
+    "correlation_id": "22222222-2222-4222-8222-222222222222",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 310.2
+  }
+}
+```
+
+| Data field | Tipe / nullable | Makna |
+| --- | --- | --- |
+| access_token | string / tidak | JWT access bertanda tangan; membawa sid sesi, berlaku 15 menit |
+| refresh_token | string / tidak | Token opaque sekali pakai; simpan sebagai secret, bukan JWT |
+| refresh_expires_at | ISO 8601 UTC / tidak | Batas absolut keluarga sesi tujuh hari sejak login |
+| token_type | string / tidak | Selalu Bearer |
+| expires_in | integer / tidak | Selalu 900 detik; access dapat ditolak lebih awal jika sesi dicabut/expired |
+
+Error: 400, 401, 429, 503, 500 sebagaimana tabel bersama. Tidak ada event bus,
+WebSocket, notifikasi atau event catalog baru akibat login. Log operasional hanya
+mencatat action/outcome/request ID; audit keamanan persisten belum tersedia.
+
+### POST /api/v1/auth/refresh
+
+Tujuan: mengganti refresh token dan menerbitkan access token baru pada sesi sama.
+Auth: kepemilikan refresh token pada body; Authorization tidak diperlukan dan tidak
+dipakai. Akun/tenant serta sesi harus aktif. Role/permission snapshot dibaca ulang.
+
+| Body field | Tipe | Required / nullable | Validasi |
+| --- | --- | --- | --- |
+| refresh_token | string secret | Ya / tidak | 1..101 karakter; token sah berbentuk UUID + titik + 64 karakter acak |
+
+```json
+{"refresh_token": "<OPAQUE_REFRESH_TOKEN>"}
+```
+
+200 memakai envelope dan kelima field data yang sama persis dengan login. Kedua
+token berubah; refresh_expires_at tetap dan tidak diperpanjang. Token lama ditandai
+terpakai. Token benar yang dipakai ulang mencabut seluruh keluarga termasuk access
+dan refresh hasil rotasi sebelumnya. Pencabutan di-commit sebelum 401 dikirim.
+
+401 untuk format/hash salah, sesi habis/dicabut, akun/tenant nonaktif atau reuse;
+responsnya tidak membedakan penyebab. Error lain: 400, 429, 503, 500.
+Tidak ada event yang diterbitkan; perubahan berupa bukti token dan status sesi.
+
+**Wajib satu refresh berjalan per sesi pada frontend.** Dua refresh bersamaan bisa
+menghasilkan satu 200 dan satu 401; sesudah reuse, token dari 200 juga ditolak.
+Jika respons refresh hilang/timeout, jangan otomatis mencoba token lama berulang:
+rotasi mungkin sudah commit. Minta login kembali bila tidak memiliki pasangan token
+baru. Tidak ada grace period atau idempotency key refresh saat ini.
+
+### POST /api/v1/auth/logout
+
+Tujuan: mencabut satu keluarga sesi. Auth: kepemilikan refresh token di body;
+bearer tidak diperlukan. Payload dan validasi sama dengan refresh:
+
+```json
+{"refresh_token": "<OPAQUE_REFRESH_TOKEN>"}
+```
+
+200 selalu memakai data {"logged_out": true} untuk payload lolos schema, termasuk
+token tidak dikenal atau sesi sudah dicabut. Ini tidak mengungkap validitas token.
+Token lama yang masih dapat diverifikasi juga boleh mencabut keluarga sesi.
+revoked_at pertama dipertahankan pada pengulangan. Tidak ada logout semua perangkat.
+
+Contoh respons lengkap:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {"logged_out": true},
+  "errors": [],
+  "meta": {
+    "request_id": "22222222-2222-4222-8222-222222222222",
+    "correlation_id": "22222222-2222-4222-8222-222222222222",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 5.3
+  }
+}
+```
+
+logged_out adalah boolean nonnullable. Bersihkan token client setelah logout.
+Kesalahan request/config/database tetap dapat menghasilkan 400/429/503/500;
+logout token invalid tidak menghasilkan 401. Tidak ada cookie yang perlu dihapus
+server atau event yang diterbitkan. Access lama ditolak pada pemeriksaan sesi
+berikutnya; transaksi yang sudah mendapat izin tidak dibatalkan secara retroaktif.
+
+### GET /api/v1/auth/me
+
+Tujuan: membaca identitas dan daftar izin terkini. Auth: header wajib
+Authorization: Bearer <access_token>. Tidak ada body/path/query parameter atau
+permission bisnis khusus; user/tenant dan sesi harus aktif. Token tanpa sid,
+refresh token pada bearer, JWT rusak/expired, akun/sesi nonaktif ditolak 401.
+Jangan gunakan claim permission yang di-decode frontend sebagai otorisasi server.
+
+```http
+GET /api/v1/auth/me HTTP/1.1
+Authorization: Bearer <ACCESS_JWT>
+Accept: application/json
+```
+
+Contoh 200:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "user_id": "33333333-3333-4333-8333-333333333333",
+    "tenant_id": "11111111-1111-4111-8111-111111111111",
+    "roles": ["Viewer"],
+    "permissions": ["Alarm.Read"]
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "22222222-2222-4222-8222-222222222222",
+    "correlation_id": "22222222-2222-4222-8222-222222222222",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 4.1
+  }
+}
+```
+
+| Data field | Tipe / nullable | Makna |
+| --- | --- | --- |
+| user_id / tenant_id | string UUID / tidak | Identitas terverifikasi |
+| roles | array string / tidak | Kode role aktif terurut tanpa duplikasi; boleh kosong |
+| permissions | array string / tidak | Permission RBAC aktif terurut tanpa duplikasi; boleh kosong |
+
+Tidak mengubah data dan tidak menerbitkan event. Error: 401, 429, 503, 500.
+Pencabutan grant tercermin pada request berikut, meskipun token belum expired.
+
+### Error dan header autentikasi
+
+Semua respons auth, termasuk error, memakai Cache-Control: no-store dan
+Pragma: no-cache. X-Request-ID tetap ada. 401 menyertakan WWW-Authenticate: Bearer.
+429 menyertakan Retry-After dalam detik dan dapat dibaca melalui CORS.
+
+| HTTP | message | Penanganan |
+| --- | --- | --- |
+| 400 | Validation Error | Perbaiki JSON/field; errors berisi field dan message, tanpa nilai password/token |
+| 401 | Invalid credentials or session | Login: periksa kredensial; refresh/revoked session: login ulang |
+| 429 | Too many authentication requests | Tunggu Retry-After; jangan mengulang rapat |
+| 503 | Authentication unavailable | Secret/lifetime tidak sesuai atau database/commit gagal; jangan menganggap token sudah diterbitkan |
+| 500 | Internal Server Error | Kegagalan tak terduga; catat request_id tanpa secret |
+
+Contoh 401 lengkap untuk login, refresh atau me:
+
+```json
+{
+  "success": false,
+  "code": 401,
+  "message": "Invalid credentials or session",
+  "data": null,
+  "errors": [],
+  "meta": {
+    "request_id": "22222222-2222-4222-8222-222222222222",
+    "correlation_id": "22222222-2222-4222-8222-222222222222",
+    "timestamp": "2026-09-11T10:00:00Z",
+    "execution_time_ms": 300.1
+  }
+}
+```
+
+400/429/503/500 mengikuti envelope yang sama dengan code/message sesuai tabel.
+400 mengisi errors, misalnya [{"field":"body.tenant_id","message":"Input should be a valid UUID, invalid length: expected length 32 for simple format, found 3"}];
+teks validasi dapat berubah mengikuti library, gunakan field/code untuk UI.
+FastAPI 422 otomatis dihapus dari OpenAPI auth karena handler aktual memakai 400.
+
+Limiter sementara: maksimal 100 permintaan gabungan /auth/* per 60 detik per
+request.client.host dalam satu proses; login sukses/gagal dan /me ikut dihitung.
+OPTIONS tidak dihitung. Aplikasi tidak membaca X-Forwarded-For sendiri; konfigurasi
+trusted proxy ASGI server menentukan nilai request.client yang diterima aplikasi.
+Limiter menyimpan maksimal 4096 IP; IP baru ditolak sementara jika kapasitas penuh.
+Window reset saat habis; restart proses menghapus hitungan. Ini bukan limiter
+terdistribusi dan belum menggantikan Redis/proxy untuk deployment multiworker.
+
+### Contoh pemanggilan frontend
+
+```javascript
+const response = await fetch(`${apiBase}/auth/login`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
+  credentials: "omit",
+  body: JSON.stringify({ tenant_id: tenantId, username, password }),
+});
+const body = await response.json();
+if (!response.ok) throw new Error(`${body.code}: ${body.message}`);
+const tokens = body.data; // kelola di memori; jangan console.log token/password
+const profileResponse = await fetch(`${apiBase}/auth/me`, {
+  headers: { Authorization: `Bearer ${tokens.access_token}` },
+  credentials: "omit",
+});
+const profile = await profileResponse.json();
+```
+
+Contoh apiBase adalah http://localhost:8000/api/v1. Jangan hardcode credential nyata
+ke source frontend atau membagikan token di log/screenshot. Penyimpanan token yang
+bertahan setelah reload, BFF/cookie HttpOnly/CSRF, reset password, bootstrap admin production,
+audit persisten serta limiter Redis masih perlu ditentukan/diimplementasikan.
+
+Verifikasi: suite 103 tes lulus; setelah perbaikan urutan middleware CORS, 20 tes
+API/auth/readiness diulang dan lulus. OpenAPI serta payload/respons diuji melalui
+HTTP. Local readiness=200; dev-maintenance tanpa password tetap ditolak 401.
+Restart backend yang sudah berjalan untuk memuat route dan konfigurasi baru.
+
+Bootstrap development kini dapat membuat akun manusia baru dengan membership role
+terpilih. [Panduan bootstrap](human-bootstrap.md) memuat perintah, mode --check,
+validasi, output dan efek samping. Tidak ada endpoint, payload atau respons baru;
+login/me yang sudah didokumentasikan dipakai setelah akun berhasil dibuat.
+Actor dev-maintenance tetap tanpa password; script tidak mengubahnya.

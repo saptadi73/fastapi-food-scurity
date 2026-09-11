@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.scope import ActorScope
 from app.modules.authentication.infrastructure.authorization import require_permission
-from app.modules.traceability.infrastructure.registry import source_adapter, sync_source
+from app.modules.traceability.infrastructure.registry import (
+    inspect_registry,
+    source_adapter,
+    sync_source,
+)
 
 
 class RegistryService:
@@ -15,6 +19,15 @@ class RegistryService:
     async def sync(self, asset_type: str, entity_id: UUID) -> dict:
         await require_permission(self.session, self.scope, 'AssetRegistry.Sync')
         return await sync_source(self.session, self.scope, asset_type, entity_id)
+
+    async def reconcile(self, asset_type: str, *, after_id: UUID | None = None, limit: int = 100) -> dict:
+        """Report missing sources and projection drift without modifying traceability evidence."""
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError('limit must be between 1 and 200')
+        if after_id is not None and not isinstance(after_id, UUID):
+            raise ValueError('after_id must be a UUID')
+        await require_permission(self.session, self.scope, 'AssetRegistry.Sync')
+        return await inspect_registry(self.session, self.scope, asset_type, after_id=after_id, limit=limit)
 
     async def backfill(self, asset_type: str, *, after_id: UUID | None = None, limit: int = 100) -> dict:
         if type(limit) is not int or not 1 <= limit <= 200:
