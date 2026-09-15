@@ -1,4 +1,4 @@
-# Panduan integrasi frontend FSOS
+﻿# Panduan integrasi frontend FSOS
 
 Terakhir diperbarui: 2026-09-15. Versi aplikasi: 0.1.0.
 Status: **165 operasi HTTP aktif**, termasuk CRUD empat belas master, autentikasi,
@@ -26,10 +26,10 @@ Tautan: [Event catalog](event-catalog.md), [perubahan kontrak](frontend-changelo
 | --- | --- |
 | Origin backend | `http://localhost:8000` |
 | Prefix API | `/api/v1` (konfigurasi backend `API_PREFIX`) |
-| Swagger | `GET /docs` — HTML interaktif |
-| ReDoc | `GET /redoc` — HTML dokumentasi |
-| OpenAPI | `GET /openapi.json` — dokumen JSON OpenAPI, tanpa envelope |
-| Swagger OAuth redirect | `GET /docs/oauth2-redirect` — HTML internal Swagger; bukan login aplikasi |
+| Swagger | `GET /docs` â€” HTML interaktif |
+| ReDoc | `GET /redoc` â€” HTML dokumentasi |
+| OpenAPI | `GET /openapi.json` â€” dokumen JSON OpenAPI, tanpa envelope |
+| Swagger OAuth redirect | `GET /docs/oauth2-redirect` â€” HTML internal Swagger; bukan login aplikasi |
 
 Route dokumentasi berada di origin backend, di luar prefix API. Seluruh route
 dokumentasi saat ini publik dan tanpa payload/path/query parameter aplikasi.
@@ -147,7 +147,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/consumptions/{identifier}` | Bukti konsumsi | Tanpa body | 200 ConsumptionData |
 | GET | `/api/v1/health` | Liveness proses API | Tidak ada | 200 |
 | GET | `/api/v1/ready` | Kesiapan database aplikasi | Tidak ada | 200 atau 503 |
-| POST | `/api/v1/auth/login` | Autentikasi akun dalam tenant | tenant_id, username, password | 200 |
+| POST | `/api/v1/auth/login` | Autentikasi akun dalam tenant | tenant atau tenant_id, username, password | 200 |
 | POST | `/api/v1/auth/refresh` | Rotasi token sesi | refresh_token | 200 |
 | POST | `/api/v1/auth/logout` | Cabut satu sesi | refresh_token | 200 |
 | GET | `/api/v1/auth/me` | Identitas dan RBAC aktif | Tidak ada; bearer header | 200 |
@@ -596,13 +596,15 @@ dikirim. Request login baru membuat keluarga sesi baru, bukan memakai sesi lama.
 
 | Body field | Tipe | Required / nullable | Validasi |
 | --- | --- | --- | --- |
-| tenant_id | string UUID | Ya / tidak | UUID tenant; bukan tenant_code |
+| tenant | string | Kondisional / ya | Tenant code seperti `FSOS_DEMO` atau UUID tenant; kirim salah satu dari tenant atau tenant_id |
+| tenant_id | string UUID | Kondisional / ya | Legacy UUID tenant; kirim salah satu dari tenant atau tenant_id |
 | username | string | Ya / tidak | 1..100 karakter; angka/field tambahan ditolak |
 | password | string secret | Ya / tidak | 1..72 karakter pada schema; kredensial harus memenuhi kebijakan 12 karakter sampai 72 byte UTF-8, tanpa NUL |
 
 Password terlalu pendek menurut kebijakan, terlalu panjang dalam byte UTF-8,
 username blank/NUL, akun tanpa hash, user tidak aktif, tenant salah dan password
-salah menghasilkan 401 seragam. Panjang/tipenya melanggar schema, UUID tidak valid
+salah menghasilkan 401 seragam. Panjang/tipenya melanggar schema, tenant dan
+tenant_id kosong semua atau dikirim bersamaan, UUID tidak valid pada tenant_id,
 atau JSON rusak menghasilkan 400. Tidak ada password default aplikasi.
 
 Contoh request (nilai ilustratif, bukan akun yang sudah dibuat):
@@ -613,7 +615,7 @@ Content-Type: application/json
 Accept: application/json
 
 {
-  "tenant_id": "11111111-1111-4111-8111-111111111111",
+  "tenant": "FSOS_DEMO",
   "username": "operator",
   "password": "contoh passphrase pengguna"
 }
@@ -820,7 +822,7 @@ const response = await fetch(`${apiBase}/auth/login`, {
   method: "POST",
   headers: { "Content-Type": "application/json", Accept: "application/json" },
   credentials: "omit",
-  body: JSON.stringify({ tenant_id: tenantId, username, password }),
+  body: JSON.stringify({ tenant: tenantCode, username, password }),
 });
 const body = await response.json();
 if (!response.ok) throw new Error(`${body.code}: ${body.message}`);
@@ -5088,7 +5090,7 @@ discard 90 dan tanpa menu cap:
 }
 ```
 
-PackageData seluruh field required. ID/package_code/production_id/number/status dan
+PackageData seluruh field required kecuali field nullable. `asset_uuid` berisi UUID registry traceability untuk membuka `/traceability/assets/{asset_uuid}`; nilainya nullable untuk paket legacy yang belum tersinkron. ID/package_code/production_id/number/status dan
 QR nonnull; quantity decimal string, initial_temperature decimal string nullable,
 uom string, package_type_id UUID nullable untuk legacy. Policy object nullable untuk
 legacy; policy schema_version/maximum/warning/discard integer nonnull, food_category
@@ -5104,7 +5106,7 @@ GET /api/v1/packages/resolve?qr_payload=fsos%3Apackage%3A22222222-2222-4222-8222
 GET /api/v1/production-batches/44444444-4444-4444-8444-444444444444/packaging
 ```
 
-Gunakan bearer, tanpa body. Get/resolve mengembalikan PackageData dengan timer dihitung
+Gunakan bearer, tanpa body. Get/resolve mengembalikan PackageData termasuk `asset_uuid` registry package bila tersedia, dengan timer dihitung
 ulang pada calculated_at; page memakai items array PackageData. AllocationData contoh
 setelah mengalokasi 2 dari hasil 3:
 
@@ -6221,3 +6223,4 @@ diisi ingestion HTTP/MQTT; tidak membuat device, subscription atau event baru.
 
 Semua hitungan dibatasi tenant bearer dan record nondeleted. Ini snapshot query saat
 request, bukan agregat materialized, cache, event stream, alarm, atau indikator SLA.
+

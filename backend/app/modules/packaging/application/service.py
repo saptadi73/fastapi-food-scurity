@@ -12,7 +12,7 @@ from app.modules.packaging.schemas.packages import HoldingPolicy, PackageData
 from app.modules.production.infrastructure.orm import Package, ProductionBatch
 from app.modules.receiving.application.service import ReceivingService
 from app.modules.telemetry.infrastructure.orm import HoldingLog
-from app.modules.traceability.infrastructure.orm import AssetMovement, AssetRelationship
+from app.modules.traceability.infrastructure.orm import AssetMovement, AssetRelationship, DigitalAsset
 from app.modules.traceability.infrastructure.registry import sync_source
 
 
@@ -39,8 +39,11 @@ class PackagingConflictError(Exception):
 class PackageService(ReceivingService):
     async def projection(self, package, now=None):
         production = await self.row(ProductionBatch, 'production_batch_id', package['production_batch_id'])
+        asset_uuid = await self.db.scalar(select(DigitalAsset.asset_uuid).where(*self.visible(DigitalAsset),
+            DigitalAsset.asset_type == 'PACKAGE', DigitalAsset.entity_uuid == package['package_id']).limit(1))
         now = now or datetime.now(UTC)
         return {**package, **timer(production, package, now), 'calculated_at': now,
+                'asset_uuid': asset_uuid,
                 'uom': (production['recipe_snapshot'] or {}).get('uom'),
                 'holding_policy': production['holding_policy'],
                 'qr_payload': f"fsos:package:{package['package_id']}"}

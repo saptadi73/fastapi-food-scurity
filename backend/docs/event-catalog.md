@@ -1,4 +1,4 @@
-# Event catalog FSOS
+﻿# Event catalog FSOS
 
 Terakhir diperbarui: 2026-09-11. Status: **event receiving, stok, produksi, paket, holding dan pengiriman tersimpan internal; belum dipublikasikan ke transport**.
 
@@ -521,7 +521,7 @@ Status: **aktif internal**, producer PackageService, tabel PostgreSQL event_log,
 entity_type PACKAGE dan entity_uuid package_id. Tenant/actor dari bearer, tidak ada
 credential pada QR/payload. Master PackagingType CRUD hanya audit/version, tidak
 menghasilkan event/registry. Event berikut memakai payload schema_version 1,
-actor_id UUID string dan package object persis PackageData respons aksi (termasuk
+actor_id UUID string dan package object persis PackageData respons aksi (termasuk `asset_uuid` registry package nullable,
 initial_temperature, calculated_at, timer, frozen policy dan QR). Field/nullable dan contoh record lengkap
 ada di [kontrak paket/holding](frontend-api.md#kontrak-kemasan-paket-dan-holding).
 
@@ -765,3 +765,4 @@ masa depan harus deduplikasi event_uuid; retry publisher/replay belum tersedia.
 GET tidak membuat event. Snapshot event tidak berubah ketika timer paket bergerak.
 Effective_status paket terminal CONSUMED/REJECTED/DISCARDED kini tetap terminal,
 sedangkan timer_status dan remaining di GET tetap live.
+

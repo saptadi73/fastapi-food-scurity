@@ -38,6 +38,7 @@ class HoldingFinishInput(HoldingInput):
 
 class PackageData(AuditData):
     package_id: UUID
+    asset_uuid: UUID | None
     package_code: str
     production_batch_id: UUID
     package_type_id: UUID | None

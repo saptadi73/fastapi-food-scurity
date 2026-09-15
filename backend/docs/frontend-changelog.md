@@ -1,4 +1,13 @@
-# Perubahan kontrak frontend
+﻿# Perubahan kontrak frontend
+
+## 2026-09-15 - Login memakai tenant code
+
+- `POST /api/v1/auth/login` sekarang menerima field `tenant` berisi tenant code
+  seperti `FSOS_DEMO` atau UUID tenant.
+- Field legacy `tenant_id` UUID masih diterima untuk kompatibilitas, tetapi
+  frontend baru disarankan memakai `tenant`.
+- Tidak ada endpoint baru; response token tetap sama dan token tetap membawa UUID
+  tenant terverifikasi.
 
 ## 2026-09-15 - Seed demo frontend end-to-end
 
@@ -511,7 +520,7 @@
 - Verifikasi: 56 tes lulus; scan runtime FSOS_DEV atas 15 tipe menemukan enam
   registry sinkron. Health/readiness dan kontrak HTTP tetap diuji dalam suite.
 
-## 2026-09-11 — Pemisahan koneksi API dan admin
+## 2026-09-11 â€” Pemisahan koneksi API dan admin
 
 - API/readiness/backfill memakai pool DATABASE_URL; migrasi, seed, provisioning
   serta maintenance memakai pool ADMIN_DATABASE_URL tanpa fallback ke runtime.
@@ -520,7 +529,7 @@
 - Tidak ada endpoint, payload, respons HTTP, atau event runtime baru.
   Proses backend yang sudah berjalan perlu restart agar konfigurasi baru terbaca.
 
-## 2026-09-11 — Profil privilege runtime database
+## 2026-09-11 â€” Profil privilege runtime database
 
 - Migrasi 0016 memperketat fungsi capture history aturan; grup fsos_runtime
   membatasi akses DML/DDL untuk service yang tersedia.
@@ -529,7 +538,7 @@
 - Koneksi lokal belum dialihkan; pemisahan login/secret API dan maintenance
   tetap tahap berikutnya sebelum production.
 
-## 2026-09-11 — Rolling maintenance partisi
+## 2026-09-11 â€” Rolling maintenance partisi
 
 - CLI check/ensure memeriksa batas UTC dan guard append-only; fsos disiapkan untuk
   enam bulan (24 partisi). Task development berjalan harian dan saat logon.
@@ -538,7 +547,7 @@
 - Retensi draft didokumentasikan, seluruh bukti tetap disimpan; arsip/penghapusan
   otomatis belum diimplementasikan. 21 tes terkait dan Alembic check lulus.
 
-## 2026-09-11 — Status efektif dan finalisasi telemetry internal
+## 2026-09-11 â€” Status efektif dan finalisasi telemetry internal
 
 - Service baru: get_alarm, get_session, acknowledge, close_session dengan permission
   Alarm.Read/Acknowledge dan DeviceSession.Read/Close. Belum diberikan oleh seed.
@@ -549,7 +558,7 @@
 - Verifikasi: 45 tes terkait lulus, termasuk permission, tenant, retry, konflik,
   validasi waktu dan rollback; tidak ada data telemetry baru pada fsos.
 
-## 2026-09-11 — Seed development dan backfill lokal
+## 2026-09-11 â€” Seed development dan backfill lokal
 
 - Tenant FSOS_DEV, actor pemeliharaan tanpa password, role/permission dan master
   contoh ditambahkan; registry sumber contoh sudah di-backfill.
@@ -558,7 +567,7 @@
 - Verifikasi: 44 tes terkait lulus; seed dijalankan dua kali pada fsos,
   created berturut-turut 23 dan 0, dengan enam aset registry.
 
-## 2026-09-11 — Adapter dan backfill registry
+## 2026-09-11 â€” Adapter dan backfill registry
 
 - Internal: 15 pemetaan sumber, sync tenant/type/entity, backfill per batch dengan
   permission AssetRegistry.Sync, dan integrasi otomatis KitchenRepository.
@@ -572,7 +581,7 @@ Catat perubahan API/event yang memengaruhi frontend pada setiap implementasi.
 Setiap entri menyebut tanggal, endpoint/event, status, perubahan payload/respons,
 dampak kompatibilitas, tindakan frontend, dan verifikasi.
 
-## 2026-09-11 — Riwayat aturan dan validator DSL internal
+## 2026-09-11 â€” Riwayat aturan dan validator DSL internal
 
 - Migrasi 0015 menambahkan snapshot alarm/holding rule yang immutable.
 - Validator DSL v1 tersedia untuk struktur condition/action; integrasi ke
@@ -581,7 +590,7 @@ dampak kompatibilitas, tindakan frontend, dan verifikasi.
 - Tindakan frontend: gunakan dokumen rule-versioning untuk memahami rancangan;
   jangan memanggil route manajemen aturan sebelum statusnya menjadi aktif.
 
-## 2026-09-11 — Service simpan/aktivasi aturan
+## 2026-09-11 â€” Service simpan/aktivasi aturan
 
 - Service alarm/holding kini memvalidasi definisi sebelum menyimpan, memeriksa
   tenant/actor aktif serta permission Read/Write/Activate, dan menolak version lama.
@@ -594,7 +603,7 @@ dampak kompatibilitas, tindakan frontend, dan verifikasi.
 - Verifikasi PostgreSQL mencakup permission terpisah/dicabut, actor/tenant,
   konflik versi, input invalid, lifecycle, history dan rollback.
 
-## 2026-09-11 — Dokumentasi awal, aplikasi 0.1.0
+## 2026-09-11 â€” Dokumentasi awal, aplikasi 0.1.0
 
 - Aktif: `GET /api/v1/health`, `GET /api/v1/ready`; keduanya tanpa request body.
 - Dokumentasi mencakup envelope, header, CORS, respons 200/503, error bersama,
@@ -607,7 +616,7 @@ dampak kompatibilitas, tindakan frontend, dan verifikasi.
 - Verifikasi: contoh struktur respons dicocokkan dengan route, handler, probe,
   OpenAPI, dan pengujian API/readiness. Nilai waktu/UUID dalam contoh ilustratif.
 
-## 2026-09-11 — Fondasi repository kitchen
+## 2026-09-11 â€” Fondasi repository kitchen
 
 - Internal: tenant/actor scope, audit, soft delete, serta optimistic concurrency
   menggunakan expected_version ditambahkan pada repository kitchen.
@@ -719,3 +728,4 @@ database/koneksi/runtime diselaraskan ke head 0022; permission supply diperluas
 pada dokumentasi menjadi 18 kode dan transaksi menjadi 26 kode. Status registry,
 penerimaan sekolah, konsumsi, stok dan pengiriman diperbarui; artefak NUL README
 dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
+

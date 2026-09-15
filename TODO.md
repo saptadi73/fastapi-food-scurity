@@ -1,6 +1,6 @@
-# TODO — Food Safety Operating System
+﻿# TODO â€” Food Safety Operating System
 
-Checklist instalasi dan roadmap berdasarkan docs/01–18. Tanggal awal: 2026-09-11.
+Checklist instalasi dan roadmap berdasarkan docs/01â€“18. Tanggal awal: 2026-09-11.
 `[x]` berarti telah tersedia dan diperiksa; `[ ]` berarti belum selesai.
 Paket yang terpasang tidak berarti fitur bisnis sudah diimplementasikan.
 
@@ -225,6 +225,8 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [x] Wrapper migration eksplisit: `backend/scripts/migrate_with_status.py`
   membungkus Alembic upgrade agar operator melihat output JSON before/after,
   returncode dan status.
+- [x] Login frontend dipermudah: `POST /auth/login` menerima `tenant` berupa
+  tenant_code seperti FSOS_DEMO atau UUID; `tenant_id` legacy tetap diterima.
 - [x] Traceability read: detail asset, relasi langsung, timeline movement dan traversal
   forward/backward terbatas (`Traceability.Read`) untuk investigasi package/batch/
   complaint/recall. Passport asset dan impact downstream berbasis traversal forward
@@ -242,7 +244,7 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 **Pekerjaan berikutnya: notifikasi operasional, bukti penarikan fisik recall dan
 dashboard/ringkasan bisnis.**
 
-## P0 — Fondasi instalasi FastAPI
+## P0 â€” Fondasi instalasi FastAPI
 
 - [x] Perbaiki dan verifikasi venv Python 3.11 beserta pip.
 - [x] Baca kebutuhan stack, struktur, framework, keamanan, API, dan deployment.
@@ -257,7 +259,7 @@ dashboard/ringkasan bisnis.**
 - [x] Verifikasi pip check, tes API, lint, dan startup server HTTP.
 - [x] Tulis panduan menjalankan aplikasi pada Windows di README.
 
-## P1 — Layanan dan database (docs/04, 06–08, 18)
+## P1 â€” Layanan dan database (docs/04, 06â€“08, 18)
 
 - [x] Verifikasi PostgreSQL 18 yang sudah berjalan serta database/user yang disediakan pengguna.
 - [x] Siapkan extension PostGIS dan pgcrypto melalui proses provisioning/migrasi.
@@ -270,7 +272,7 @@ dashboard/ringkasan bisnis.**
   registrasi tanpa zone, serta downgrade tahap kedua yang mempertahankan tenant/kitchen.
 - [x] Buat ORM vehicle, driver, dan school; terapkan migrasi `20260911_0003`
   pada fsos dan verifikasi Alembic check tanpa perbedaan.
-- [x] Uji relasi vehicle–driver/GPS dan school–kitchen dalam tenant yang sama,
+- [x] Uji relasi vehicleâ€“driver/GPS dan schoolâ€“kitchen dalam tenant yang sama,
   kode/plat unik per tenant, lokasi sekolah, kapasitas/jumlah siswa nonnegatif,
   serta rollback tahap ketiga yang mempertahankan master data sebelumnya.
 - [x] Buat supplier, raw_material, food_item, recipe, dan relasi supplier_material;
@@ -335,7 +337,7 @@ dashboard/ringkasan bisnis.**
   alarm/holding rule, user/role/permission (docs/06).
 - [x] Buat migrasi digital asset, asset relationship, movement, operational
   event, produksi, paket, pengiriman, receiving, complaint, dan recall (docs/07).
-  **Status: schema selesai.** Receiving hingga recall melalui revisi 0007–0010;
+  **Status: schema selesai.** Receiving hingga recall melalui revisi 0007â€“0010;
   digital asset/relationship/movement melalui 0011; operational event melalui 0012.
   Implementasi API/engine/publisher tetap dilacak terpisah di bawah.
 - [x] Buat dan uji migrasi operational event/event_log (`20260911_0012`, docs/08
@@ -382,11 +384,11 @@ dashboard/ringkasan bisnis.**
   rekonsiliasi serta endpoint laporan berautentikasi.
 - [ ] Implementasikan event idempotency, pembangunan relationship dan traversal graph.
 - [x] Buat migrasi telemetry, index, dan partisi bulanan (docs/08).
-  **Status: schema selesai** melalui revisi 0013–0014, termasuk health/alarm/holding/
+  **Status: schema selesai** melalui revisi 0013â€“0014, termasuk health/alarm/holding/
   signal/battery/device_session. Ingestion dan engine tetap dilacak terpisah.
 - [x] Terapkan `20260911_0013`: empat sensor log berpartisi bulanan UTC serta
   mqtt_message_log; index timeline/GIS, FK tenant/device/pesan, dan bukti append-only.
-- [x] Siapkan 12 partisi awal (September–November 2026) dan script maintenance
+- [x] Siapkan 12 partisi awal (Septemberâ€“November 2026) dan script maintenance
   create_telemetry_partitions.py untuk menambah bulan secara idempotent.
 - [x] Uji batas bulan, timestamp tanpa partisi, FK tenant, GPS Point, duplicate key,
   penolakan UPDATE/DELETE/TRUNCATE pada parent/child, partisi baru, dan rollback.
@@ -423,7 +425,7 @@ dashboard/ringkasan bisnis.**
   dan implementasikan ingestion MQTT/idempotency; belum ada penghapusan data otomatis.
 - [x] Buat rolling check/ensure bulanan UTC, verifikasi batas partisi serta guard,
   exit code/laporan JSON; uji cakupan hilang, tahun kabisat dan guard invalid.
-- [x] Siapkan enam bulan partisi fsos (September 2026–Februari 2027, 24 partisi);
+- [x] Siapkan enam bulan partisi fsos (September 2026â€“Februari 2027, 24 partisi);
   Alembic check bersih, task maintenance development harian/logon terdaftar.
 - [x] Dokumentasikan runbook backfill dan target retensi draft; kebijakan saat ini
   mempertahankan semua bukti tanpa penghapusan otomatis.
@@ -446,7 +448,7 @@ dashboard/ringkasan bisnis.**
   envelope, dan dokumentasi 503; 15 tes API/readiness lulus.
 - [ ] Perluas readiness dengan Redis/MQTT ketika menjadi dependensi runtime.
 
-## P2 — Framework dan keamanan (docs/02, 10, 11, 16, 17)
+## P2 â€” Framework dan keamanan (docs/02, 10, 11, 16, 17)
 
 - [x] Buat panduan frontend `backend/docs/frontend-api.md`: endpoint aktif,
   payload, response, error, header, auth/status, dan contoh integrasi.
@@ -504,7 +506,7 @@ dashboard/ringkasan bisnis.**
   dokumentasi payload/parameter/rule/permission/error/example, serta pengujian.
 - [ ] Putuskan kebijakan akses health dan dokumentasi pada production.
 
-## P3 — Modul bisnis (docs/05, 09, 12–14, 17)
+## P3 â€” Modul bisnis (docs/05, 09, 12â€“14, 17)
 
 - [ ] Master data dan authentication.
 - [ ] Device/digital twin: calibration, firmware lifecycle, heartbeat dan telemetry ingestion (docs/12).
@@ -524,14 +526,14 @@ dashboard/ringkasan bisnis.**
 - [ ] Setiap modul memiliki API, application, domain, infrastructure, schemas,
   dan tes repository/service/rule/API sesuai docs/17.
 
-## P4 — Dashboard dan realtime (docs/15, 16)
+## P4 â€” Dashboard dan realtime (docs/15, 16)
 
 - [ ] REST dashboard analytics; home/storage/fleet/holding/recall/notification counter sudah aktif.
 - [ ] WebSocket dashboard/device/fleet/storage/holding/alarm dengan autentikasi.
 - [ ] Redis cache dan distribusi event antarworker.
 - [ ] Frontend Vue 3 serta integrasi peta dan alarm.
 
-## P5 — Deployment dan operasional (docs/18)
+## P5 â€” Deployment dan operasional (docs/18)
 
 - [ ] Siapkan Ubuntu, Gunicorn + uvicorn-worker, systemd/container, dan Nginx.
 - [ ] Pasang/jalankan Redis dan uji koneksi; development/staging saat fitur integrasi dikerjakan.
@@ -569,3 +571,4 @@ dashboard/ringkasan bisnis.**
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.
+

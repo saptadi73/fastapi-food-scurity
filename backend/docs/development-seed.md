@@ -43,7 +43,7 @@ ID dan kode penting untuk frontend:
 
 | Kebutuhan frontend | Nilai demo |
 | --- | --- |
-| Login tenant | Gunakan `tenant_id` dari output JSON script |
+| Login tenant | `FSOS_DEMO` lewat field `tenant`; `tenant_id` output JSON tetap tersedia |
 | Username | `frontend-admin` |
 | Password | `DemoFrontend123!` |
 | Package scan | `PKG-2026-0001` |
@@ -68,7 +68,7 @@ Endpoint frontend yang langsung dapat dicoba setelah seed demo:
 
 | Layar | Endpoint |
 | --- | --- |
-| Login | `POST /api/v1/auth/login` dengan tenant_id output script |
+| Login | `POST /api/v1/auth/login` dengan `tenant=FSOS_DEMO` |
 | Dashboard | `GET /dashboard/home`, `/dashboard/storage-temperatures`, `/dashboard/notifications` |
 | Tracking | `GET /deliveries/{delivery_id}/tracking` dari daftar delivery |
 | Complaint scan | `POST /complaints` dengan `package_code=PKG-2026-0001` dan school demo |

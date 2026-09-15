@@ -54,10 +54,10 @@ class SessionService:
         ))
         return TokenPair(SecretStr(access), SecretStr(raw), family['expires_at'])
 
-    async def login(self, tenant_id: UUID, username: str, password: str) -> TokenPair:
-        account = await self.accounts.authenticate(tenant_id, username, password)
+    async def login(self, tenant, username: str, password: str) -> TokenPair:
+        account = await self.accounts.authenticate(tenant, username, password)
         now = datetime.now(UTC)
-        family = {'session_id': uuid4(), 'tenant_id': tenant_id, 'user_id': account.user_id,
+        family = {'session_id': uuid4(), 'tenant_id': account.tenant_id, 'user_id': account.user_id,
                   'created_at': now, 'expires_at': now + timedelta(days=7)}
         await self.session.execute(insert(AuthSession.__table__).values(**family))
         return await self._pair(account, family)

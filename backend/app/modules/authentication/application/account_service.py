@@ -41,9 +41,36 @@ class AccountService:
             u.c.deleted_at.is_(None), t.c.deleted_at.is_(None),
         )
 
-    async def authenticate(self, tenant_id: UUID, username: str, password: str) -> AuthenticatedAccount:
-        valid = (isinstance(tenant_id, UUID) and isinstance(username, str)
-                 and 0 < len(username) <= 100 and bool(username.strip(' ')) and '\x00' not in username)
+    async def resolve_tenant(self, tenant):
+        if isinstance(tenant, UUID):
+            tenant_id = tenant
+        elif isinstance(tenant, str) and 0 < len(tenant) <= 100 and bool(tenant.strip(' ')) and '\x00' not in tenant:
+            try:
+                tenant_id = UUID(tenant)
+            except ValueError:
+                tenant_id = await self.session.scalar(select(Tenant.tenant_id).where(
+                    Tenant.deleted_at.is_(None),
+                    Tenant.status == 'ACTIVE',
+                    func.lower(func.btrim(Tenant.tenant_code)) == func.lower(func.btrim(tenant)),
+                ).with_for_update(read=True))
+                if tenant_id is None:
+                    raise InvalidCredentialsError('Invalid credentials')
+            else:
+                active = await self.session.scalar(select(Tenant.tenant_id).where(
+                    Tenant.tenant_id == tenant_id,
+                    Tenant.deleted_at.is_(None),
+                    Tenant.status == 'ACTIVE',
+                ).with_for_update(read=True))
+                if active is None:
+                    raise InvalidCredentialsError('Invalid credentials')
+        else:
+            raise InvalidCredentialsError('Invalid credentials')
+        return tenant_id
+
+    async def authenticate(self, tenant, username: str, password: str) -> AuthenticatedAccount:
+        tenant_id = await self.resolve_tenant(tenant)
+        valid = (isinstance(username, str) and 0 < len(username) <= 100
+                 and bool(username.strip(' ')) and '\x00' not in username)
         if valid:
             try:
                 username.encode('utf-8')

@@ -112,12 +112,13 @@ Tes ini belum mencakup login HTTP, refresh/revoke atau mitigasi brute force.
 
 ## Autentikasi akun dan resolusi identitas
 
-AccountService(session).authenticate(tenant_id, username, password) menerima UUID
-tenant, username string nonblank 1..100 karakter, tanpa NUL/Unicode invalid, dan password
+AccountService(session).authenticate(tenant, username, password) menerima tenant
+code atau UUID tenant, username string nonblank 1..100 karakter, tanpa NUL/Unicode invalid, dan password
 plaintext sesuai kebijakan
 password. Username dicocokkan memakai PostgreSQL lower(btrim(...)), sama dengan
 index unik akun: tidak membedakan case dan mengabaikan spasi ASCII di tepi.
-Login email belum didukung. Password tidak di-trim atau dinormalisasi.
+Login email belum didukung. Tenant code dicocokkan case-insensitive dengan trim
+tepi. Password tidak di-trim atau dinormalisasi.
 
 Query hanya menerima user/tenant ACTIVE dan belum soft-deleted dalam tenant yang
 diminta. Hasil AuthenticatedAccount berisi user_id dan tenant_id (UUID), roles dan
@@ -143,7 +144,7 @@ Contoh internal setelah konfigurasi secret codec oleh aplikasi:
 
 ```python
 async with session.begin():
-    account = await AccountService(session).authenticate(tenant_id, username, password)
+    account = await AccountService(session).authenticate(tenant, username, password)
     access_token = codec.issue(
         account.user_id, account.tenant_id,
         roles=list(account.roles), permissions=list(account.permissions),

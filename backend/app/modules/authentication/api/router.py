@@ -81,12 +81,16 @@ def tokens_response(request, pair):
 
 
 @router.post('/login', response_model=TokensEnvelope, summary='Login pada tenant',
-             description='JSON tenant_id, username, password. Public; verifies active account/tenant. Commits session before returning tokens. No cookies.')
+             description='JSON tenant or legacy tenant_id, username, password. tenant accepts tenant_code or UUID. Public; verifies active account/tenant. Commits session before returning tokens. No cookies.')
 async def login(request: Request, payload: LoginPayload, codec: CodecDep,
                 db: DatabaseDep):
     try:
         async with db.begin():
-            pair = await SessionService(db, codec).login(payload.tenant_id, payload.username, payload.password.get_secret_value())
+            pair = await SessionService(db, codec).login(
+                payload.tenant_id if payload.tenant_id is not None else payload.tenant,
+                payload.username,
+                payload.password.get_secret_value(),
+            )
     except InvalidCredentialsError:
         audit(request, 'login', 'denied')
         raise denied() from None

@@ -1,16 +1,23 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from app.core.responses.envelope import Envelope
 
 
 class LoginPayload(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    tenant_id: UUID
+    tenant: str | None = Field(default=None, min_length=1, max_length=100, strict=True)
+    tenant_id: UUID | None = None
     username: str = Field(min_length=1, max_length=100, strict=True)
     password: SecretStr = Field(min_length=1, max_length=72)
+
+    @model_validator(mode='after')
+    def tenant_identifier(self):
+        if (self.tenant is None) == (self.tenant_id is None):
+            raise ValueError('Supply exactly one of tenant or tenant_id')
+        return self
 
 
 class RefreshPayload(BaseModel):
