@@ -109,6 +109,25 @@ class Device(AuditMixin, Base):
     last_online: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class DeviceBinding(AuditMixin, Base):
+    __tablename__ = "device_binding"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "device_id"], ["device.tenant_id", "device.device_id"],
+                             name="fk_device_binding_tenant_device", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "vehicle_id"], ["vehicle.tenant_id", "vehicle.vehicle_id"],
+                             name="fk_device_binding_tenant_vehicle", ondelete="RESTRICT"),
+        UniqueConstraint("tenant_id", "device_id", "vehicle_id", name="uq_device_binding_pair"),
+        CheckConstraint("version >= 1", name="ck_device_binding_version"),
+        Index("ix_device_binding_tenant_device", "tenant_id", "device_id"),
+        Index("ix_device_binding_tenant_vehicle", "tenant_id", "vehicle_id"),
+        Index("ix_device_binding_created_at", "created_at"),
+    )
+    binding_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID]
+    device_id: Mapped[UUID]
+    vehicle_id: Mapped[UUID]
+
+
 class Kitchen(AuditMixin, Base):
     __tablename__ = "kitchen"
     __table_args__ = (

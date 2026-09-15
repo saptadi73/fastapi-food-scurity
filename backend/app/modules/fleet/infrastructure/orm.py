@@ -29,7 +29,9 @@ class Delivery(AuditMixin, Base):
         CheckConstraint("arrival_time IS NULL OR (departure_time IS NOT NULL AND arrival_time >= departure_time)",
                         name="ck_delivery_time_order"),
         CheckConstraint("version >= 1", name="ck_delivery_version"),
-        CheckConstraint('estimated_arrival_time IS NULL OR (departure_time IS NOT NULL AND estimated_arrival_time > departure_time)', name='ck_delivery_eta'),
+        CheckConstraint('estimated_arrival_time IS NULL OR departure_time IS NULL OR estimated_arrival_time > departure_time', name='ck_delivery_eta'),
+        CheckConstraint("estimated_distance_km IS NULL OR (estimated_distance_km >= 0 AND estimated_distance_km <> 'NaN'::numeric)", name='ck_delivery_estimated_distance'),
+        CheckConstraint('estimated_duration_minutes IS NULL OR estimated_duration_minutes >= 0', name='ck_delivery_estimated_duration'),
         Index("ix_delivery_tenant_vehicle", "tenant_id", "vehicle"),
         Index("ix_delivery_tenant_driver", "tenant_id", "driver"),
         Index("ix_delivery_departure_time", "departure_time"),
@@ -41,6 +43,8 @@ class Delivery(AuditMixin, Base):
     driver: Mapped[UUID]
     kitchen_id: Mapped[UUID | None]
     estimated_arrival_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    estimated_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    estimated_duration_minutes: Mapped[int | None]
     departure_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     arrival_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(30), default="CREATED", server_default="CREATED")

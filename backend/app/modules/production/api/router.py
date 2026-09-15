@@ -82,7 +82,7 @@ async def start(request: Request, identifier: UUID, payload: StartInput, service
 
 
 @router.post('/{identifier}/complete', response_model=ProductionEnvelope,
-    description='Production.Complete. RUNNING only; expected_version and actual_quantity 0..planned required, in snapshot output UOM. No stock refund for yield loss; server UTC completion. Atomic registry/event. Holding and packaging are separate.')
+    description='Production.Complete. RUNNING only; expected_version, actual_quantity 0..planned and optional initial_temperature, in snapshot output UOM. No stock refund for yield loss; server UTC completion. Atomic registry/event. Holding and packaging are separate.')
 async def complete(request: Request, identifier: UUID, payload: FinishInput, service: ServiceDep):
     return envelope(request, data=await service.finish(identifier, payload))
 

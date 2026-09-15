@@ -27,7 +27,7 @@ Token bukan JWT dan tidak membawa claim yang dipercaya aplikasi.
 Runtime mendapat SELECT/INSERT pada kedua tabel, UPDATE(revoked_at) pada
 session dan UPDATE(used_at) pada refresh_token. Tidak ada UPDATE identitas/hash,
 DELETE/TRUNCATE/DDL baru. Fitur sesi diperkenalkan pada 0017; profil provisioning saat ini mensyaratkan
-head 0022, lihat [role runtime](runtime-database-role.md). Pembatasan
+head 0029, lihat [role runtime](runtime-database-role.md). Pembatasan
 service bukan RLS; SQL langsung dengan credential database tetap memiliki grant
 yang disebutkan. Revokasi monotonic dijaga service, bukan trigger immutable.
 

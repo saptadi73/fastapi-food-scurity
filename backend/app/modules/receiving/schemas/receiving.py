@@ -13,6 +13,8 @@ class ItemInput(LocationInput):
     batch_code: str = Field(min_length=1, max_length=100)
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=6)
     temperature: Temperature | None = None
+    condition: str | None = Field(default=None, min_length=1, max_length=100)
+    photo: str | None = Field(default=None, min_length=1, max_length=1024)
     expired_date: date | None = None
     qr_code: str | None = Field(default=None, min_length=1, max_length=255)
 
@@ -78,6 +80,8 @@ class ItemData(AuditData):
     quantity: Decimal
     uom: str
     temperature: Decimal | None
+    condition: str | None
+    photo: str | None
     accepted: bool | None
     batch: BatchData
 

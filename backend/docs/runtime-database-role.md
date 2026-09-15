@@ -6,8 +6,8 @@ diimplementasikan. DATABASE_URL lokal kini memakai login fsos_app dengan members
 fsos_runtime. Migrasi, seed dan maintenance memakai ADMIN_DATABASE_URL terpisah.
 Lihat [panduan koneksi](database-connections.md) untuk bootstrap dan pengelolaan secret.
 
-Profil terkini mensyaratkan head `20260911_0022`, diterapkan pada fsos pada
-2026-09-11. Sumber daftar hak adalah `app/core/database/runtime_role.py`. Angka
+Profil terkini mensyaratkan head `20260915_0032`, diterapkan pada fsos pada
+2026-09-15. Sumber daftar hak adalah `app/core/database/runtime_role.py`. Angka
 pemeriksaan pada bagian riwayat merujuk tahap tersebut, bukan total suite terkini.
 
 ## Hak yang diberikan
@@ -17,15 +17,18 @@ pemeriksaan pada bagian riwayat merujuk tahap tersebut, bukan total suite terkin
 | Database/schema | CONNECT database, USAGE schema public |
 | Tabel aplikasi yang dikenal ORM | SELECT |
 | alembic_version | SELECT saja |
-| kitchen, storage, storage_zone, school, driver, vehicle, supplier, raw_material, supplier_material, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
+| kitchen, storage, storage_zone, school, driver, vehicle, device, device_binding, supplier, raw_material, supplier_material, digital_asset, alarm_rule, holding_rule | INSERT, UPDATE pada daftar kolom yang dibutuhkan service |
 | alarm_acknowledgment, device_session_end | INSERT |
 | receiving, raw_material_batch | INSERT; UPDATE hanya status, updated_at, updated_by, version |
 | receiving_item | INSERT; UPDATE hanya accepted, updated_at, updated_by, version |
 | food_item, recipe, packaging_type | INSERT; UPDATE definisi/audit/version dan soft delete sesuai allowlist kolom |
-| stock_entry, production_item, holding_log, delivery_item, school_receiving, consumption | INSERT; bukti immutable, tidak ada UPDATE bisnis |
-| production_batch | INSERT; UPDATE status, waktu start/finish/holding, actual_quantity, holding_policy dan audit/version |
+| stock_entry, stock_issue, production_item, holding_log, delivery_item, school_receiving, consumption, complaint, recall_withdrawal | INSERT; bukti immutable, tidak ada UPDATE bisnis |
+| recall | INSERT; UPDATE hanya completed_at dan audit/version untuk close |
+| notification_outbox | INSERT; UPDATE hanya status, sent_at, failure_reason dan audit/version |
+| production_batch | INSERT; UPDATE status, waktu start/finish/holding, actual_quantity, initial_temperature, holding_policy dan audit/version |
 | package | INSERT; UPDATE status, remaining_minutes, holding_started_at/holding_finished_at dan audit/version |
-| delivery | INSERT; UPDATE status, departure/arrival/ETA dan audit/version |
+| delivery | INSERT; UPDATE status, departure/arrival/ETA, estimasi jarak/durasi dan audit/version |
+| temperature_log, gps_log | INSERT untuk HTTP ingestion awal; SELECT yang sudah ada, tanpa UPDATE/DELETE |
 | asset_relationship, asset_movement, event_log | INSERT; SELECT yang sudah ada, tanpa UPDATE/DELETE |
 | auth_session, refresh_token | SELECT/INSERT; UPDATE hanya revoked_at atau used_at masing-masing |
 | Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
@@ -33,8 +36,8 @@ pemeriksaan pada bagian riwayat merujuk tahap tersebut, bukan total suite terkin
 
 Tidak ada hak CREATE schema/tabel, TEMP, ALTER/DROP, TRUNCATE, DELETE, TRIGGER,
 pengelolaan role, superuser, replication, atau BYPASSRLS. Runtime tidak dapat
-mengeksekusi fungsi pembuat partisi. Raw telemetry ingestion belum mendapat
-INSERT; perlu tinjauan grant saat modul ingestion siap. Hak baru tidak diwariskan
+mengeksekusi fungsi pembuat partisi. Raw telemetry ingestion HTTP awal mendapat
+INSERT temperature_log/gps_log; tabel sensor lain tetap perlu tinjauan grant saat modul ingestion siap. Hak baru tidak diwariskan
 otomatis ke tabel masa depan melalui ALTER DEFAULT PRIVILEGES.
 
 PostgreSQL memerlukan UPDATE setidaknya satu kolom untuk locking reads. Karena
@@ -79,7 +82,7 @@ berlaku pada database target, sehingga login lain yang bergantung pada grant PUB
 tersebut memerlukan grant administratif eksplisit. Owner/superuser lokal tetap
 bisa menjalankan migrasi dan maintenance.
 
-Script mensyaratkan head tepat 0022 sebagai pagar peninjauan. Saat schema/service
+Script mensyaratkan head tepat 0032 sebagai pagar peninjauan. Saat schema/service
 berubah, tinjau serta perbarui profil dan tes sebelum provisioning ulang. Script
 tidak memberikan LOGIN, mengubah password, mengubah ownership objek, memberi
 membership kepada user existing, atau mengalihkan DATABASE_URL.
@@ -145,14 +148,15 @@ minimum CRUD sekolah dan sudah diterapkan pada fsos.
 
 Driver/vehicle kini memiliki INSERT dan UPDATE definisi/audit/version termasuk
 soft delete. Vehicle.driver_id/gps_device boleh diubah setelah pemeriksaan service;
-tenant/ID tetap dilindungi. Tidak ada privilege DELETE SQL/DDL atau INSERT GPS log baru.
+tenant/ID tetap dilindungi. INSERT GPS log tersedia melalui profil HTTP ingestion
+telemetry awal, bukan dari CRUD vehicle.
 
 
 ## Akses receiving development
 
 Profil runtime receiving telah diterapkan pada fsos (2026-09-11). Permission RBAC
-Receiving.Read, Receiving.Write, Receiving.Complete, Receiving.Cancel dan
-RawMaterialBatch.Read diberikan pada DEV_MAINTENANCE lokal. Tidak membuat data
+Receiving.Read, Receiving.Write, Receiving.Complete, Receiving.Cancel,
+RawMaterialBatch.Read dan Telemetry.Ingest diberikan pada DEV_MAINTENANCE lokal. Tidak membuat data
 receiving atau akun baru. CLI `backend/scripts/provision_receiving_permissions.py`
 mengikuti pola administratif development yang ada: --tenant, --actor, --role,
 --permission berulang dan --apply untuk write; default check, tidak merestore grant

@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.responses.envelope import Envelope
-from app.modules.master.schemas.locations import AuditData, LocationInput, Page, VersionInput
+from app.modules.master.schemas.locations import AuditData, LocationInput, Page, Temperature, VersionInput
 
 Quantity = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=6)]
 
@@ -36,6 +36,7 @@ class StartInput(VersionInput, LocationInput):
 
 class FinishInput(VersionInput, LocationInput):
     actual_quantity: Decimal = Field(ge=0, max_digits=14, decimal_places=6)
+    initial_temperature: Temperature | None = None
 
 
 class CancelInput(VersionInput, LocationInput):
@@ -67,6 +68,7 @@ class ProductionData(AuditData):
     menu: UUID
     planned_quantity: Decimal | None
     actual_quantity: Decimal | None
+    initial_temperature: Decimal | None
     recipe_snapshot: RecipeSnapshot | None
     status: str
     started_at: datetime | None

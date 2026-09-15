@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, or_, select, update
 
 from app.core.database.scope import RecordNotFoundError, VersionConflictError
 from app.core.events.orm import EventLog
@@ -65,15 +65,38 @@ class ReceivingService:
         await self.row(Receiving, 'receiving_id', identifier, lock=True)
         return await self.detail(identifier)
 
-    async def list(self, *, batch=False, offset=0, limit=20, **filters):
+    async def list(self, *, batch=False, offset=0, limit=20, search=None, material_category=None,
+                   sort='CREATED_DESC', **filters):
         await require_permission(self.db, self.scope, 'RawMaterialBatch.Read' if batch else 'Receiving.Read')
         model, key = (RawMaterialBatch, 'raw_material_batch_id') if batch else (Receiving, 'receiving_id')
         query = select(model.__table__).where(*self.visible(model))
+        if batch:
+            query = query.join(RawMaterial, (RawMaterial.tenant_id == RawMaterialBatch.tenant_id)
+                               & (RawMaterial.raw_material_id == RawMaterialBatch.raw_material_id))
+            query = query.join(Receiving, (Receiving.tenant_id == RawMaterialBatch.tenant_id)
+                               & (Receiving.receiving_id == RawMaterialBatch.receiving_id))
+            if material_category is not None:
+                query = query.where(RawMaterial.category == material_category)
+            if search is not None:
+                term = f"%{search.strip().lower()}%"
+                query = query.where(or_(
+                    func.lower(RawMaterial.material_code).like(term),
+                    func.lower(RawMaterial.material_name).like(term),
+                    func.lower(RawMaterialBatch.batch_code).like(term),
+                ))
         for field, value in filters.items():
             if value is not None:
                 query = query.where(getattr(model, field) == value)
-        rows = (await self.db.execute(query.order_by(model.created_at.desc(), getattr(model, key).desc())
-                                     .offset(offset).limit(limit + 1))).mappings().all()
+        if batch and sort == 'FEFO':
+            ordering = (RawMaterialBatch.expired_date.is_(None), RawMaterialBatch.expired_date.asc(),
+                        Receiving.received_at.asc(), RawMaterialBatch.created_at.asc(),
+                        RawMaterialBatch.raw_material_batch_id.asc())
+        elif batch and sort == 'FIFO':
+            ordering = (Receiving.received_at.asc(), RawMaterialBatch.created_at.asc(),
+                        RawMaterialBatch.raw_material_batch_id.asc())
+        else:
+            ordering = (model.created_at.desc(), getattr(model, key).desc())
+        rows = (await self.db.execute(query.order_by(*ordering).offset(offset).limit(limit + 1))).mappings().all()
         return {'items': [dict(r) for r in rows[:limit]], 'offset': offset, 'limit': limit,
                 'next_offset': offset + limit if len(rows) > limit else None}
 
@@ -114,11 +137,12 @@ class ReceivingService:
             batch_id = uuid4()
             await self.db.execute(insert(RawMaterialBatch.__table__).values(
                 raw_material_batch_id=batch_id, receiving_id=identifier, supplier_id=payload.supplier_id,
-                **item.model_dump(exclude={'quantity', 'temperature'}), status='CREATED', **self.audit))
+                **item.model_dump(exclude={'quantity', 'temperature', 'condition', 'photo'}),
+                status='CREATED', **self.audit))
             await self.db.execute(insert(ReceivingItem.__table__).values(
                 receiving_item_id=uuid4(), receiving_id=identifier, raw_material_batch_id=batch_id,
                 quantity=item.quantity, temperature=item.temperature, uom=materials[item.raw_material_id]['uom'],
-                accepted=None, **self.audit))
+                condition=item.condition, photo=item.photo, accepted=None, **self.audit))
             await sync_source(self.db, self.scope, 'RAW_MATERIAL_BATCH', batch_id)
         result = await self.detail(identifier)
         await self.event('receiving.created', result)

@@ -14,7 +14,10 @@ from app.modules.fleet.schemas.delivery import (
     DeliveryAction,
     DeliveryEnvelope,
     DeliveryInput,
+    DeliveryPackageDestinationPageEnvelope,
+    DeliveryPackageVehiclePageEnvelope,
     DeliveryPageEnvelope,
+    DeliveryTrackingEnvelope,
     DepartureInput,
 )
 
@@ -68,6 +71,28 @@ async def listing(request: Request, service: ServiceDep, offset: Offset = 0, lim
     return envelope(request, data=await service.list(offset=offset, limit=limit, kitchen_id=kitchen_id, vehicle=vehicle, driver=driver, status=status))
 
 
+@router.get('/packages/by-vehicle', response_model=DeliveryPackageVehiclePageEnvelope,
+    description='Delivery.Read. No body; package counts and quantities grouped by vehicle, optional vehicle/status filters, offset/limit. UOM is null when grouped packages mix output units.')
+async def packages_by_vehicle(request: Request, service: ServiceDep, offset: Offset = 0, limit: Limit = 20,
+    vehicle: UUID | None = None, status: Literal['CREATED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED'] | None = None):
+    return envelope(request, data=await service.package_summary(
+        group_by='vehicle', offset=offset, limit=limit, vehicle=vehicle, status=status))
+
+
+@router.get('/packages/by-destination', response_model=DeliveryPackageDestinationPageEnvelope,
+    description='Delivery.Read. No body; package counts and quantities grouped by destination school, optional school_id/status filters, offset/limit. UOM is null when grouped packages mix output units.')
+async def packages_by_destination(request: Request, service: ServiceDep, offset: Offset = 0, limit: Limit = 20,
+    school_id: UUID | None = None, status: Literal['CREATED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED'] | None = None):
+    return envelope(request, data=await service.package_summary(
+        group_by='school_id', offset=offset, limit=limit, school_id=school_id, status=status))
+
+
+@router.get('/{identifier}/tracking', response_model=DeliveryTrackingEnvelope,
+    description='Delivery.Read. UUID delivery; latest GPS for vehicle, latest temperature from assigned GPS device if any, estimated remaining distance/time to farthest destination. Read-only; no telemetry ingestion or realtime subscription.')
+async def tracking(request: Request, identifier: UUID, service: ServiceDep):
+    return envelope(request, data=await service.tracking(identifier))
+
+
 @router.get('/{identifier}', response_model=DeliveryEnvelope,
     description='Delivery.Read. UUID path; no body/query. Manifest sorted by package UUID; nested package contains current timer and state, not historical snapshot. Foreign/missing/deleted 404.')
 async def detail(request: Request, identifier: UUID, service: ServiceDep):
@@ -75,7 +100,7 @@ async def detail(request: Request, identifier: UUID, service: ServiceDep):
 
 
 @router.post('/{identifier}/depart', response_model=DeliveryEnvelope,
-    description='Delivery.Depart. CREATED only, delivery expected_version plus timezone-aware future estimated_arrival_time. Rechecks active parents/assignment, allocated packages, holding and ETA strictly before all expiry deadlines. Atomic IN_TRANSIT, package versions, LOADED edges, VEHICLE_LOADING movements, registry and event.')
+    description='Delivery.Depart. CREATED only, delivery expected_version plus optional timezone-aware future estimated_arrival_time. When omitted, ETA is estimated from route coordinates. Rechecks active parents/assignment, allocated packages, holding and ETA strictly before all expiry deadlines. Atomic IN_TRANSIT, package versions, LOADED edges, VEHICLE_LOADING movements, registry and event.')
 async def depart(request: Request, identifier: UUID, payload: DepartureInput, service: ServiceDep):
     return envelope(request, data=await service.transition(identifier, payload, 'depart'))
 

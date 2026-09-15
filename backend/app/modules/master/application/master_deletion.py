@@ -11,6 +11,7 @@ from app.modules.master.infrastructure.orm import (
     School,
     Storage,
     StorageZone,
+    DeviceBinding,
     SupplierMaterial,
     Vehicle,
 )
@@ -24,7 +25,7 @@ REFERENCES = {
     'food_item': ((Recipe, 'food_item_id'), (ProductionBatch, 'menu')),
     'recipe': (),
     'driver': ((Vehicle, 'driver_id'), (Delivery, 'driver')),
-    'vehicle': ((Delivery, 'vehicle'), (GPSLog, 'vehicle_uuid')),
+    'vehicle': ((Delivery, 'vehicle'), (GPSLog, 'vehicle_uuid'), (DeviceBinding, 'vehicle_id')),
     'school': ((DeliveryItem, 'school_id'), (SchoolReceiving, 'school'), (Complaint, 'school_id')),
     'kitchen': ((Delivery, 'kitchen_id'), (Storage, 'kitchen_id'), (School, 'kitchen_id'), (Receiving, 'kitchen_id'), (ProductionBatch, 'kitchen')),
     'storage': ((ProductionItem, 'storage_id'), (StockEntry, 'storage_id'), (StorageZone, 'storage_id'), (TemperatureLog, 'storage_uuid')),
@@ -32,8 +33,9 @@ REFERENCES = {
     'supplier': ((SupplierMaterial, 'supplier_id'), (Receiving, 'supplier_id')),
     'raw_material': ((SupplierMaterial, 'raw_material_id'), (Recipe, 'raw_material_id'), (RawMaterialBatch, 'raw_material_id')),
     'supplier_material': (),
+    'device': ((Vehicle, 'gps_device'), (DeviceBinding, 'device_id')),
 }
-ASSETS = {'vehicle': 'VEHICLE', 'school': 'SCHOOL', 'kitchen': 'KITCHEN', 'storage': 'STORAGE', 'supplier': 'SUPPLIER', 'raw_material': 'RAW_MATERIAL'}
+ASSETS = {'vehicle': 'VEHICLE', 'school': 'SCHOOL', 'kitchen': 'KITCHEN', 'storage': 'STORAGE', 'supplier': 'SUPPLIER', 'raw_material': 'RAW_MATERIAL', 'device': 'DEVICE'}
 
 
 class MasterInUseError(Exception):

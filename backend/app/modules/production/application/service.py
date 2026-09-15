@@ -16,6 +16,7 @@ from app.modules.receiving.infrastructure.orm import (
     Receiving,
     ReceivingItem,
     StockEntry,
+    StockIssue,
 )
 from app.modules.traceability.infrastructure.orm import (
     AssetMovement,
@@ -146,7 +147,10 @@ class ProductionService(ReceivingService):
             used = await self.db.scalar(select(func.coalesce(func.sum(ProductionItem.quantity), 0)).where(
                 *self.visible(ProductionItem), ProductionItem.raw_material_batch_id == source.raw_material_batch_id,
                 ProductionItem.storage_id == source.storage_id))
-            if source.quantity > putaway - used:
+            manual_used = await self.db.scalar(select(func.coalesce(func.sum(StockIssue.quantity), 0)).where(
+                *self.visible(StockIssue), StockIssue.raw_material_batch_id == source.raw_material_batch_id,
+                StockIssue.storage_id == source.storage_id))
+            if source.quantity > putaway - used - manual_used:
                 raise ProductionConflictError('Insufficient available stock in selected storage')
             totals[batch['raw_material_id']] = totals.get(batch['raw_material_id'], Decimal(0)) + source.quantity
             checked.append((source, batch, item['uom']))
@@ -189,7 +193,8 @@ class ProductionService(ReceivingService):
         if not cancel:
             if payload.actual_quantity > current['planned_quantity']:
                 raise ProductionConflictError('Actual quantity cannot exceed planned quantity')
-            values.update(actual_quantity=payload.actual_quantity, finished_at=now)
+            values.update(actual_quantity=payload.actual_quantity,
+                          initial_temperature=payload.initial_temperature, finished_at=now)
         await self.db.execute(update(ProductionBatch).where(*self.visible(ProductionBatch),
             ProductionBatch.production_batch_id == identifier).values(**values))
         await sync_source(self.db, self.scope, 'PRODUCTION_BATCH', identifier)

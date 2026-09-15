@@ -2,9 +2,10 @@
 
 Status 2026-09-11: adapter sumber, service sinkronisasi, backfill administratif,
 rekonsiliasi laporan sumber, integrasi master operasional serta transaksi receiving,
-stok, produksi, paket/holding, pengiriman dan konsumsi tersedia. Registry sendiri
-belum memiliki endpoint HTTP/traversal atau publisher eksternal. Service bisnis
-menulis registry dan event dalam transaksi yang sama; schema proyek kini head 0022.
+stok, produksi, paket/holding, pengiriman, konsumsi, complaint dan recall tersedia.
+Registry kini memiliki endpoint read-only traceability/traversal; repair registry
+tetap administratif dan belum ada publisher eksternal. Service bisnis menulis
+registry dan event dalam transaksi yang sama; schema proyek kini head 0029.
 
 ## Pemetaan sumber
 
@@ -271,5 +272,6 @@ RECEIVED hanya dibuat untuk accepted. Registry CONSUMPTION dibuat saat finalisas
 edge CONSUMED hanya bila ada jumlah dikonsumsi. Detail arah edge/movement dan
 kasus discarded/mixed ada di [event catalog](event-catalog.md#event-penerimaan-sekolah-dan-konsumsi-internal).
 
-Adapter COMPLAINT/RECALL yang sudah tercantum belum berarti API keluhan/recall
-aktif. Traversal backward/forward, timeline/passport dan impact analysis masih TODO.
+Adapter COMPLAINT/RECALL kini dipakai oleh API complaint dan recall aktif.
+Traversal backward/forward, timeline, passport dan impact analysis tersedia
+read-only melalui kontrak traceability; repair registry dan replay tetap administratif.

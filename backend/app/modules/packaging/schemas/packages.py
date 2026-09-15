@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.responses.envelope import Envelope
-from app.modules.master.schemas.locations import AuditData, LocationInput, Page, VersionInput
+from app.modules.master.schemas.locations import AuditData, LocationInput, Page, Temperature, VersionInput
 
 
 class HoldingPolicy(BaseModel):
@@ -25,6 +25,7 @@ class PackageInput(VersionInput, LocationInput):
     package_code: str = Field(min_length=1, max_length=100)
     package_number: int = Field(gt=0, le=2147483647, strict=True)
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=6)
+    initial_temperature: Temperature | None = None
 
 
 class HoldingInput(VersionInput, LocationInput):
@@ -42,6 +43,7 @@ class PackageData(AuditData):
     package_type_id: UUID | None
     package_number: int
     quantity: Decimal | None
+    initial_temperature: Decimal | None
     uom: str | None
     status: str
     effective_status: str

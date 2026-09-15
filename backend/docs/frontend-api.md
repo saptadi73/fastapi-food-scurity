@@ -1,14 +1,21 @@
 # Panduan integrasi frontend FSOS
 
-Terakhir diperbarui: 2026-09-11. Versi aplikasi: 0.1.0.
-Status: **120 operasi HTTP aktif**, termasuk CRUD dua belas master, autentikasi,
+Terakhir diperbarui: 2026-09-15. Versi aplikasi: 0.1.0.
+Status: **165 operasi HTTP aktif**, termasuk CRUD empat belas master, autentikasi,
 konfigurasi rule, bukti alarm/sesi perangkat, penerimaan bahan/stok, produksi,
-pengemasan/holding, pengiriman serta penerimaan sekolah dan konsumsi.
-Modul complaint/recall dan pendukung lain masih bertahap.
+pengemasan/holding, pengiriman, penerimaan sekolah, konsumsi dan complaint intake/report.
+Recall start/execute/withdrawal/close, notification outbox, traceability passport/impact dan dashboard read aktif;
+notifikasi dan pendukung lain masih bertahap.
 
 Dokumen ini menjelaskan implementasi yang dapat dipanggil sekarang.
 [Desain API](../../docs/16_API_design.md) adalah roadmap draft, bukan daftar
 endpoint aktif. Tabel database yang sudah ada belum menyediakan API CRUD.
+
+Untuk implementasi frontend development, seed demo end-to-end tersedia melalui
+`backend/scripts/seed_demo_ready.py`. Script membuat tenant `FSOS_DEMO`, user
+`frontend-admin`, workflow 14 tahap, sampel IoT, complaint report, recall dan
+notification outbox. Detail login/kode demo ada di
+[Seed development](development-seed.md#seed-demo-frontend-end-to-end).
 
 Tautan: [Event catalog](event-catalog.md), [perubahan kontrak](frontend-changelog.md),
 [database](database.md), [TODO](../../TODO.md).
@@ -41,7 +48,7 @@ Perbedaan host atau port berarti origin berbeda. CORS bukan autentikasi.
 | `X-Correlation-ID` | Request opsional | Menghubungkan request satu aktivitas; dipotong maksimal 128 karakter |
 | `X-Request-ID` | Response | UUID baru setiap request; tersedia untuk JavaScript melalui CORS |
 | `Content-Type: application/json` | Response API | Format envelope |
-| `Cache-Control: no-store` | Response `/ready`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*`, `/receivings*`, `/raw-material-batches*`, `/food-items*`, `/recipes*`, `/production-batches*`, `/packages*`, `/packaging-types*`, `/deliveries*`, `/school-receivings*`, `/consumptions*` | Respons tidak boleh disimpan cache |
+| `Cache-Control: no-store` | Response `/ready`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/devices*`, `/device-bindings*`, `/telemetry*`, `/dashboard*`, `/notifications*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*`, `/receivings*`, `/raw-material-batches*`, `/food-items*`, `/recipes*`, `/production-batches*`, `/packages*`, `/packaging-types*`, `/deliveries*`, `/complaints*`, `/recalls*`, `/traceability*`, `/school-receivings*`, `/consumptions*` | Respons tidak boleh disimpan cache |
 | `Content-Type: application/json` | Request POST autentikasi | Body JSON wajib; bukan form OAuth |
 | `Authorization: Bearer <access_token>` | Request `/auth/me` | Access JWT dengan sesi aktif |
 | `Retry-After` | Response 429 autentikasi | Detik sebelum mencoba lagi; diekspos lewat CORS |
@@ -71,8 +78,8 @@ error dari proxy/jaringan dapat berada di luar envelope aplikasi.
 
 ## Cakupan CRUD dan status modul
 
-Status berikut diperiksa dari router yang terdaftar dan OpenAPI aplikasi: **120
-operasi HTTP aktif**, termasuk 60 operasi CRUD untuk dua belas master. Angka ini adalah
+Status berikut diperiksa dari router yang terdaftar dan OpenAPI aplikasi: **165
+operasi HTTP aktif**, termasuk 70 operasi CRUD untuk empat belas master. Angka ini adalah
 kombinasi method/path, bukan jumlah modul. Schema database, fixture development,
 service internal atau adapter registry tidak berarti endpoint sudah tersedia.
 
@@ -90,13 +97,14 @@ service internal atau adapter registry tidak berarti endpoint sudah tersedia.
 | Menu/food item | Ada | Ada | Ada | Soft delete | [Menu/resep](#kontrak-menu-dan-resep) |
 | Resep (recipe) | Ada | Ada | Ada | Soft delete | [Menu/resep](#kontrak-menu-dan-resep) |
 | Jenis kemasan (packaging type) | Ada | Ada | Ada | Soft delete | [Kemasan/paket/holding](#kontrak-kemasan-paket-dan-holding) |
-| Master device dan binding | Belum | Belum | Belum | Belum | Schema device tersedia; CRUD/binding HTTP belum dibuat |
+| Master device | Ada | Ada | Ada | Soft delete | [Master device dan binding](#kontrak-master-device-dan-binding) |
+| Binding device/vehicle | Ada | Ada | Ada | Soft delete | [Master device dan binding](#kontrak-master-device-dan-binding) |
 | Tenant/user/role/permission | Belum | Belum | Belum | Belum | Schema dan CLI administratif tertentu tersedia; bukan API CRUD |
 | Holding rule | Ada | Ada | Ada | Belum | [Konfigurasi + history](#kontrak-holding-rule-http); timer paket melalui kontrak holding |
 | Alarm rule | Ada | Ada | Ada | Belum | [Konfigurasi + aktivasi/history](#kontrak-alarm-rule-http); executor belum tersedia |
 
 Read pada matriks berarti endpoint master, bukan pembacaan database internal.
-CRUD dua belas master menggunakan permission Read/Write/Delete terpisah. Delete adalah
+CRUD empat belas master menggunakan permission Read/Write/Delete terpisah. Delete adalah
 soft delete dengan expected_version dan proteksi referensi; bukan cascade atau
 hard delete. Lihat [kontrak DELETE](#soft-delete-master-operasional).
 
@@ -115,8 +123,13 @@ Produksi kini tersedia melalui [kontrak produksi](#kontrak-transaksi-produksi).
 Paket dan holding tersedia melalui [kontrak pengemasan](#kontrak-kemasan-paket-dan-holding).
 Pengiriman tersedia melalui [kontrak manifest/perjalanan](#kontrak-pengiriman).
 Penerimaan sekolah dan konsumsi tersedia melalui [kontrak sekolah/konsumsi](#kontrak-penerimaan-sekolah-dan-konsumsi).
-Complaint dan recall masih memiliki schema tanpa API transaksi aktif. Traceability traversal, dashboard dan subscription realtime
-juga belum tersedia. Penghapusan kitchen tetap diblokir bila sekolah nondeleted masih merujuknya.
+Complaint intake/report tersedia melalui [kontrak complaint](#kontrak-complaint-intake).
+Recall dasar tersedia melalui [kontrak recall](#kontrak-recall-dasar).
+Notification outbox tersedia melalui [kontrak notification](#kontrak-notification-outbox).
+Traceability read tersedia melalui [kontrak traceability](#kontrak-traceability-read).
+Dashboard read tersedia melalui [kontrak dashboard](#kontrak-dashboard-read).
+Subscription realtime belum tersedia. Penghapusan
+kitchen tetap diblokir bila sekolah nondeleted masih merujuknya.
 
 Frontend hanya boleh mengintegrasikan method/path pada daftar endpoint aktif di
 bawah. Jangan menebak path, payload atau permission untuk modul berstatus Belum;
@@ -155,6 +168,44 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/device-sessions` | Daftar sesi perangkat | Tidak ada; filter/pagination | 200 |
 | GET | `/api/v1/device-sessions/{session_id}` | Detail sesi perangkat | Tidak ada | 200 |
 | POST | `/api/v1/device-sessions/{session_id}/end` | Catat akhir sesi | disconnected_at | 200 |
+| GET | `/api/v1/devices` | Daftar perangkat | Tidak ada; filter/pagination/zone | 200 |
+| POST | `/api/v1/devices` | Buat perangkat | DeviceInput | 201 |
+| GET | `/api/v1/devices/{identifier}` | Detail perangkat | Tidak ada | 200 |
+| PUT | `/api/v1/devices/{identifier}` | Ganti perangkat | DeviceInput + expected_version | 200 |
+| DELETE | `/api/v1/devices/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
+| GET | `/api/v1/device-bindings` | Daftar binding perangkat-kendaraan | Tidak ada; filter/pagination | 200 |
+| POST | `/api/v1/device-bindings` | Buat binding perangkat-kendaraan | DeviceBindingInput | 201 |
+| GET | `/api/v1/device-bindings/{identifier}` | Detail binding | Tidak ada | 200 |
+| PUT | `/api/v1/device-bindings/{identifier}` | Ganti binding | DeviceBindingInput + expected_version | 200 |
+| DELETE | `/api/v1/device-bindings/{identifier}` | Putuskan hubungan perangkat-kendaraan | Tidak ada; expected_version query wajib | 200 |
+| POST | `/api/v1/complaints` | Catat keluhan paket | ComplaintInput | 201 |
+| GET | `/api/v1/complaints` | Daftar keluhan | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/complaints/reports` | Daftar laporan insiden lengkap | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/complaints/{identifier}` | Detail keluhan | Tidak ada | 200 |
+| GET | `/api/v1/complaints/{identifier}/report` | Analisa laporan insiden | Tidak ada | 200 |
+| POST | `/api/v1/recalls` | Mulai recall batch produksi | RecallInput | 201 |
+| GET | `/api/v1/recalls` | Daftar recall | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/recalls/{identifier}` | Detail recall | Tidak ada | 200 |
+| POST | `/api/v1/recalls/{identifier}/execute` | Eksekusi recall paket terdampak | RecallExecuteInput | 200 |
+| POST | `/api/v1/recalls/{identifier}/withdrawals` | Catat bukti penarikan fisik recall | RecallWithdrawalInput | 201 |
+| GET | `/api/v1/recalls/{identifier}/withdrawals` | Daftar bukti penarikan recall | Tidak ada; offset/limit/package_id | 200 |
+| POST | `/api/v1/recalls/{identifier}/close` | Selesaikan recall | RecallCloseInput | 200 |
+| GET | `/api/v1/notifications` | Daftar notification outbox | Tidak ada; filter/pagination | 200 |
+| POST | `/api/v1/notifications/{identifier}/mark-sent` | Tandai notifikasi terkirim | NotificationMarkSentInput | 200 |
+| POST | `/api/v1/notifications/{identifier}/mark-failed` | Tandai notifikasi gagal | NotificationMarkFailedInput | 200 |
+| GET | `/api/v1/traceability/assets/{asset_uuid}` | Detail registry asset | Tidak ada | 200 |
+| GET | `/api/v1/traceability/assets/{asset_uuid}/relationships` | Edge parent/child langsung | Tidak ada; direction/pagination | 200 |
+| GET | `/api/v1/traceability/assets/{asset_uuid}/movements` | Timeline movement asset | Tidak ada; pagination | 200 |
+| GET | `/api/v1/traceability/assets/{asset_uuid}/passport` | Passport asset | Tidak ada | 200 |
+| GET | `/api/v1/traceability/assets/{asset_uuid}/impact` | Impact downstream | Tidak ada; depth/limit | 200 |
+| GET | `/api/v1/traceability/assets/{asset_uuid}/traverse` | Traversal graph terbatas | Tidak ada; direction/depth/limit | 200 |
+| GET | `/api/v1/dashboard/home` | Ringkasan operasional home | Tidak ada | 200 |
+| GET | `/api/v1/dashboard/storage` | Ringkasan storage | Tidak ada | 200 |
+| GET | `/api/v1/dashboard/storage-temperatures` | Monitor suhu terbaru per storage | Tidak ada; offset/limit | 200 |
+| GET | `/api/v1/dashboard/fleet` | Ringkasan fleet | Tidak ada | 200 |
+| GET | `/api/v1/dashboard/holding` | Ringkasan holding | Tidak ada | 200 |
+| GET | `/api/v1/dashboard/recall` | Ringkasan recall | Tidak ada | 200 |
+| GET | `/api/v1/dashboard/notifications` | Ringkasan notification outbox | Tidak ada | 200 |
 | GET | `/api/v1/kitchens` | Daftar Kitchen | Tidak ada; pagination/filter induk | 200 |
 | POST | `/api/v1/kitchens` | Buat Kitchen | Definisi | 201 |
 | GET | `/api/v1/kitchens/{identifier}` | Detail Kitchen | Tidak ada | 200 |
@@ -200,9 +251,11 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/vehicles/{identifier}` | Detail kendaraan | Tidak ada | 200 |
 | PUT | `/api/v1/vehicles/{identifier}` | Ganti kendaraan | Definisi + expected_version | 200 |
 | DELETE | `/api/v1/vehicles/{identifier}` | Soft delete kendaraan | Tidak ada; expected_version query | 200 |
-| POST | `/api/v1/raw-material-batches/{identifier}/putaway` | Alokasi stok ke storage | expected_version, storage_id, quantity | 201 |
+| POST | `/api/v1/raw-material-batches/{identifier}/putaway` | Alokasi stok ke storage/zone | expected_version, storage_id, zone_id opsional, quantity | 201 |
 | GET | `/api/v1/raw-material-batches/{identifier}/stock` | Saldo dan ketersediaan | Tidak ada | 200 |
 | GET | `/api/v1/raw-material-batches/{identifier}/stock-entries` | Ledger alokasi | Tidak ada; offset/limit | 200 |
+| POST | `/api/v1/raw-material-batches/{identifier}/manual-stock-issues` | Pengeluaran manual/scan dari storage | expected_version, storage_id, zone_id opsional, quantity, issued_at opsional, reason | 201 |
+| GET | `/api/v1/raw-material-batches/{identifier}/manual-stock-issues` | Ledger pengeluaran manual/scan | Tidak ada; offset/limit | 200 |
 | GET | `/api/v1/food-items` | Daftar menu | Tidak ada; pagination/filter | 200 |
 | GET | `/api/v1/food-items/{identifier}` | Detail menu | Tidak ada | 200 |
 | POST | `/api/v1/food-items` | Buat menu | Payload lengkap | 201 |
@@ -217,7 +270,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/production-batches` | Daftar produksi | Tidak ada; pagination/filter | 200 |
 | GET | `/api/v1/production-batches/{identifier}` | Detail produksi | Tidak ada | 200 |
 | POST | `/api/v1/production-batches/{identifier}/start` | Mulai/pakai bahan | expected_version + items sumber stok | 200 |
-| POST | `/api/v1/production-batches/{identifier}/complete` | Catat hasil | expected_version + actual_quantity | 200 |
+| POST | `/api/v1/production-batches/{identifier}/complete` | Catat hasil dan suhu awal | expected_version + actual_quantity + initial_temperature opsional | 200 |
 | POST | `/api/v1/production-batches/{identifier}/cancel` | Batalkan CREATED | expected_version | 200 |
 | GET | `/api/v1/raw-material-batches/{identifier}/stock-issues` | Riwayat pemakaian produksi | Tidak ada; offset/limit | 200 |
 | GET | `/api/v1/packaging-types` | Daftar jenis kemasan | Tanpa body; offset/limit | 200 |
@@ -235,7 +288,12 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | POST | `/api/v1/packages/{identifier}/holding/finish` | Release/discard | expected_version + outcome | 200 |
 | POST | `/api/v1/deliveries` | Buat manifest | kitchen_id/vehicle/driver/items | 201 |
 | GET | `/api/v1/deliveries` | Daftar pengiriman | Tanpa body; filter/pagination | 200 |
+| GET | `/api/v1/deliveries/packages/by-vehicle` | Ringkasan kemasan per armada | Tanpa body; filter/pagination | 200 |
+| GET | `/api/v1/deliveries/packages/by-destination` | Ringkasan kemasan per tujuan | Tanpa body; filter/pagination | 200 |
 | GET | `/api/v1/deliveries/{identifier}` | Detail manifest/perjalanan | Tanpa body | 200 |
+| GET | `/api/v1/deliveries/{identifier}/tracking` | Tracking GPS/suhu terakhir dan sisa jarak/waktu | Tanpa body | 200 |
+| POST | `/api/v1/telemetry/gps` | Ingest GPS armada HTTP | vehicle_uuid, lat/lon, speed opsional | 201 |
+| POST | `/api/v1/telemetry/temperatures` | Ingest suhu device/storage HTTP | device_uuid, storage_uuid opsional, temperature/unit | 201 |
 | POST | `/api/v1/deliveries/{identifier}/depart` | Berangkat | expected_version/estimated_arrival_time | 200 |
 | POST | `/api/v1/deliveries/{identifier}/complete` | Konfirmasi perjalanan selesai | expected_version | 200 |
 | POST | `/api/v1/deliveries/{identifier}/cancel` | Batalkan CREATED | expected_version | 200 |
@@ -495,7 +553,7 @@ DSL v1 menjadi kontrak input alarm; evaluator, simulasi dan executor masih TODO.
 API kitchen, storage dan storage zone kini tersedia dengan tenant/actor dari bearer,
 permission Read/Write dan expected_version. Lihat [kontrak master lokasi](#kontrak-master-kitchen-storage-zone).
 
-Master data selain kitchen/storage/zone/sekolah/kendaraan/driver/supplier/bahan/relasi pemasok/menu/resep/jenis kemasan/holding/alarm rule, device, telemetry selain alarm/sesi, stok lanjutan, holding dinamis berbasis telemetry,
+Master data selain kitchen/storage/zone/sekolah/kendaraan/driver/supplier/bahan/relasi pemasok/menu/resep/jenis kemasan/holding/alarm rule, telemetry selain alarm/sesi, stok lanjutan, holding dinamis berbasis telemetry,
 traceability traversal, GPS/geofence fleet, complaint, recall, dashboard, analytics, dan cetak QR
 belum memiliki endpoint aktif. Filter dan pagination tersedia untuk aturan/alarm/sesi
 sesuai kontrak masing-masing; sort kustom dan upload belum tersedia melalui HTTP. Payloadnya belum menjadi
@@ -1874,11 +1932,167 @@ mengirim device.disconnected atau notifikasi, dan tidak membuka koneksi/reconnec
 Lihat [event catalog](event-catalog.md) dan [lifecycle](telemetry-lifecycle.md).
 
 
+## Kontrak master device dan binding
+
+Status: sepuluh operasi aktif: lima operasi CRUD perangkat dengan sinkronisasi
+asset `DEVICE`, dan lima operasi binding perangkat GPS aktif ke kendaraan aktif.
+Binding adalah data administratif untuk mengaitkan perangkat telemetry kendaraan;
+belum menerbitkan event runtime atau GPS log.
+
+| Method/path | Tujuan | Permission | Body | Path/query |
+| --- | --- | --- | --- | --- |
+| GET /api/v1/devices | Daftar perangkat | Device.Read | Tidak ada | offset/limit/zone_id |
+| POST /api/v1/devices | Buat perangkat | Device.Write | DeviceInput | Tidak ada |
+| GET /api/v1/devices/{identifier} | Detail perangkat | Device.Read | Tidak ada | identifier UUID perangkat wajib |
+| PUT /api/v1/devices/{identifier} | Ganti definisi perangkat | Device.Write | DeviceInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/devices/{identifier} | Soft delete perangkat | Device.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+| GET /api/v1/device-bindings | Daftar binding perangkat-kendaraan | Device.Read | Tidak ada | offset/limit/device_id/vehicle_id |
+| POST /api/v1/device-bindings | Buat binding | Device.Write | DeviceBindingInput | Tidak ada |
+| GET /api/v1/device-bindings/{identifier} | Detail binding | Device.Read | Tidak ada | identifier UUID binding wajib |
+| PUT /api/v1/device-bindings/{identifier} | Ganti binding | Device.Write | DeviceBindingInput + expected_version | identifier UUID wajib |
+| DELETE /api/v1/device-bindings/{identifier} | Soft delete binding | Device.Delete | Tidak ada | identifier UUID; expected_version query wajib |
+
+Semua endpoint membutuhkan `Authorization: Bearer <access_token>`; tenant/operator dari sesi.
+POST/PUT wajib `Content-Type: application/json`; DELETE menolak body.
+Respons memakai `JSON envelope`, `X-Request-ID`, `Cache-Control: no-store`, `Pragma: no-cache`.
+
+### Payload
+
+| Field | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| zone_id | UUID / tidak / ya | Opsi storage zone aktif, tenant dan nondeleted; default null |
+| device_uuid | UUID / tidak / ya | Dipakai sebagai identitas publik; bila kosong akan digenerate |
+| device_name | string / ya / tidak | 1..200 |
+| device_type | string / ya / tidak | 1..50 |
+| firmware | string / tidak / ya | Maksimal 100 |
+| hardware | string / tidak / ya | Maksimal 100 |
+| mqtt_topic | string / tidak / ya | Maksimal 512 |
+| status | string enum / tidak / tidak | REGISTERED/ACTIVE/INACTIVE; default REGISTERED |
+| last_online | datetime UTC / tidak / ya | ISO 8601 UTC |
+
+Semua field input tambahan ditolak. PUT mengganti penuh definisi sehingga field optional
+yang tidak dikirim akan memakai default sesuai skema, bukan mempertahankan nilai lama.
+
+| Field tambahan respons | Tipe / nullable | Makna |
+| --- | --- | --- |
+| device_id | UUID / tidak | ID internal |
+| tenant_id | UUID / tidak | Tenant sesi |
+| version | integer / tidak | Create 1; naik 1 pada PUT/DELETE |
+| created_at, updated_at | ISO 8601 UTC / tidak | Audit server |
+| created_by, updated_by | UUID / ya | Actor audit; null pada data lama |
+| deleted_at | ISO 8601 UTC / ya | Null pada GET biasa; terisi saat DELETE sukses |
+| deleted_by | UUID / ya | Actor penghapusan, nonnull saat DELETE |
+
+Query list: `offset` 0..2147483647 (default 0), `limit` 1..100 (default 20),
+`zone_id` opsional. Omit parameter tidak dipakai; null literal tidak selalu setara
+dengan dihapus. Urutan `created_at DESC, device_id DESC`; query tidak snapshot.
+
+### Payload binding
+
+| Field | Tipe / required / nullable | Validasi/default |
+| --- | --- | --- |
+| device_id | UUID / ya / tidak | Device aktif, tenant sama, nondeleted, `status=ACTIVE`, dan `device_type=GPS` |
+| vehicle_id | UUID / ya / tidak | Vehicle aktif, tenant sama, nondeleted, dan `status=ACTIVE` |
+| expected_version | integer / hanya PUT / tidak | 1..2147483647; wajib pada PUT body |
+
+Field tambahan ditolak. Create menghasilkan `binding_id` baru, `tenant_id` dari
+sesi, audit server dan `version=1`. Respons binding berisi `binding_id`,
+`tenant_id`, `device_id`, `vehicle_id`, `version`, `created_at`, `updated_at`,
+`created_by`, `updated_by`, `deleted_at` dan `deleted_by`.
+
+Query list binding: `offset` 0..2147483647 (default 0), `limit` 1..100
+(default 20), `device_id` opsional, `vehicle_id` opsional. Urutan
+`created_at DESC, binding_id DESC`; query tidak snapshot.
+
+### Contoh request
+
+POST `/api/v1/devices`:
+
+```json
+{
+  "device_name": "THERMAL_GATE_A1",
+  "device_type": "TEMPERATURE_GATEWAY",
+  "firmware": "fw-1.0.0",
+  "hardware": "rev-b",
+  "mqtt_topic": "fsos/site/gw/a1",
+  "status": "ACTIVE",
+  "last_online": "2026-09-11T08:00:00Z"
+}
+```
+
+PUT `/api/v1/devices/22222222-2222-4222-8222-222222222222`:
+
+```json
+{
+  "device_name": "THERMAL_GATE_A1",
+  "device_type": "TEMPERATURE_GATEWAY",
+  "status": "ACTIVE",
+  "expected_version": 1
+}
+```
+
+GET `/api/v1/devices?zone_id=33333333-3333-4333-8333-333333333333&offset=0&limit=20`
+
+DELETE `/api/v1/devices/22222222-2222-4222-8222-222222222222?expected_version=2`
+
+POST `/api/v1/device-bindings`:
+
+```json
+{
+  "device_id": "22222222-2222-4222-8222-222222222222",
+  "vehicle_id": "55555555-5555-4555-8555-555555555555"
+}
+```
+
+PUT `/api/v1/device-bindings/66666666-6666-4666-8666-666666666666`:
+
+```json
+{
+  "device_id": "22222222-2222-4222-8222-222222222222",
+  "vehicle_id": "55555555-5555-4555-8555-555555555555",
+  "expected_version": 1
+}
+```
+
+GET `/api/v1/device-bindings?vehicle_id=55555555-5555-4555-8555-555555555555&offset=0&limit=20`
+
+DELETE `/api/v1/device-bindings/66666666-6666-4666-8666-666666666666?expected_version=2`
+
+### Error dan efek samping
+
+| HTTP | message | Kondisi |
+| --- | --- | --- |
+| 400 | Validation Error | UUID/body/query invalid |
+| 400 | Invalid location input | Validasi service gagal |
+| 400 | Request body must be empty | DELETE membawa body |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi mati |
+| 403 | Required permission is not granted | Permission device belum tersedia/dicabut |
+| 404 | Location not found | ID hilang, deleted atau tenant lain |
+| 404 | Device binding not found | Binding hilang, deleted atau tenant lain |
+| 409 | Active parent storage zone in this tenant required | zone_id inaktif/tipe/tenant lain |
+| 409 | Active GPS device in this tenant required | Binding memakai device nonaktif, bukan GPS, deleted atau tenant lain |
+| 409 | Active vehicle in this tenant required | Binding memakai vehicle nonaktif, deleted atau tenant lain |
+| 409 | Device already bound to this vehicle in this tenant | Pair device-vehicle aktif sudah ada |
+| 409 | Parent location cannot be changed | PUT mencoba mengganti zone_id |
+| 409 | Location changed; reload before retrying | expected_version kedaluwarsa |
+| 409 | Record changed; reload before retrying | DELETE dengan expected_version lama |
+| 409 | Device binding changed; reload before retrying | expected_version binding kedaluwarsa |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Soft delete device tidak cascade dan tidak menghapus bukti lain. Row fisik tetap ada,
+nilai `device_code` tidak tercadangkan khusus pada perangkat karena identitas berbasis
+`device_uuid` dan UUID internal. Soft delete device atau vehicle ditolak bila masih
+direferensikan binding aktif. Soft delete binding hanya memutus relasi administratif;
+tidak menghapus device, vehicle, gps_log, delivery, movement, event_log atau asset
+registry. Write/delete binding tidak menulis event runtime.
+
+
 ## Kontrak master kitchen storage zone
 
 Status: 15 operasi aktif untuk data operasional dasar docs/06. Alur frontend:
 buat/pilih kitchen, buat storage pada kitchen tersebut, lalu buat zone pada storage.
-Ini belum menyediakan receiving/stok, binding device, movement atau hard delete.
+Ini belum menyediakan receiving/stok, movement atau hard delete.
 
 Semua operasi wajib `Authorization: Bearer <access_token>` dengan sesi aktif dan
 tenant/actor dari sesi. POST/PUT wajib `Content-Type: application/json`.
@@ -3304,11 +3518,10 @@ Koordinat master bukan bukti GPS realtime dan tidak membuat gps_log.
 
 Driver/GPS boleh dipasang, diganti atau dilepas dengan null melalui PUT. Driver tidak
 harus unik pada satu kendaraan dan GPS tidak memiliki validasi eksklusivitas binding
-pada versi ini. INACTIVE driver/device tidak otomatis melepaskan tautan lama. Baca
+Pada versi ini. INACTIVE driver/device tidak otomatis melepaskan tautan lama. Baca
 kendaraan tetap boleh; update yang masih mengirim parent nonaktif ditolak. Kirim null
 untuk melepas tautan bila dibutuhkan. Perubahan ini tidak mengubah driver/vehicle pada
-delivery lama. Endpoint CRUD device belum tersedia, jadi selector GPS memerlukan data
-perangkat yang sudah diprovision; jangan mengasumsikan GET /devices aktif.
+delivery lama. Untuk memilih perangkat GPS aktif, gunakan `/api/v1/devices`.
 
 ### Contoh request
 
@@ -3637,7 +3850,7 @@ menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibat
 | GET `/receivings/{identifier}` | Detail dengan item/batch, `Receiving.Read` | Tidak ada | 200, ReceivingDetail |
 | POST `/receivings/{identifier}/complete` | Simpan seluruh keputusan inspeksi, `Receiving.Complete` | CompleteInput wajib | 200, ReceivingDetail |
 | POST `/receivings/{identifier}/cancel` | Batalkan CREATED, `Receiving.Cancel` | CancelInput wajib | 200, ReceivingDetail |
-| GET `/raw-material-batches` | Daftar batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchPage |
+| GET `/raw-material-batches` | Daftar/search batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchPage |
 | GET `/raw-material-batches/{identifier}` | Detail batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchData |
 
 Seluruh endpoint memakai `Authorization: Bearer <access_token>` dari sesi aktif.
@@ -3663,13 +3876,20 @@ dikirim: UUID berbentuk string; status peka huruf besar/kecil; string kosong inv
 | Receivings | kitchen_id | UUID, default tidak difilter |
 | Receivings | status | CREATED, COMPLETED, CANCELLED; default semua |
 | Batches | receiving_id, raw_material_id | UUID, default tidak difilter |
+| Batches | search | string 1..200, cari material_code/material_name/batch_code secara case-insensitive |
+| Batches | material_category | string 1..100, filter kategori bahan |
 | Batches | status | CREATED, ACCEPTED, REJECTED, CANCELLED; default semua |
+| Batches | sort | CREATED_DESC default, FIFO, FEFO |
 
 Filter digabung AND dalam tenant sesi. UUID filter milik tenant lain/tidak ada
-menghasilkan daftar kosong. Urutan `created_at DESC, primary UUID DESC`; pagination
-bukan snapshot stabil jika transaksi baru masuk. `next_offset` integer atau null
-bila tidak ada halaman selanjutnya, tanpa total. Detail receiving mengembalikan
-semua item urut `receiving_item_id ASC`; daftar receiving tidak menyertakan items.
+menghasilkan daftar kosong. Urutan receiving tetap `created_at DESC, primary UUID DESC`.
+Urutan batch default juga `created_at DESC, raw_material_batch_id DESC`; `FIFO`
+mengurutkan `received_at ASC`, lalu created_at/UUID; `FEFO` mengurutkan
+expired_date paling dekat lebih dulu, expired_date null terakhir, lalu received_at.
+Pagination bukan snapshot stabil jika transaksi baru masuk. `next_offset` integer
+atau null bila tidak ada halaman selanjutnya, tanpa total. Detail receiving
+mengembalikan semua item urut `receiving_item_id ASC`; daftar receiving tidak
+menyertakan items.
 
 ### Payload create
 
@@ -3683,6 +3903,8 @@ semua item urut `receiving_item_id ASC`; daftar receiving tidak menyertakan item
 | items[].batch_code | string | Ya / tidak | Trim, 1..100; unik per tenant dan dalam request |
 | items[].quantity | decimal number/string | Ya / tidak | >0; maksimum 14 digit total, 6 desimal (maksimum 99999999.999999); bukan NaN/infinity/bool |
 | items[].temperature | decimal number/string | Tidak / ya / null | -9999.99..9999.99, maksimal 2 desimal; suhu inspeksi dalam Celsius |
+| items[].condition | string | Tidak / ya / null | 1..100 karakter; kondisi visual/manual bahan saat diterima, misalnya `GOOD`, `DAMAGED`, atau catatan singkat |
+| items[].photo | string | Tidak / ya / null | 1..1024 karakter; referensi foto kondisi bahan, tidak di-fetch/upload/diverifikasi backend |
 | items[].expired_date | date YYYY-MM-DD | Tidak / ya / null | Batch kedaluwarsa boleh dicatat agar bisa ditolak |
 | items[].qr_code | string | Tidak / ya / null | Trim, 1..255; unik per tenant dan dalam request jika bukan null |
 
@@ -3700,7 +3922,7 @@ Content-Type: application/json
 ```
 
 ```json
-{"supplier_id":"11111111-1111-4111-8111-111111111111","kitchen_id":"22222222-2222-4222-8222-222222222222","received_at":"2026-01-01T08:00:00+07:00","items":[{"raw_material_id":"33333333-3333-4333-8333-333333333333","batch_code":"BATCH-EXAMPLE-001","quantity":"2.500000","temperature":"3.20","expired_date":null,"qr_code":null}]}
+{"supplier_id":"11111111-1111-4111-8111-111111111111","kitchen_id":"22222222-2222-4222-8222-222222222222","received_at":"2026-01-01T08:00:00+07:00","items":[{"raw_material_id":"33333333-3333-4333-8333-333333333333","batch_code":"BATCH-EXAMPLE-001","quantity":"2.500000","temperature":"3.20","condition":"GOOD","photo":"example/raw-receiving/batch-001.jpg","expired_date":null,"qr_code":null}]}
 ```
 
 ### Penyelesaian dan pembatalan
@@ -3770,7 +3992,7 @@ Setiap header, item, batch memiliki AuditData berikut:
 | --- | --- |
 | ReceivingData | receiving_id, supplier_id, kitchen_id, operator: UUID nonnull; received_at: datetime UTC nonnull; status: string nonnull |
 | ReceivingDetail | Semua ReceivingData + items: array ItemData nonnull |
-| ItemData | receiving_item_id, receiving_id, raw_material_batch_id: UUID nonnull; quantity: decimal string nonnull; uom: string nonnull; temperature: decimal string nullable; accepted: bool nullable; batch: BatchData nonnull |
+| ItemData | receiving_item_id, receiving_id, raw_material_batch_id: UUID nonnull; quantity: decimal string nonnull; uom: string nonnull; temperature: decimal string nullable; condition/photo: string nullable; accepted: bool nullable; batch: BatchData nonnull |
 | BatchData | raw_material_batch_id, raw_material_id, receiving_id, supplier_id: UUID nonnull; batch_code, status: string nonnull; expired_date: date nullable; qr_code: string nullable |
 | ReceivingPage | items: array ReceivingData; offset, limit: integer; next_offset: integer nullable |
 | BatchPage | items: array BatchData; offset, limit: integer; next_offset: integer nullable |
@@ -3789,6 +4011,11 @@ Authorization: Bearer <access_token>
 
 ```http
 GET /api/v1/raw-material-batches?receiving_id=44444444-4444-4444-8444-444444444444&status=ACCEPTED
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/v1/raw-material-batches?status=ACCEPTED&search=ayam&material_category=PROTEIN&sort=FEFO
 Authorization: Bearer <access_token>
 ```
 
@@ -3839,6 +4066,8 @@ CANCELLED, accepted null, version ketiganya 2. Semua field lain tetap.
         "quantity": "2.500000",
         "uom": "kg",
         "temperature": "3.20",
+        "condition": "GOOD",
+        "photo": "example/raw-receiving/batch-001.jpg",
         "accepted": null,
         "batch": {
           "tenant_id": "77777777-7777-4777-8777-777777777777",
@@ -3883,7 +4112,7 @@ Respons GET batch memakai envelope yang sama (code 200) dengan `data` tepat obje
 
 | HTTP | message / kondisi |
 | --- | --- |
-| 400 | Validation Error: field ekstra/hilang, UUID, datetime, enum, angka, bool inspeksi, batas item/pagination, kode/QR duplicate dalam payload, item keputusan duplicate |
+| 400 | Validation Error: field ekstra/hilang, UUID, datetime, enum, angka, bool inspeksi, batas item/pagination, search/category/sort batch, kode/QR duplicate dalam payload, item keputusan duplicate |
 | 401 | Invalid credentials or session; token hilang, invalid, expired, revoked; WWW-Authenticate: Bearer |
 | 403 | Required permission is not granted |
 | 404 | Receiving or batch not found; tenant lain/deleted/tidak ada sama |
@@ -3944,15 +4173,18 @@ terfilter server. Tenant, actor, UOM, audit dan waktu tidak boleh dikirim di pay
 
 | Method/path | Tujuan | Permission | Sukses |
 |---|---|---|---|
-| POST `/raw-material-batches/{identifier}/putaway` | Alokasi parsial ke storage | `Stock.Putaway` | 201 entry |
+| POST `/raw-material-batches/{identifier}/putaway` | Alokasi parsial ke storage/zone | `Stock.Putaway` | 201 entry |
 | GET `/raw-material-batches/{identifier}/stock` | Saldo batch dan per storage | `Stock.Read` | 200 balance |
 | GET `/raw-material-batches/{identifier}/stock-entries` | Ledger putaway immutable | `Stock.Read` | 200 page |
+| POST `/raw-material-batches/{identifier}/manual-stock-issues` | Pengeluaran bahan manual/scan dari storage | `Stock.Issue` | 201 issue |
+| GET `/raw-material-batches/{identifier}/manual-stock-issues` | Ledger pengeluaran manual/scan | `Stock.Read` | 200 page |
 
-POST tidak memiliki query. Payload seluruh field wajib dan nonnull:
+POST tidak memiliki query. Payload:
 `expected_version` integer strict >=1 (version **batch**, bukan header receiving),
-`storage_id` UUID, `quantity` decimal positif maksimal 14 digit dengan 6 desimal.
-Decimal dapat dikirim sebagai string; bool, NaN/infinity, field tambahan dan nilai
-melebihi presisi ditolak 400. GET stock tidak memiliki query. GET stock-entries
+`storage_id` UUID wajib nonnull, `zone_id` UUID opsional nullable, dan `quantity`
+decimal positif maksimal 14 digit dengan 6 desimal. Decimal dapat dikirim sebagai
+string; bool, NaN/infinity, field tambahan dan nilai melebihi presisi ditolak 400.
+GET stock tidak memiliki query. GET stock-entries dan GET manual-stock-issues
 menerima `offset` integer 0..2147483647 default 0 dan `limit` integer 1..100 default 20;
 urutan batch_version menurun, `next_offset` integer atau null. Tidak ada total count.
 
@@ -3960,8 +4192,10 @@ Syarat putaway: receiving COMPLETED, item accepted=true dan batch ACCEPTED;
 batch belum expired sebelum tanggal UTC saat ini (tanggal hari ini masih boleh).
 Kitchen, storage, material harus aktif/nondeleted satu tenant; storage wajib di
 kitchen receiving dan storage_type sesuai material jika material menetapkannya.
-Quantity <= quantity accepted dikurangi jumlah seluruh entry batch. Putaway dapat
-berulang, dibagi ke beberapa storage, tetapi tidak dapat melebihi jumlah diterima.
+Jika `zone_id` dikirim, zone/rak harus nondeleted, satu tenant dan milik storage
+yang dipilih. Quantity <= quantity accepted dikurangi jumlah seluruh entry batch.
+Putaway dapat berulang, dibagi ke beberapa storage/zone, tetapi tidak dapat melebihi
+jumlah diterima.
 
 Batch dikunci selama pengecekan saldo dan write; setiap sukses menaikkan version
 batch satu kali. Dua request memakai version yang sama hanya dapat menghasilkan
@@ -3975,7 +4209,7 @@ POST /api/v1/raw-material-batches/66666666-6666-4666-8666-666666666666/putaway
 Authorization: Bearer <access_token>
 Content-Type: application/json
 
-{"expected_version":2,"storage_id":"99999999-9999-4999-8999-999999999999","quantity":"1.500000"}
+{"expected_version":2,"storage_id":"99999999-9999-4999-8999-999999999999","zone_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","quantity":"1.500000"}
 ```
 
 Respons menggunakan envelope standar (`success`, `code`, `message`, `data`, `errors`, `meta`) yang sama
@@ -3987,6 +4221,7 @@ seperti receiving. Contoh **data** pada sukses 201:
   "tenant_id":"77777777-7777-4777-8777-777777777777",
   "raw_material_batch_id":"66666666-6666-4666-8666-666666666666",
   "storage_id":"99999999-9999-4999-8999-999999999999",
+  "zone_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   "quantity":"1.500000",
   "batch_version":3,
   "version":1,
@@ -3999,8 +4234,9 @@ seperti receiving. Contoh **data** pada sukses 201:
 }
 ```
 
-Entry fields: tiga ID resource dan tenant UUID nonnull; quantity decimal string
-nonnull; batch_version/version integer nonnull (version entry tetap 1); timestamp
+Entry fields: tiga ID resource dan tenant UUID nonnull, `zone_id` UUID nullable
+untuk slot/rak; quantity decimal string nonnull; batch_version/version integer nonnull
+(version entry tetap 1); timestamp
 UTC nonnull; created_by/updated_by UUID nullable dalam schema audit umum (diisi actor
 oleh endpoint); deleted_at timestamp nullable dan deleted_by UUID nullable, selalu
 null pada ledger. Field entry tidak menyimpan UOM; baca `uom` pada saldo batch.
@@ -4028,6 +4264,8 @@ Contoh data 200 setelah putaway 1.5 dari penerimaan 2.5 kg:
 
 Semua field balance required/nonnull; ID UUID, version integer, uom string,
 quantity decimal string, storages array (boleh kosong) terurut storage_id menaik.
+Saldo masih diagregasi per storage karena pemakaian produksi saat ini memilih storage,
+belum memilih zone; detail slot/rak tersedia pada GET stock-entries.
 `accepted_quantity` nol untuk item belum diterima/ditolak; `putaway_quantity`
 adalah jumlah ledger; `unallocated_quantity = accepted_quantity - putaway_quantity`.
 `issued_quantity` jumlah pemakaian produksi; `available_quantity` adalah alokasi
@@ -4053,8 +4291,10 @@ next_offset required nullable integer, items required array. Pembacaan tidak men
 | 404 | `Receiving or batch not found`; ID batch hilang, deleted atau tenant lain |
 | 409 | `Receiving changed; reload before retrying` untuk version batch stale |
 | 409 | `Active kitchen, storage and material in this tenant required` untuk referensi unavailable |
+| 409 | `Active kitchen, storage, zone and material in this tenant required` untuk zone/storage/material unavailable |
 | 409 | `Active kitchen, storage and material required` untuk status inactive |
 | 409 | `Storage must belong to receiving kitchen` |
+| 409 | `Storage zone must belong to selected storage` |
 | 409 | `Storage type does not match material requirement` |
 | 409 | `Completed receiving and ACCEPTED batch required` |
 | 409 | `Expired batch cannot be put away (UTC date)` |
@@ -4067,14 +4307,76 @@ Contoh error memakai envelope standar dengan `code:409`, `data:null`,
 Ledger append-only dilindungi trigger UPDATE/DELETE/TRUNCATE. Satu transaksi
 mencatat entry, audit/version batch, sync registry, movement `STORAGE` dari registry
 kitchen ke registry storage (remarks = stock_entry_id), dan event `stock.putaway`.
-Movement parsial bukan perpindahan seluruh batch; baca ledger untuk quantity/lokasi.
+Movement parsial bukan perpindahan seluruh batch; baca ledger untuk quantity/lokasi
+storage dan zone/rak.
 Storage yang memiliki entry terlindungi dari soft delete, termasuk histori lama.
 Tidak ada endpoint edit/delete/transfer/reversal/adjustment ledger, reservation,
 reservasi; pengurangan bahan tersedia melalui start produksi.
 Stock availability tidak mengevaluasi keamanan sensor atau recall; timer holding
 paket adalah alur terpisah dari stok bahan.
 Grant development melalui CLI `provision_receiving_permissions.py`, pilih eksplisit
-`Stock.Read` dan `Stock.Putaway`; grant runtime `stock_entry` hanya SELECT/INSERT.
+`Stock.Read`, `Stock.Putaway` dan `Stock.Issue`; grant runtime `stock_entry` dan
+`stock_issue` hanya SELECT/INSERT.
+
+### Pengeluaran manual/scan bahan dari penyimpanan
+
+Manual stock issue mencatat bahan keluar dari storage tanpa mengaitkannya ke batch
+produksi. Gunakan endpoint ini untuk scan bahan/QR di frontend ketika perlu mencatat
+pengeluaran operasional terpisah; untuk pemakaian bahan ke manufacturing order,
+tetap gunakan start produksi.
+
+Payload POST: `expected_version` version batch dari GET stock, `storage_id` wajib,
+`zone_id` opsional nullable, `quantity` decimal positif, `issued_at` opsional
+datetime timezone dan tidak boleh masa depan, `reason` wajib 1..200, serta
+`reference_code` opsional 1..100. Jika `issued_at` tidak dikirim, server memakai
+waktu UTC saat request diproses. Issue time tidak boleh sebelum received_at.
+
+```http
+POST /api/v1/raw-material-batches/66666666-6666-4666-8666-666666666666/manual-stock-issues
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"expected_version":3,"storage_id":"99999999-9999-4999-8999-999999999999","zone_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","quantity":"0.500000","issued_at":"2026-09-15T09:30:00+07:00","reason":"SCAN_OUT","reference_code":"OUT-001"}
+```
+
+Contoh data 201:
+
+```json
+{
+  "stock_issue_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  "tenant_id":"77777777-7777-4777-8777-777777777777",
+  "raw_material_batch_id":"66666666-6666-4666-8666-666666666666",
+  "storage_id":"99999999-9999-4999-8999-999999999999",
+  "zone_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "quantity":"0.500000",
+  "batch_version":4,
+  "issued_at":"2026-09-15T02:30:00Z",
+  "reason":"SCAN_OUT",
+  "reference_code":"OUT-001",
+  "version":1,
+  "created_at":"2026-09-15T02:30:01Z",
+  "updated_at":"2026-09-15T02:30:01Z",
+  "created_by":"88888888-8888-4888-8888-888888888888",
+  "updated_by":"88888888-8888-4888-8888-888888888888",
+  "deleted_at":null,
+  "deleted_by":null
+}
+```
+
+Syarat sama seperti putaway: receiving completed, batch accepted, belum expired,
+storage aktif milik kitchen penerimaan, zone bila dikirim milik storage tersebut,
+dan tipe storage cocok. Quantity tidak boleh melebihi putaway dikurangi issue
+produksi dan issue manual pada storage itu. Sukses menaikkan version batch,
+mencatat movement `ISSUE`, event `stock.manual_issued`, dan menurunkan
+`available_quantity` pada GET stock.
+
+```http
+GET /api/v1/raw-material-batches/66666666-6666-4666-8666-666666666666/manual-stock-issues?offset=0&limit=20
+Authorization: Bearer <access_token>
+```
+
+Data page memakai `items` berisi object issue seperti contoh di atas. Ledger
+append-only; tidak ada edit/delete/reversal untuk issue manual saat ini.
 
 
 ## Kontrak menu dan resep
@@ -4358,11 +4660,14 @@ version sama hanya dapat menghasilkan satu sukses; retry stale 409. Tidak ada
 idempotency key; baca ulang detail/stock sebelum retry ketika respons tidak diketahui.
 
 FinishInput: expected_version wajib seperti di atas dan `actual_quantity` decimal
-wajib nonnull >=0, maksimal 14 digit/6 desimal, <= planned_quantity. Hanya RUNNING
-bisa COMPLETED; hasil dalam snapshot.uom. Nol mewakili tidak ada hasil layak dicatat,
-selisih terhadap rencana tidak mengembalikan stok. Timestamp started_at/finished_at
-berasal dari server UTC. Cancel hanya CREATED dengan expected_version, menjadi
-CANCELLED tanpa stok terpakai; tidak ada cancel RUNNING/reversal/edit/delete produksi.
+wajib nonnull >=0, maksimal 14 digit/6 desimal, <= planned_quantity. `initial_temperature`
+opsional nullable, -9999.99..9999.99, maksimal 2 desimal; ini suhu makanan awal
+manual saat selesai masak dalam Celsius dan belum dievaluasi rule otomatis. Hanya
+RUNNING bisa COMPLETED; hasil dalam snapshot.uom. Nol mewakili tidak ada hasil layak
+dicatat, selisih terhadap rencana tidak mengembalikan stok. Timestamp started_at/
+finished_at berasal dari server UTC. Cancel hanya CREATED dengan expected_version,
+menjadi CANCELLED tanpa stok terpakai; tidak ada cancel RUNNING/reversal/edit/delete
+produksi.
 
 List produksi: offset integer 0..2147483647 default 0; limit 1..100 default 20;
 kitchen/menu optional UUID; status optional CREATED/RUNNING/COMPLETED/CANCELLED.
@@ -4404,6 +4709,7 @@ Contoh **data** sukses 201 (resep contoh membutuhkan 0.25 kg per portion):
   "menu": "11111111-1111-4111-8111-111111111111",
   "planned_quantity": "4.000000",
   "actual_quantity": null,
+  "initial_temperature": null,
   "recipe_snapshot": {
     "schema_version": 1,
     "food_version": 1,
@@ -4432,9 +4738,10 @@ Contoh **data** sukses 201 (resep contoh membutuhkan 0.25 kg per portion):
 
 Semua field respons hadir. ID/tenant/kitchen/menu string UUID nonnull; batch_code/status
 string; planned_quantity/actual_quantity decimal string nullable (planned null hanya
-legacy); recipe_snapshot object nullable (null hanya legacy); timestamps UTC nullable
-kecuali audit created_at/updated_at. Audit UUID nullable seperti kontrak master;
-version integer. Snapshot: schema_version/food_version integer, uom string, items
+legacy); initial_temperature decimal string nullable; recipe_snapshot object nullable
+(null hanya legacy); timestamps UTC nullable kecuali audit created_at/updated_at.
+Audit UUID nullable seperti kontrak master; version integer. Snapshot:
+schema_version/food_version integer, uom string, items
 array RecipeLine; RecipeLine ID UUID, version integer, quantity/required_quantity
 string decimal, uom string, seluruh field nonnull. Detail `items` array selalu hadir,
 kosong sebelum start; list header tidak menyertakannya. Holding fields tetap null
@@ -4492,13 +4799,14 @@ POST /api/v1/production-batches/44444444-4444-4444-8444-444444444444/complete
 Authorization: Bearer <access_token>
 Content-Type: application/json
 
-{"expected_version":2,"actual_quantity":"3"}
+{"expected_version":2,"actual_quantity":"3","initial_temperature":"74.50"}
 ```
 
 Sukses 200 detail status COMPLETED/version 3, actual_quantity `"3.000000"`,
-finished_at/updated_at waktu server, snapshot dan item pemakaian tetap. Registry,
-movement PRODUCTION di kitchen, dan event completed atomik. Hasil tidak langsung
-menjadi package; zero yield tetap COMPLETED dengan actual_quantity nol.
+initial_temperature `"74.50"`, finished_at/updated_at waktu server, snapshot dan
+item pemakaian tetap. Registry, movement PRODUCTION di kitchen, dan event completed
+atomik. Hasil tidak langsung menjadi package; zero yield tetap COMPLETED dengan
+actual_quantity nol.
 
 Contoh cancel untuk batch **lain** yang masih CREATED:
 
@@ -4511,7 +4819,8 @@ Content-Type: application/json
 ```
 
 Sukses 200 snapshot header batch itu dengan status CANCELLED/version 2, items kosong,
-started_at/finished_at/actual_quantity tetap null. Tidak ada efek stok/movement.
+started_at/finished_at/actual_quantity/initial_temperature tetap null. Tidak ada
+efek stok/movement.
 
 ```http
 GET /api/v1/raw-material-batches/66666666-6666-4666-8666-666666666666/stock-issues?offset=0&limit=20
@@ -4692,6 +5001,7 @@ PackageInput seluruh field required/nonnull:
 | package_code | String trim 1..100; unik per tenant |
 | package_number | Integer strict 1..2147483647; unik per produksi |
 | quantity | Decimal >0, maksimal 14 digit/6 desimal; dalam output UOM snapshot produksi |
+| initial_temperature | Decimal/null opsional; -9999.99..9999.99, maksimal 2 desimal; suhu awal pengemasan manual dalam Celsius |
 
 Kitchen produksi aktif, quantity <= hasil aktual dikurangi seluruh paket, termasuk
 DISCARDED. Tidak ada refund/reallocation/edit/delete paket. Package lama dengan
@@ -4700,8 +5010,9 @@ pada GET allocation menjadi null jika hasil/quantity legacy belum diketahui;
 allocated_quantity tetap jumlah quantity yang diketahui. Tidak ada konversi volume.
 
 Create mengunci parent dan produksi, memvalidasi expected_version, lalu mencatat
-paket, menaikkan version produksi, sync registry, edge PACKAGED, movement PACKAGING
-dan event package.created dalam satu transaksi. Code/number duplikat menggagalkan
+paket termasuk suhu awal pengemasan manual bila dikirim, menaikkan version produksi,
+sync registry, edge PACKAGED, movement PACKAGING dan event package.created dalam
+satu transaksi. Code/number duplikat menggagalkan
 seluruh transaksi termasuk perubahan version/alokasi. Retry stale 409; tidak ada
 idempotency key. Baca allocation kembali untuk memperoleh version berikutnya.
 
@@ -4730,7 +5041,7 @@ POST /api/v1/packages
 Authorization: Bearer <access_token>
 Content-Type: application/json
 
-{"production_batch_id":"44444444-4444-4444-8444-444444444444","expected_version":3,"package_type_id":"11111111-1111-4111-8111-111111111111","package_code":"PKG-001","package_number":1,"quantity":"2"}
+{"production_batch_id":"44444444-4444-4444-8444-444444444444","expected_version":3,"package_type_id":"11111111-1111-4111-8111-111111111111","package_code":"PKG-001","package_number":1,"quantity":"2","initial_temperature":"65.25"}
 ```
 
 Contoh data 201, produksi selesai 09:00, evaluasi 09:05, rule maximum 60/warning 30/
@@ -4752,6 +5063,7 @@ discard 90 dan tanpa menu cap:
   "package_type_id": "11111111-1111-4111-8111-111111111111",
   "package_number": 1,
   "quantity": "2.000000",
+  "initial_temperature": "65.25",
   "uom": "portion",
   "status": "CREATED",
   "effective_status": "CREATED",
@@ -4777,12 +5089,13 @@ discard 90 dan tanpa menu cap:
 ```
 
 PackageData seluruh field required. ID/package_code/production_id/number/status dan
-QR nonnull; quantity decimal string, uom string, package_type_id UUID nullable untuk
-legacy. Policy object nullable untuk legacy; policy schema_version/maximum/warning/
-discard integer nonnull, food_category string nullable, rule_id UUID/rule_version
-integer nullable jika memakai menu limit saja. Timestamp holding_start/finish/expired
-nullable UTC; calculated_at UTC nonnull; remaining_seconds/minutes integer nullable
-untuk UNKNOWN. Audit sama dengan master. holding_eligible boolean nonnull.
+QR nonnull; quantity decimal string, initial_temperature decimal string nullable,
+uom string, package_type_id UUID nullable untuk legacy. Policy object nullable untuk
+legacy; policy schema_version/maximum/warning/discard integer nonnull, food_category
+string nullable, rule_id UUID/rule_version integer nullable jika memakai menu limit
+saja. Timestamp holding_start/finish/expired nullable UTC; calculated_at UTC nonnull;
+remaining_seconds/minutes integer nullable untuk UNKNOWN. Audit sama dengan master.
+holding_eligible boolean nonnull.
 
 ```http
 GET /api/v1/packages?production_batch_id=44444444-4444-4444-8444-444444444444&offset=0&limit=20
@@ -4957,9 +5270,12 @@ Cache-Control no-store, Pragma no-cache dan X-Request-ID.
 
 | Method/path | Tujuan | Permission | Body/query | Sukses |
 |---|---|---|---|---|
-| POST `/deliveries` | Buat manifest dan reservasi | Delivery.Write | DeliveryInput; tanpa query | 201 DeliveryDetail |
+| POST `/deliveries` | Buat manifest, reservasi dan estimasi route | Delivery.Write | DeliveryInput; tanpa query | 201 DeliveryDetail |
 | GET `/deliveries` | Daftar header perjalanan | Delivery.Read | Tanpa body; offset/limit/kitchen_id/vehicle/driver/status | 200 DeliveryPage |
+| GET `/deliveries/packages/by-vehicle` | Ringkasan kemasan per armada | Delivery.Read | Tanpa body; offset/limit/vehicle/status | 200 VehicleSummaryPage |
+| GET `/deliveries/packages/by-destination` | Ringkasan kemasan per tujuan sekolah | Delivery.Read | Tanpa body; offset/limit/school_id/status | 200 DestinationSummaryPage |
 | GET `/deliveries/{identifier}` | Detail manifest dan paket terkini | Delivery.Read | UUID path; tanpa body/query | 200 DeliveryDetail |
+| GET `/deliveries/{identifier}/tracking` | Tracking GPS/suhu terakhir dan sisa jarak/waktu | Delivery.Read | UUID path; tanpa body/query | 200 TrackingData |
 | POST `/deliveries/{identifier}/depart` | Berangkat + loading | Delivery.Depart | UUID path; DepartureInput; tanpa query | 200 DeliveryDetail |
 | POST `/deliveries/{identifier}/complete` | Konfirmasi seluruh tujuan selesai | Delivery.Complete | UUID path; expected_version; tanpa query | 200 DeliveryDetail |
 | POST `/deliveries/{identifier}/cancel` | Batalkan sebelum berangkat | Delivery.Cancel | UUID path; expected_version; tanpa query | 200 DeliveryDetail |
@@ -4978,6 +5294,7 @@ DeliveryInput semua field wajib nonnull:
 | kitchen_id | UUID | Kitchen asal aktif satu tenant |
 | vehicle | UUID | Kendaraan aktif; bukan field vehicle_id |
 | driver | UUID | Driver aktif; bukan field driver_id |
+| average_speed_kmph | Decimal/null opsional | >0, maksimal 6 digit/2 desimal; default estimasi 30 km/jam |
 | items | array ManifestItem | 1..100 paket unik, satu school per paket |
 | items[].package_id | UUID | Paket RELEASED dengan quantity nonnull, timer SAFE/WARNING |
 | items[].school_id | UUID | Sekolah aktif satu tenant dan kitchen sama dengan asal |
@@ -4990,22 +5307,29 @@ hanya boleh digunakan satu delivery CREATED atau IN_TRANSIT sekaligus. Paket han
 boleh berada pada satu manifest non-CANCELLED, termasuk yang COMPLETED. Check dilakukan
 di bawah row lock driver, vehicle, kitchen, sekolah, dan paket berurutan.
 
-Create mengubah package.status menjadi ALLOCATED dan version paket +1, membuat
-header/version 1 dan manifest immutable, sync registry paket/delivery serta event.
-Tidak membuat movement sebelum berangkat. Paket/kendaraan/driver tetap dicadangkan
-sampai delivery dibatalkan atau selesai. Tidak ada auto-release reservasi expired.
-Seluruh pemeriksaan/write atomik; satu item gagal menggagalkan seluruh manifest.
-Tidak ada idempotency key create: retry dengan version paket lama 409, bukan create
-manifest kedua. Baca ulang daftar/detail ketika hasil request tidak diketahui.
+Create menghitung estimasi jarak dan durasi dari koordinat kitchen asal ke sekolah
+tujuan terjauh memakai rumus garis lurus/haversine dan default 30 km/jam bila
+`average_speed_kmph` tidak dikirim. Untuk multi-sekolah, estimasi adalah jarak
+terjauh satu arah, bukan optimasi rute multi-stop. Jika koordinat kitchen/sekolah
+belum lengkap, field estimasi null dan depart wajib menerima ETA manual. Create
+mengubah package.status menjadi ALLOCATED dan version paket +1, membuat header/
+version 1 dan manifest immutable, sync registry paket/delivery serta event. Tidak
+membuat movement sebelum berangkat. Paket/kendaraan/driver tetap dicadangkan sampai
+delivery dibatalkan atau selesai. Tidak ada auto-release reservasi expired. Seluruh
+pemeriksaan/write atomik; satu item gagal menggagalkan seluruh manifest. Tidak ada
+idempotency key create: retry dengan version paket lama 409, bukan create manifest
+kedua. Baca ulang daftar/detail ketika hasil request tidak diketahui.
 
 DepartureInput: expected_version integer strict 1..2147483647 wajib nonnull untuk
-**delivery**, dan estimated_arrival_time datetime ISO8601 wajib nonnull dengan timezone,
-strictly future. Service memeriksa ulang masih future setelah memperoleh lock. ETA
-harus **lebih awal** dari expired_at setiap paket; tepat pada deadline ditolak.
-Parent/assignment aktif, status ALLOCATED dan timer dicek ulang saat depart. Sukses
-mengubah delivery dan paket ke IN_TRANSIT, mencatat departure_time server UTC dan ETA,
-version delivery/paket +1, edge LOADED dan movement VEHICLE_LOADING menuju kendaraan.
-Tidak ada status LOADED terpisah, GPS/ETA otomatis atau pengubahan ETA setelah depart.
+**delivery**, dan estimated_arrival_time datetime ISO8601 opsional nullable dengan
+timezone bila dikirim. Jika omitted, backend menghitung ulang ETA dari jarak/durasi
+route memakai departure_time server. Service memeriksa ETA masih future setelah
+memperoleh lock. ETA harus **lebih awal** dari expired_at setiap paket; tepat pada
+deadline ditolak. Parent/assignment aktif, status ALLOCATED dan timer dicek ulang
+saat depart. Sukses mengubah delivery dan paket ke IN_TRANSIT, mencatat departure_time
+server UTC dan ETA, version delivery/paket +1, edge LOADED dan movement VEHICLE_LOADING
+menuju kendaraan. Tidak ada status LOADED terpisah, GPS live atau pengubahan ETA
+setelah depart.
 
 Complete: expected_version wajib di body, hanya IN_TRANSIT. Pemanggil mengonfirmasi
 **seluruh** paket telah tiba secara fisik di sekolah pada manifest. Arrival_time server
@@ -5037,6 +5361,64 @@ rute; nested package merupakan **keadaan/timer terkini**, bukan snapshot sejarah
 Misalnya manifest CANCELLED dapat memperlihatkan paket yang kemudian dikirim ulang.
 Snapshot historis tiap transisi tersedia pada event internal, bukan GET detail lama.
 
+Ringkasan kemasan per armada/tujuan memakai Delivery.Read dan tidak membuat event.
+`/deliveries/packages/by-vehicle` menerima query `vehicle` UUID opsional dan
+`status` opsional; hasil digroup per vehicle. `/deliveries/packages/by-destination`
+menerima `school_id` UUID opsional dan `status` opsional; hasil digroup per school.
+Kedua endpoint menerima offset/limit seperti list delivery, urutan package_count lalu
+delivery_count menurun. Field item: `vehicle` atau `school_id` UUID, `delivery_count`
+integer, `package_count` integer, `total_quantity` decimal string, dan `uom` string
+nullable. `uom=null` berarti group berisi paket dengan output UOM berbeda atau UOM
+legacy tidak lengkap. `total_quantity` menjumlahkan package.quantity yang diketahui;
+jumlah kemasan gunakan `package_count`.
+
+Tracking delivery memakai Delivery.Read dan read-only. `GET /deliveries/{identifier}/tracking`
+mengambil GPS terakhir dari `gps_log` berdasarkan vehicle manifest, suhu terakhir dari
+`temperature_log` device GPS kendaraan bila ada, lalu menghitung sisa jarak garis lurus
+ke sekolah tujuan terjauh. Remaining duration memakai speed GPS terakhir; bila speed
+kosong/nol, memakai estimasi route delivery; fallback 30 km/jam. Jika belum ada GPS
+atau koordinat tujuan tidak lengkap, `latest_gps` dan remaining field dapat null.
+Response field: delivery_id, vehicle, status, destination_count, latest_gps nullable
+(gps_log_id, recorded_at, latitude, longitude, speed, heading), latest_temperature
+nullable (temperature_log_id, device_uuid, recorded_at, temperature, unit),
+remaining_distance_km nullable, remaining_duration_minutes nullable,
+estimated_arrival_time nullable dan calculated_at UTC. Endpoint ini bukan MQTT
+ingestion, bukan WebSocket dan tidak menulis event.
+
+### HTTP ingestion telemetry GPS dan suhu
+
+Status **aktif HTTP ingestion**, bukan MQTT broker. Prefix `/api/v1/telemetry`,
+bearer session wajib dengan permission `Telemetry.Ingest`; tenant/actor dari sesi.
+Kedua endpoint append-only, `mqtt_message_id=null`, tidak menulis event_log, dan
+dipakai oleh dashboard/tracking sebagai sampel terakhir.
+
+| Method/path | Payload | Sukses |
+|---|---|---|
+| POST `/telemetry/gps` | vehicle_uuid, latitude, longitude, speed/heading/altitude/hdop/satellite opsional, recorded_at opsional | 201 GpsIngestData |
+| POST `/telemetry/temperatures` | device_uuid, storage_uuid opsional, temperature, unit C/F/K default C, recorded_at opsional | 201 TemperatureIngestData |
+
+`recorded_at` opsional timezone-aware dan tidak boleh masa depan; bila null/omitted,
+server memakai waktu UTC sekarang. GPS memerlukan vehicle aktif satu tenant.
+Temperature memerlukan device REGISTERED/ACTIVE satu tenant; storage bila dikirim
+harus aktif satu tenant. Tidak ada deduplikasi idempotency payload, API key device,
+validasi binding device-ke-vehicle/storage, atau parsing MQTT pada endpoint ini.
+
+```http
+POST /api/v1/telemetry/gps
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"vehicle_uuid":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","latitude":"-7.250000","longitude":"112.750000","speed":"30.000","heading":"90.000","recorded_at":"2026-09-11T09:15:00Z"}
+```
+
+```http
+POST /api/v1/telemetry/temperatures
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"device_uuid":"33333333-3333-4333-8333-333333333333","storage_uuid":null,"temperature":"60.500","unit":"C","recorded_at":"2026-09-11T09:15:00Z"}
+```
+
 ### Contoh pengiriman
 
 Contoh UUID fiktif: paket sudah RELEASED version 3, produksi/kitchen dan sekolah
@@ -5047,7 +5429,7 @@ POST /api/v1/deliveries
 Authorization: Bearer <access_token>
 Content-Type: application/json
 
-{"kitchen_id":"99999999-9999-4999-8999-999999999999","vehicle":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","driver":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","items":[{"package_id":"22222222-2222-4222-8222-222222222222","school_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","expected_version":3}]}
+{"kitchen_id":"99999999-9999-4999-8999-999999999999","vehicle":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","driver":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","average_speed_kmph":"30.00","items":[{"package_id":"22222222-2222-4222-8222-222222222222","school_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","expected_version":3}]}
 ```
 
 Contoh **data** respons 201:
@@ -5068,7 +5450,9 @@ Contoh **data** respons 201:
   "driver": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   "status": "CREATED",
   "departure_time": null,
-  "estimated_arrival_time": null,
+  "estimated_arrival_time": "2026-09-11T09:25:00Z",
+  "estimated_distance_km": "9.850",
+  "estimated_duration_minutes": 20,
   "arrival_time": null,
   "items": [
     {
@@ -5128,33 +5512,49 @@ Contoh **data** respons 201:
 
 Semua field respons hadir. DeliveryData: delivery_id/vehicle/driver UUID nonnull,
 kitchen_id UUID nullable untuk legacy; status string; departure_time/arrival_time/
-estimated_arrival_time UTC nullable sampai transisi yang mengisinya. Audit version
-integer, created_at/updated_at UTC nonnull, deleted_at UTC nullable, created_by/
-updated_by/deleted_by UUID nullable (write HTTP mengisi actor). Detail items array
-required; item berisi primary/delivery/package/school UUID nonnull dan audit yang
-sama, version item tetap 1. Nested package semua field mengikuti PackageData pada
-kontrak holding; quantity/UOM dibaca dari paket, tidak dikirim ulang pada manifest.
+estimated_arrival_time UTC nullable; estimated_distance_km decimal string nullable
+dan estimated_duration_minutes integer nullable. Audit version integer, created_at/
+updated_at UTC nonnull, deleted_at UTC nullable, created_by/updated_by/deleted_by
+UUID nullable (write HTTP mengisi actor). Detail items array required; item berisi
+primary/delivery/package/school UUID nonnull dan audit yang sama, version item tetap
+1. Nested package semua field mengikuti PackageData pada kontrak holding; quantity/
+UOM dibaca dari paket, tidak dikirim ulang pada manifest.
 
 ```http
 GET /api/v1/deliveries?status=CREATED&kitchen_id=99999999-9999-4999-8999-999999999999&offset=0&limit=20
+GET /api/v1/deliveries/packages/by-vehicle?status=IN_TRANSIT&offset=0&limit=20
+GET /api/v1/deliveries/packages/by-destination?school_id=cccccccc-cccc-4ccc-8ccc-cccccccccccc&status=COMPLETED
 GET /api/v1/deliveries/dddddddd-dddd-4ddd-8ddd-dddddddddddd
+GET /api/v1/deliveries/dddddddd-dddd-4ddd-8ddd-dddddddddddd/tracking
 ```
 
 Header bearer wajib; tidak ada body. Detail memakai data di atas dengan timer saat
 request; page kosong `{"items":[],"offset":0,"limit":20,"next_offset":null}`.
+Contoh item ringkasan armada:
+
+```json
+{"vehicle":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","delivery_count":2,"package_count":50,"total_quantity":"100.000000","uom":"portion","tenant_id":"77777777-7777-4777-8777-777777777777","version":1,"created_at":"2026-09-11T09:05:00Z","updated_at":"2026-09-11T09:05:00Z","deleted_at":null,"created_by":"88888888-8888-4888-8888-888888888888","updated_by":"88888888-8888-4888-8888-888888888888","deleted_by":null}
+```
+
+Contoh data tracking:
+
+```json
+{"delivery_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","vehicle":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"IN_TRANSIT","destination_count":1,"latest_gps":{"gps_log_id":"11111111-1111-4111-8111-111111111111","recorded_at":"2026-09-11T09:15:00Z","latitude":"-7.250000","longitude":"112.750000","speed":"30.000","heading":"90.000"},"latest_temperature":{"temperature_log_id":"22222222-2222-4222-8222-222222222222","device_uuid":"33333333-3333-4333-8333-333333333333","recorded_at":"2026-09-11T09:15:00Z","temperature":"60.500","unit":"C"},"remaining_distance_km":"4.120","remaining_duration_minutes":9,"estimated_arrival_time":"2026-09-11T09:24:00Z","calculated_at":"2026-09-11T09:15:10Z"}
+```
 
 ```http
 POST /api/v1/deliveries/dddddddd-dddd-4ddd-8ddd-dddddddddddd/depart
 Authorization: Bearer <access_token>
 Content-Type: application/json
 
-{"expected_version":1,"estimated_arrival_time":"2026-09-11T09:30:00Z"}
+{"expected_version":1}
 ```
 
-Contoh ini dipanggil sebelum 09:30 dan deadline paket 10:00; gunakan ETA aktual untuk
-request nyata. Sukses 200 data yang sama dengan delivery.status IN_TRANSIT/version 2,
-departure_time server UTC, estimated_arrival_time di atas, package.status IN_TRANSIT/
-version 5. Item manifest tetap version 1; deadline, quantity dan policy tidak berubah.
+Jika manifest memiliki koordinat lengkap, backend menghitung ETA dari waktu depart.
+Frontend tetap boleh mengirim estimated_arrival_time manual untuk override. Sukses
+200 data yang sama dengan delivery.status IN_TRANSIT/version 2, departure_time server
+UTC, estimated_arrival_time hasil hitung/override, package.status IN_TRANSIT/version
+5. Item manifest tetap version 1; deadline, quantity dan policy tidak berubah.
 
 ```http
 POST /api/v1/deliveries/dddddddd-dddd-4ddd-8ddd-dddddddddddd/complete
@@ -5200,6 +5600,7 @@ manifest final, tetapi paket dapat digunakan delivery baru bila eligible.
 | 409 | Package must originate from completed production in origin kitchen |
 | 409 | Package must be released and unexpired for dispatch (create RELEASED, depart ALLOCATED) |
 | 409 | Package already assigned to a noncancelled delivery |
+| 409 | Estimated arrival required when route coordinates are incomplete |
 | 409 | Estimated arrival must precede every package holding deadline |
 | 409 | Estimated arrival must be in the future at departure (menjadi stale saat menunggu lock) |
 | 409 | Delivery must be CREATED / Delivery must be IN_TRANSIT |
@@ -5225,7 +5626,7 @@ DeliveryItem immutable melalui trigger UPDATE/DELETE/TRUNCATE; data tidak dihapu
 saat cancel. Master driver/vehicle/kitchen/sekolah yang dirujuk tetap terlindungi
 soft delete, termasuk riwayat canceled/completed. Legacy delivery kitchen_id null
 hanya dapat dibaca; migrasi tidak menebak origin atau membuat data bisnis.
-Belum ada edit manifest, route ordering/per-stop arrival, GPS/geofence/ETA otomatis,
+Belum ada edit manifest, route ordering/per-stop arrival, GPS/geofence/live ETA,
 pengecekan kapasitas otomatis (unit capacity master belum ditetapkan), cancellation
 saat perjalanan, acceptance sekolah, complaint/recall atau notifikasi. Complete
 mewakili konfirmasi semua tujuan, bukan bukti penerimaan masing-masing sekolah.
@@ -5421,4 +5822,402 @@ kegagalan event membatalkan semuanya. Trigger DB menolak update/delete/truncate
 bukti; tidak ada update/soft-delete HTTP. Event hanya PostgreSQL internal,
 belum MQTT/WebSocket/worker/replay atau alarm otomatis. Tidak ada adapter registry
 SCHOOL_RECEIVING tersendiri; bukti tertaut melalui manifest, package, school dan
-consumption. Complaint, investigasi/recall dan tindak lanjut paket ditolak menyusul.
+consumption. Investigasi/recall dan tindak lanjut paket ditolak menyusul.
+
+
+## Kontrak complaint intake
+
+Status **aktif**, lima operasi di prefix `/api/v1`. Complaint adalah bukti
+immutable laporan sekolah atas package yang ada pada manifest noncancelled untuk
+sekolah tersebut. Intake mendukung scan `package_code` dari frontend dan foto
+bukti operasional sebagai referensi. Endpoint report menyatukan konteks package,
+batch produksi, lokasi terdeteksi, receipt sekolah, konsumsi, bahan baku dan
+traceability movement untuk dashboard/analisa insiden. Complaint tidak mengubah
+status package, tidak membuat recall otomatis dan tidak mengirim provider eksternal.
+
+Semua operasi wajib bearer session aktif. Permission `Complaint.Write` diperlukan
+untuk create; `Complaint.Read` untuk list/detail/report. POST wajib
+`Content-Type: application/json`. Tenant/operator berasal dari sesi, bukan payload.
+Respons memakai envelope, X-Request-ID, Cache-Control no-store dan Pragma no-cache.
+
+| Method/path | Tujuan | Permission | Request | Sukses |
+|---|---|---|---|---|
+| POST /complaints | Catat laporan complaint | Complaint.Write | ComplaintInput | 201 ComplaintData |
+| GET /complaints | Daftar complaint | Complaint.Read | Query offset, limit, package_id, school_id | 200 ComplaintPage |
+| GET /complaints/reports | Daftar laporan insiden lengkap | Complaint.Read | Query offset, limit, package_id, school_id | 200 ComplaintReportPage |
+| GET /complaints/{identifier} | Detail complaint | Complaint.Read | Path UUID complaint_id wajib | 200 ComplaintData |
+| GET /complaints/{identifier}/report | Analisa laporan insiden | Complaint.Read | Path UUID complaint_id wajib | 200 ComplaintReportData |
+
+Payload `ComplaintInput`:
+
+| Field | Tipe / required / nullable | Validasi |
+|---|---|---|
+| package_id | UUID / kondisional / ya | Kirim salah satu dari package_id atau package_code |
+| package_code | string / kondisional / ya | 1..100; hasil scan QR/label frontend; kirim salah satu dari package_id atau package_code |
+| school_id | UUID / ya / tidak | School aktif, nondeleted dan satu tenant |
+| description | string / ya / tidak | 1..4000 setelah trim; NUL/UTF-8 invalid ditolak |
+| photo | string / tidak / ya | 1..1024; referensi foto bukti operasional, bukan upload multipart |
+
+Respons `ComplaintData` menambahkan `complaint_id`, `reported_at` UTC server,
+`tenant_id`, audit timestamps/by, `version=1`, `package_id`, `school_id`,
+`description` dan `photo`. `package_code` tidak disimpan karena backend
+menyelesaikannya menjadi `package_id`. GET list menerima `offset` 0..2147483647
+default 0, `limit` 1..100 default 20, serta filter opsional `package_id` dan
+`school_id` dengan AND. Urutan `created_at DESC, complaint_id DESC`.
+
+Respons `ComplaintReportData` memuat semua field `ComplaintData` ditambah
+`package`, `production_batch`, `current_location`, `delivery_manifest`,
+`school_receivings`, `consumption`, `raw_materials` dan `traceability`.
+`current_location` bernilai `SCHOOL` bila receipt sekolah sudah ada, termasuk
+status RECEIVED/REJECTED dan waktu deteksi; bila belum diterima sekolah tetapi
+manifest ada, bernilai `DELIVERY` dengan delivery/vehicle/status. `raw_materials`
+memuat production_item, batch_code bahan, expired_date, status batch bahan,
+received_at, suhu/condition/foto receiving, serta `manual_issues` dari pengeluaran
+bahan manual/scan. `traceability` memuat asset UUID package/complaint dan 100
+movement package terbaru.
+
+Contoh POST:
+
+```json
+{
+  "package_code": "PKG-2026-0001",
+  "school_id": "22222222-2222-4222-8222-222222222222",
+  "description": "Nasi diterima dengan bau asam sebelum dibagikan.",
+  "photo": "example/complaints/pkg-2026-0001.jpg"
+}
+```
+
+Contoh GET:
+
+`GET /api/v1/complaints?package_id=11111111-1111-4111-8111-111111111111&offset=0&limit=20`
+
+Error utama:
+
+| HTTP | message | Kondisi |
+|---|---|---|
+| 400 | Validation Error | UUID/body/query invalid, description kosong atau terlalu panjang |
+| 400 | Validation Error | package_id dan package_code kosong semua atau dikirim bersamaan |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi mati |
+| 403 | Required Complaint permission is not granted | Permission belum tersedia/dicabut |
+| 404 | Complaint not found | Detail ID hilang, deleted atau tenant lain |
+| 409 | Package and school in this tenant required | Package/school hilang, deleted atau tenant lain |
+| 409 | Active school required | School tidak ACTIVE |
+| 409 | Package and school manifest required | Package tidak pernah dimanifestkan ke school tersebut pada delivery noncancelled |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+POST membuat row complaint, registry `COMPLAINT`, edge `REPORTED`
+package -> complaint, movement `COMPLAINT` dari asset school ke null dengan
+remarks complaint_id, dan event internal `complaint.recorded` dalam satu transaksi.
+Kegagalan event/registry/movement membatalkan complaint. Tidak ada update, delete,
+void, idempotency key, notifikasi realtime, subscription, atau replay endpoint.
+GET report adalah snapshot read-only dan tidak menulis registry/movement/event baru.
+
+
+## Kontrak recall dasar
+
+Status **aktif**, tujuh operasi di prefix `/api/v1`. Recall mencatat kasus pada
+satu production batch, mengembalikan snapshot package terdampak dari batch tersebut,
+dapat dieksekusi untuk menandai package nonterminal sebagai `RECALLED`, lalu dapat
+ditutup. Tahap ini tidak membuat notifikasi, tidak memaksa paket kembali secara
+fisik, dan impact lintas graph tersedia terpisah melalui traceability read.
+
+Semua operasi wajib bearer session aktif. Permission `Recall.Execute` diperlukan
+untuk start/execute/withdrawal/close; `Recall.Read` untuk list/detail/withdrawal list. POST wajib
+`Content-Type: application/json`. Tenant/operator berasal dari sesi, bukan payload.
+Respons memakai envelope, X-Request-ID, Cache-Control no-store dan Pragma no-cache.
+
+| Method/path | Tujuan | Permission | Request | Sukses |
+|---|---|---|---|---|
+| POST /recalls | Mulai recall production batch | Recall.Execute | RecallInput | 201 RecallData |
+| GET /recalls | Daftar recall | Recall.Read | Query offset, limit, production_batch_id, open_only | 200 RecallPage |
+| GET /recalls/{identifier} | Detail recall | Recall.Read | Path UUID recall_id wajib | 200 RecallData |
+| POST /recalls/{identifier}/execute | Eksekusi recall terbuka | Recall.Execute | RecallExecuteInput | 200 RecallData |
+| POST /recalls/{identifier}/withdrawals | Catat bukti penarikan fisik | Recall.Execute | RecallWithdrawalInput | 201 RecallWithdrawalData |
+| GET /recalls/{identifier}/withdrawals | Daftar bukti penarikan | Recall.Read | offset, limit, package_id opsional | 200 RecallWithdrawalPage |
+| POST /recalls/{identifier}/close | Tutup recall terbuka | Recall.Execute | RecallCloseInput | 200 RecallData |
+
+Payload `RecallInput`:
+
+| Field | Tipe / required / nullable | Validasi |
+|---|---|---|
+| production_batch_id | UUID / ya / tidak | Production batch nondeleted dalam tenant |
+| reason | string / ya / tidak | 1..4000 setelah trim; NUL/UTF-8 invalid ditolak |
+
+Payload `RecallCloseInput`:
+
+| Field | Tipe / required / nullable | Validasi |
+|---|---|---|
+| expected_version | integer / ya / tidak | 1..2147483647; harus sama dengan version recall saat ini |
+
+Payload `RecallExecuteInput` memakai bentuk sama: hanya `expected_version`.
+
+Payload `RecallWithdrawalInput`:
+
+| Field | Tipe / wajib / nullable | Validasi |
+|---|---|---|
+| expected_version | integer / ya / tidak | 1..2147483647; harus sama dengan version recall saat ini |
+| package_id | UUID / tidak / ya | Jika dikirim harus package dari production batch recall |
+| evidence_code | string / ya / tidak | 1..100, unik per tenant; kode bukti untuk scan/foto dokumen |
+| quantity | decimal / tidak / ya | >=0, maksimal 12 digit 3 desimal; wajib berpasangan dengan uom |
+| uom | string / tidak / ya | 1..20; wajib berpasangan dengan quantity |
+| condition_note | string / ya / tidak | 1..4000; kondisi fisik saat ditarik |
+| photo | string / tidak / ya | Maksimal 1024; URI/path foto bukti, bukan file upload multipart |
+| withdrawn_at | datetime / tidak / ya | ISO 8601 timezone-aware; default waktu server; tidak boleh future |
+| completed_at | datetime / tidak / ya | ISO 8601 timezone-aware; tidak boleh sebelum withdrawn_at |
+
+Respons `RecallData` berisi `recall_id`, `production_batch_id`, `reason`,
+`started_at`, `completed_at`, audit/version dan `affected_packages`. Setiap package
+terdampak memuat snapshot package dari batch: `package_id`, `package_code`,
+`production_batch_id`, `package_number`, `quantity`, `status` dan audit/version.
+Respons `RecallWithdrawalData` berisi `withdrawal_id`, `recall_id`,
+`package_id`, `evidence_code`, `quantity`, `uom`, `condition_note`, `photo`,
+`withdrawn_at`, `completed_at` dan audit/version.
+GET list menerima `offset` 0..2147483647 default 0, `limit` 1..100 default 20,
+`production_batch_id` opsional dan `open_only` boolean opsional. Urutan
+`created_at DESC, recall_id DESC`.
+
+Contoh start:
+
+```json
+{
+  "production_batch_id": "33333333-3333-4333-8333-333333333333",
+  "reason": "Complaint bau asam pada salah satu paket hasil batch ini."
+}
+```
+
+Contoh close:
+
+```json
+{
+  "expected_version": 1
+}
+```
+
+Contoh execute:
+
+```json
+{
+  "expected_version": 1
+}
+```
+
+Contoh GET:
+
+`GET /api/v1/recalls?production_batch_id=33333333-3333-4333-8333-333333333333&open_only=true&offset=0&limit=20`
+
+Error utama:
+
+| HTTP | message | Kondisi |
+|---|---|---|
+| 400 | Validation Error | UUID/body/query invalid, reason kosong atau terlalu panjang |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi mati |
+| 403 | Required Recall permission is not granted | Permission belum tersedia/dicabut |
+| 404 | Recall not found | Detail/close ID hilang, deleted atau tenant lain |
+| 409 | Production batch in this tenant required | Batch produksi hilang, deleted atau tenant lain |
+| 409 | Recall changed; reload before retrying | expected_version close kedaluwarsa |
+| 409 | Recall already completed | Close dipanggil pada recall yang sudah selesai |
+| 409 | Completed recall cannot be executed | Execute dipanggil pada recall yang sudah selesai |
+| 409 | Completed recall cannot receive withdrawal evidence | Bukti ditambahkan setelah recall ditutup |
+| 409 | Package in this recall required | package_id tidak ditemukan di tenant atau bukan batch recall |
+| 409 | Recall reference unavailable | Constraint FK/unique evidence_code gagal |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+POST start membuat row recall, registry `RECALL`, edge `RECALLED`
+production_batch -> recall, movement `RECALL` untuk setiap package pada batch dengan
+remarks recall_id, dan event internal `recall.started` dalam satu transaksi. POST
+execute mengubah package berstatus nonterminal menjadi `RECALLED`, mempertahankan
+package `CONSUMED`/`DISCARDED`/`REJECTED` apa adanya, membuat edge `RECALLED`
+package -> recall, movement `RECALL` per package, menaikkan version recall dan
+mencatat event `recall.executed`. POST withdrawal membuat bukti append-only,
+movement `RECALL` pada package terkait atau asset recall, menaikkan version recall
+dan event `recall.withdrawal_recorded`. POST close mengisi `completed_at`,
+menaikkan version, menyinkronkan registry RECALL dan mencatat event internal
+`recall.completed`. Tidak ada update reason, delete, void, idempotency key,
+notifikasi realtime, verifikasi penarikan otomatis, subscription, atau replay endpoint.
+
+
+## Kontrak notification outbox
+
+Status **aktif internal-operasional**, tiga operasi di prefix `/api/v1`.
+Endpoint ini membaca dan memperbarui status antrian notifikasi internal. Event
+recall membuat item `DASHBOARD` `PENDING` secara atomik; endpoint ini belum
+mengirim email/WhatsApp/Telegram ke provider eksternal.
+
+Semua operasi wajib bearer session aktif. Permission `Notification.Read` untuk
+list dan `Notification.Dispatch` untuk mark sent/failed. POST wajib
+`Content-Type: application/json`. Tenant/operator berasal dari sesi.
+
+| Method/path | Tujuan | Permission | Request | Sukses |
+|---|---|---|---|---|
+| GET /notifications | Daftar outbox tenant | Notification.Read | offset, limit, status, channel, entity_type, entity_uuid | 200 NotificationPage |
+| POST /notifications/{identifier}/mark-sent | Tandai terkirim | Notification.Dispatch | NotificationMarkSentInput | 200 NotificationData |
+| POST /notifications/{identifier}/mark-failed | Tandai gagal | Notification.Dispatch | NotificationMarkFailedInput | 200 NotificationData |
+
+`NotificationData` berisi `notification_id`, `entity_type`, `entity_uuid`,
+`event_type`, `channel`, `recipient`, `subject`, `message`, `status`,
+`scheduled_at`, `sent_at`, `failure_reason` dan audit/version. Status aktif:
+`PENDING`, `SENT`, `FAILED`, `CANCELLED`. Channel aktif untuk outbox:
+`DASHBOARD`, `EMAIL`, `WHATSAPP`, `TELEGRAM`; saat ini auto-enqueue recall memakai
+`DASHBOARD`.
+
+Payload `NotificationMarkSentInput`: `expected_version` wajib dan `sent_at`
+opsional timezone-aware, default waktu server, tidak boleh future atau sebelum
+`scheduled_at`.
+
+Payload `NotificationMarkFailedInput`: `expected_version` wajib dan
+`failure_reason` string 1..4000 wajib.
+
+GET list memakai `offset` 0..2147483647 default 0, `limit` 1..100 default 20,
+filter opsional `status`, `channel`, `entity_type` dan `entity_uuid`. Urutan
+`created_at DESC, notification_id DESC`.
+
+Error utama:
+
+| HTTP | message | Kondisi |
+|---|---|---|
+| 400 | Validation Error | UUID/body/query invalid, sent_at future atau failure_reason kosong |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi mati |
+| 403 | Required Notification permission is not granted | Permission belum tersedia/dicabut |
+| 404 | Notification not found | ID hilang, deleted atau tenant lain |
+| 409 | Notification changed; reload before retrying | expected_version kedaluwarsa |
+| 409 | Notification already sent | Mark sent dipanggil ulang pada status SENT |
+| 409 | Cancelled notification cannot be sent | Status CANCELLED tidak bisa dikirim |
+| 409 | Sent notification cannot be failed | Status SENT tidak bisa digagalkan |
+| 409 | Cancelled notification cannot be failed | Status CANCELLED tidak bisa digagalkan |
+
+Efek samping: mark sent/failed hanya mengubah status outbox dan audit/version.
+Tidak ada event baru, retry otomatis, worker, SMTP, WhatsApp API, broker atau
+subscription frontend. Frontend dapat polling outbox untuk badge/daftar tugas.
+
+
+## Kontrak traceability read
+
+Status **aktif read-only**, enam operasi di prefix `/api/v1/traceability/assets`.
+Endpoint ini membaca registry `digital_asset`, edge `asset_relationship`, dan
+timeline `asset_movement` untuk investigasi package/batch/complaint/recall.
+Endpoint tidak membuat registry, tidak memperbaiki drift, tidak menulis movement
+baru dan tidak menerbitkan event.
+
+Semua operasi wajib bearer session aktif dan permission `Traceability.Read`.
+`asset_uuid` adalah UUID registry, bukan ID sumber seperti package_id atau
+production_batch_id. Respons memakai envelope, X-Request-ID, Cache-Control no-store
+dan Pragma no-cache.
+
+| Method/path | Tujuan | Permission | Query | Sukses |
+|---|---|---|---|---|
+| GET /traceability/assets/{asset_uuid} | Detail asset registry | Traceability.Read | Tidak ada | 200 AssetData |
+| GET /traceability/assets/{asset_uuid}/relationships | Relasi langsung | Traceability.Read | direction, offset, limit | 200 RelationshipPage |
+| GET /traceability/assets/{asset_uuid}/movements | Timeline movement | Traceability.Read | offset, limit | 200 MovementPage |
+| GET /traceability/assets/{asset_uuid}/passport | Passport asset | Traceability.Read | Tidak ada | 200 AssetPassportData |
+| GET /traceability/assets/{asset_uuid}/impact | Impact downstream | Traceability.Read | depth, limit | 200 ImpactData |
+| GET /traceability/assets/{asset_uuid}/traverse | Traversal graph terbatas | Traceability.Read | direction, depth, limit | 200 TraceGraphData |
+
+Query relationships: `direction=children` membaca edge keluar parent->child,
+`direction=parents` membaca edge masuk. Keduanya menerima `offset` 0..2147483647
+default 0 dan `limit` 1..100 default 20.
+
+Query movements: `offset` 0..2147483647 default 0 dan `limit` 1..100 default 20.
+Urutan movement `movement_time DESC, movement_id DESC`.
+
+Passport mengembalikan snapshot asset, maksimal 100 parent edge langsung, maksimal
+100 child edge langsung, dan maksimal 100 movement terbaru.
+
+Impact memakai traversal forward dari root, `depth` 1..6 default 6 dan `limit`
+1..200 default 200. Respons berisi `impacted_assets`, `affected_counts` per
+asset_type, subset `package_assets`, `complaint_assets`, `recall_assets`, edge yang
+dilewati dan `truncated`.
+
+Query traverse: `direction=forward` mengikuti parent->child, `direction=backward`
+mengikuti child->parent, `depth` 1..6 default 3, dan `limit` 1..200 default 100
+untuk jumlah node maksimum.
+
+`TraceGraphData` berisi `root_asset_uuid`, `direction`, `depth`, daftar `nodes`,
+daftar `edges`, dan `truncated`. `truncated=true` berarti traversal mencapai batas
+node; frontend dapat menurunkan depth atau menaikkan limit sampai maksimum.
+
+Contoh:
+
+`GET /api/v1/traceability/assets/11111111-1111-4111-8111-111111111111/traverse?direction=backward&depth=4&limit=100`
+
+`GET /api/v1/traceability/assets/11111111-1111-4111-8111-111111111111/impact?depth=6&limit=200`
+
+Error utama:
+
+| HTTP | message | Kondisi |
+|---|---|---|
+| 400 | Validation Error | UUID/query invalid |
+| 400 | Invalid traversal bounds | depth/limit di luar kontrak |
+| 401 | Invalid credentials or session | Bearer hilang/invalid/sesi mati |
+| 403 | Required Traceability permission is not granted | Permission belum tersedia/dicabut |
+| 404 | Asset not found | Asset hilang, deleted atau tenant lain |
+| 503 | Authentication unavailable | Konfigurasi autentikasi atau database tidak tersedia |
+| 500 | Internal Server Error | Kegagalan tak terduga |
+
+Traversal membaca edge yang sudah tersimpan oleh modul receiving, stok, produksi,
+packaging, delivery, school receiving, consumption, complaint dan recall. Endpoint
+ini bukan guarantee completeness bila data legacy belum punya registry/edge.
+
+
+## Kontrak dashboard read
+
+Status **aktif read-only**, tujuh operasi di prefix `/api/v1/dashboard`.
+Endpoint ini memberi ringkasan counter tenant untuk home, storage, fleet, holding,
+recall, notification outbox, serta monitor suhu terbaru per ruang penyimpanan.
+Semua operasi wajib bearer session aktif dan permission `Dashboard.Read`.
+Respons memakai envelope, X-Request-ID, Cache-Control no-store dan Pragma no-cache.
+
+| Method/path | Tujuan | Permission | Query/body | Sukses |
+|---|---|---|---|---|
+| GET /dashboard/home | Ringkasan operasional tenant | Dashboard.Read | Tidak ada | 200 DashboardHomeData |
+| GET /dashboard/storage | Ringkasan storage | Dashboard.Read | Tidak ada | 200 DashboardStorageData |
+| GET /dashboard/storage-temperatures | Monitor suhu terbaru storage aktif | Dashboard.Read | offset integer default 0; limit integer 1..100 default 20 | 200 DashboardStorageTemperaturePage |
+| GET /dashboard/fleet | Ringkasan fleet | Dashboard.Read | Tidak ada | 200 DashboardFleetData |
+| GET /dashboard/holding | Ringkasan holding | Dashboard.Read | Tidak ada | 200 DashboardHoldingData |
+| GET /dashboard/recall | Ringkasan recall | Dashboard.Read | Tidak ada | 200 DashboardRecallData |
+| GET /dashboard/notifications | Ringkasan notification outbox | Dashboard.Read | Tidak ada | 200 DashboardNotificationData |
+
+`DashboardHomeData`:
+
+| Field | Tipe | Makna |
+|---|---|---|
+| complaints_open | integer | Jumlah complaint aktif/nondeleted |
+| recalls_open | integer | Recall yang belum completed_at |
+| deliveries_in_transit | integer | Delivery status IN_TRANSIT |
+| packages_recalled | integer | Package status RECALLED |
+| packages_delivered | integer | Package status DELIVERED |
+| packages_received | integer | Package status RECEIVED |
+| packages_consumed | integer | Package status CONSUMED |
+| packages_discarded | integer | Package status DISCARDED |
+| production_completed | integer | Production batch status COMPLETED |
+| raw_batches_available | integer | Raw material batch status ACCEPTED |
+
+`DashboardStorageData`: `storages_active`, `storage_zones`,
+`raw_batches_accepted`, `stock_entries`, `temperature_logs`.
+
+`DashboardStorageTemperaturePage`: `items`, `offset`, `limit`, `next_offset`.
+Setiap item memuat `storage_id`, `storage_name`, `storage_type`,
+`temperature_min`, `temperature_max`, `device_uuid`, `temperature_log_id`,
+`recorded_at`, `temperature`, `unit` dan `status`. Status bernilai `NO_DATA`
+bila belum ada log suhu untuk storage, `OK` bila sampel Celsius terakhir masih
+dalam batas, `LOW` atau `HIGH` bila melewati batas storage, dan
+`UNSUPPORTED_UNIT` bila sampel terakhir bukan Celsius sehingga tidak dibandingkan
+dengan ambang storage. Endpoint membaca `temperature_log` terbaru yang sudah
+diisi ingestion HTTP/MQTT; tidak membuat device, subscription atau event baru.
+
+`DashboardFleetData`: `vehicles_active`, `drivers_active`, `deliveries_created`,
+`deliveries_in_transit`, `deliveries_completed`, `gps_logs`.
+
+`DashboardHoldingData`: `packages_created`, `packages_packaged`,
+`packages_released`, `packages_expired`, `packages_recalled`, `holding_logs`,
+`alarms_open`.
+
+`DashboardRecallData`: `complaints_open`, `recalls_open`, `recalls_completed`,
+`packages_recalled`, `recall_movements`.
+
+`DashboardNotificationData`: `pending`, `sent`, `failed`, `cancelled`,
+`dashboard_pending`, `email_pending`, `whatsapp_pending`, `telegram_pending`.
+
+Semua hitungan dibatasi tenant bearer dan record nondeleted. Ini snapshot query saat
+request, bukan agregat materialized, cache, event stream, alarm, atau indikator SLA.

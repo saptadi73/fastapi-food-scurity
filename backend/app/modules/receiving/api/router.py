@@ -21,6 +21,9 @@ from app.modules.receiving.schemas.receiving import (
     ReceivingPageEnvelope,
 )
 from app.modules.receiving.schemas.stock import (
+    ManualStockIssueEnvelope,
+    ManualStockIssueInput,
+    ManualStockIssuePageEnvelope,
     PutawayInput,
     StockBalanceEnvelope,
     StockEntryEnvelope,
@@ -62,6 +65,8 @@ async def service_dependency(db: DatabaseDep,
 ServiceDep = Annotated[StockService, Depends(service_dependency, scope='function')]
 Offset = Annotated[int, Query(ge=0, le=2147483647)]
 Limit = Annotated[int, Query(ge=1, le=100)]
+Search = Annotated[str | None, Query(min_length=1, max_length=200)]
+MaterialCategory = Annotated[str | None, Query(min_length=1, max_length=100)]
 
 
 @router.post('/receivings', status_code=201, response_model=ReceivingEnvelope,
@@ -98,12 +103,15 @@ async def cancel_receiving(request: Request, identifier: UUID, payload: CancelIn
 
 
 @router.get('/raw-material-batches', response_model=BatchPageEnvelope,
-    description='RawMaterialBatch.Read. No body; nondeleted tenant batches, created_at/ID descending; optional AND filters, offset/limit and next_offset. Status is a receiving decision, not an available-stock balance.')
+    description='RawMaterialBatch.Read. No body; nondeleted tenant batches; optional AND filters, search by material code/name or batch code, material_category and sort CREATED_DESC/FIFO/FEFO. Status is a receiving decision, not an available-stock balance.')
 async def list_batches(request: Request, service: ServiceDep, offset: Offset = 0, limit: Limit = 20,
     receiving_id: UUID | None = None, raw_material_id: UUID | None = None, supplier_id: UUID | None = None,
-    status: Literal['CREATED', 'ACCEPTED', 'REJECTED', 'CANCELLED'] | None = None):
+    status: Literal['CREATED', 'ACCEPTED', 'REJECTED', 'CANCELLED'] | None = None,
+    search: Search = None, material_category: MaterialCategory = None,
+    sort: Literal['CREATED_DESC', 'FIFO', 'FEFO'] = 'CREATED_DESC'):
     return envelope(request, data=await service.list(batch=True, offset=offset, limit=limit,
-        receiving_id=receiving_id, raw_material_id=raw_material_id, supplier_id=supplier_id, status=status))
+        receiving_id=receiving_id, raw_material_id=raw_material_id, supplier_id=supplier_id, status=status,
+        search=search, material_category=material_category, sort=sort))
 
 
 @router.get('/raw-material-batches/{identifier}', response_model=BatchEnvelope,
@@ -113,9 +121,16 @@ async def get_batch(request: Request, identifier: UUID, service: ServiceDep):
 
 
 @router.post('/raw-material-batches/{identifier}/putaway', status_code=201, response_model=StockEntryEnvelope,
-    description='Stock.Putaway. UUID batch; expected_version, storage_id, positive decimal quantity. Partial allocation of accepted unallocated stock to active storage in receiving kitchen, matching material storage type. Expiry uses UTC date. Atomic ledger, batch version, registry, STORAGE movement and stock.putaway event. Retry with old version returns 409.')
+    description='Stock.Putaway. UUID batch; expected_version, storage_id, optional zone_id and positive decimal quantity. Partial allocation of accepted unallocated stock to active storage/zone in receiving kitchen, matching material storage type. Expiry uses UTC date. Atomic ledger, batch version, registry, STORAGE movement and stock.putaway event. Retry with old version returns 409.')
 async def putaway(request: Request, identifier: UUID, payload: PutawayInput, service: ServiceDep):
     return envelope(request, code=201, data=await service.putaway(identifier, payload))
+
+
+@router.post('/raw-material-batches/{identifier}/manual-stock-issues', status_code=201,
+    response_model=ManualStockIssueEnvelope,
+    description='Stock.Issue. UUID batch; expected_version, storage_id, optional zone_id, positive quantity, optional issued_at, reason and reference_code. Records scanned/manual issue from storage without production batch, updates batch version, movement ISSUE and stock.manual_issued event.')
+async def manual_stock_issue(request: Request, identifier: UUID, payload: ManualStockIssueInput, service: ServiceDep):
+    return envelope(request, code=201, data=await service.manual_issue(identifier, payload))
 
 
 @router.get('/raw-material-batches/{identifier}/stock', response_model=StockBalanceEnvelope,
@@ -134,3 +149,9 @@ async def stock_ledger(request: Request, identifier: UUID, service: ServiceDep, 
     description='Stock.Read. UUID batch; no body; offset/limit pagination. Immutable production issues backed by storage, batch_version descending; legacy items without storage excluded. Missing/foreign/deleted batch 404.')
 async def stock_issues(request: Request, identifier: UUID, service: ServiceDep, offset: Offset = 0, limit: Limit = 20):
     return envelope(request, data=await service.issues(identifier, offset=offset, limit=limit))
+
+
+@router.get('/raw-material-batches/{identifier}/manual-stock-issues', response_model=ManualStockIssuePageEnvelope,
+    description='Stock.Read. UUID batch; no body; offset/limit pagination. Immutable manual/scanned stock issues, batch_version descending. Missing/foreign/deleted batch 404.')
+async def manual_stock_issues(request: Request, identifier: UUID, service: ServiceDep, offset: Offset = 0, limit: Limit = 20):
+    return envelope(request, data=await service.manual_issues(identifier, offset=offset, limit=limit))

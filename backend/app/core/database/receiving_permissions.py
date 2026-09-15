@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.authentication.infrastructure.orm import Permission, Role, RolePermission, User
 from app.modules.master.infrastructure.orm import Tenant
 
-RECEIVING_PERMISSIONS = ('SchoolReceiving.Read', 'SchoolReceiving.Write', 'Consumption.Read', 'Consumption.Write', 'Delivery.Read', 'Delivery.Write', 'Delivery.Depart', 'Delivery.Complete', 'Delivery.Cancel', 'Package.Read', 'Package.Write', 'Holding.Start', 'Holding.Update', 'Holding.Finish', 'Production.Read', 'Production.Write', 'Production.Start', 'Production.Complete', 'Production.Cancel', 'Receiving.Read', 'Receiving.Write', 'Receiving.Complete', 'Receiving.Cancel', 'RawMaterialBatch.Read', 'Stock.Read', 'Stock.Putaway')
+RECEIVING_PERMISSIONS = ('Complaint.Read', 'Complaint.Write', 'Dashboard.Read', 'Telemetry.Ingest', 'Notification.Read', 'Notification.Dispatch', 'Recall.Read', 'Recall.Execute', 'Traceability.Read', 'SchoolReceiving.Read', 'SchoolReceiving.Write', 'Consumption.Read', 'Consumption.Write', 'Delivery.Read', 'Delivery.Write', 'Delivery.Depart', 'Delivery.Complete', 'Delivery.Cancel', 'Package.Read', 'Package.Write', 'Holding.Start', 'Holding.Update', 'Holding.Finish', 'Production.Read', 'Production.Write', 'Production.Start', 'Production.Complete', 'Production.Cancel', 'Receiving.Read', 'Receiving.Write', 'Receiving.Complete', 'Receiving.Cancel', 'RawMaterialBatch.Read', 'Stock.Read', 'Stock.Putaway', 'Stock.Issue')
 
 
 class ReceivingGrantConflictError(Exception):

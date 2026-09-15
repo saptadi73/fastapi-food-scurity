@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.authentication.infrastructure.orm import Permission, Role, RolePermission, User
 from app.modules.master.infrastructure.orm import Tenant
 
-LOCATION_PERMISSIONS = ('Driver.Read', 'Driver.Write', 'Driver.Delete', 'Vehicle.Read', 'Vehicle.Write', 'Vehicle.Delete', 'School.Read', 'School.Write', 'School.Delete', 'Kitchen.Delete', 'Storage.Delete', 'StorageZone.Delete', 'Kitchen.Read', 'Kitchen.Write', 'Storage.Read', 'Storage.Write', 'StorageZone.Read', 'StorageZone.Write')
+LOCATION_PERMISSIONS = ('Driver.Read', 'Driver.Write', 'Driver.Delete', 'Vehicle.Read', 'Vehicle.Write', 'Vehicle.Delete', 'School.Read', 'School.Write', 'School.Delete', 'Kitchen.Delete', 'Storage.Delete', 'StorageZone.Delete', 'Kitchen.Read', 'Kitchen.Write', 'Storage.Read', 'Storage.Write', 'StorageZone.Read', 'StorageZone.Write', 'Device.Read', 'Device.Write', 'Device.Delete')
 
 
 class LocationGrantConflictError(Exception):

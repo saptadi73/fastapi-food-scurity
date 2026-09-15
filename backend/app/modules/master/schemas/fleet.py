@@ -1,6 +1,7 @@
 from decimal import Decimal
+from datetime import datetime
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import Field
 
@@ -39,6 +40,22 @@ class VehicleUpdate(VehicleInput, VersionInput):
     pass
 
 
+class DeviceInput(LocationInput):
+    zone_id: UUID | None = None
+    device_uuid: UUID = Field(default_factory=uuid4)
+    device_name: str = Field(min_length=1, max_length=200)
+    device_type: str = Field(min_length=1, max_length=50)
+    firmware: str | None = Field(default=None, max_length=100)
+    hardware: str | None = Field(default=None, max_length=100)
+    mqtt_topic: str | None = Field(default=None, max_length=512)
+    status: Literal['REGISTERED', 'ACTIVE', 'INACTIVE'] = 'REGISTERED'
+    last_online: datetime | None = None
+
+
+class DeviceUpdate(DeviceInput, VersionInput):
+    pass
+
+
 class DriverData(AuditData):
     driver_id: UUID
     driver_code: str
@@ -58,6 +75,19 @@ class VehicleData(AuditData):
     latitude: Decimal | None
     longitude: Decimal | None
     status: str
+
+
+class DeviceData(AuditData):
+    device_id: UUID
+    device_uuid: UUID
+    zone_id: UUID | None
+    device_name: str
+    device_type: str
+    firmware: str | None
+    hardware: str | None
+    mqtt_topic: str | None
+    status: str
+    last_online: datetime | None
 
 
 class DriverEnvelope(Envelope):
@@ -82,3 +112,42 @@ class VehiclePage(Page):
 
 class VehiclePageEnvelope(Envelope):
     data: VehiclePage
+
+
+class DeviceEnvelope(Envelope):
+    data: DeviceData
+
+
+class DevicePage(Page):
+    items: list[DeviceData]
+
+
+class DevicePageEnvelope(Envelope):
+    data: DevicePage
+
+
+class DeviceBindingInput(LocationInput):
+    device_id: UUID
+    vehicle_id: UUID
+
+
+class DeviceBindingUpdate(DeviceBindingInput, VersionInput):
+    pass
+
+
+class DeviceBindingData(AuditData):
+    binding_id: UUID
+    device_id: UUID
+    vehicle_id: UUID
+
+
+class DeviceBindingEnvelope(Envelope):
+    data: DeviceBindingData
+
+
+class DeviceBindingPage(Page):
+    items: list[DeviceBindingData]
+
+
+class DeviceBindingPageEnvelope(Envelope):
+    data: DeviceBindingPage

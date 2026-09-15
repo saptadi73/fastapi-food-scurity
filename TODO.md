@@ -14,11 +14,10 @@ Schema yang tersedia belum berarti alur bisnis atau endpoint selesai.
 
 Urutan implementasi berdasarkan dependensi alur operasional:
 
-1. [ ] **Master data operasional.** API kitchen, storage/zone, supplier, bahan baku,
+1. [x] **Master data operasional.** API kitchen, storage/zone, supplier, bahan baku,
    menu/food item, recipe, packaging type, school, vehicle dan driver; device/binding
-   yang diperlukan untuk mengaitkan pemantauan ke lokasi/perangkat. API kitchen dan
-   storage/zone serta supplier/bahan/relasi sudah tersedia. Master produksi dan
-   pengiriman menyusul sesuai tahap transaksi yang membutuhkannya.
+   yang diperlukan untuk mengaitkan pemantauan ke lokasi/perangkat. Master produksi
+   dan pengiriman tersedia pada tahap transaksi terkait.
 2. [x] **Penerimaan bahan dan stok.** Receiving, item penerimaan, batch bahan,
    validasi pemasok/lokasi/kuantitas serta pencatatan pergerakan dan ketersediaan
    bahan sesuai desain. Selesaikan alur transaksi yang bisa dipakai melalui API.
@@ -39,7 +38,7 @@ Urutan implementasi berdasarkan dependensi alur operasional:
 
 Traceability, registry/relationship/movement dan pencatatan event bisnis dikerjakan
 bersama transaksi yang menghasilkannya. Traversal backward/forward, timeline,
-passport dan impact analysis dilengkapi untuk investigasi/recall. Engine holding
+passport dan impact analysis kini tersedia read-only untuk investigasi/recall. Engine holding
 serta validasi rule/action dikerjakan pada tahap bisnis yang membutuhkannya;
 jangan menunggu deployment untuk menyelesaikan logika bisnis.
 
@@ -100,13 +99,18 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
   Akses minimum runtime/development tersedia tanpa migrasi atau seeding bisnis.
 - [x] CRUD jenis kemasan: 5 operasi, volume milliliter, tenant/permission/version,
   soft delete terlindungi paket dan kode tetap dicadangkan.
-- [ ] CRUD master device dan binding; API sesi perangkat bukan CRUD device.
+- [x] CRUD master device dan binding device/vehicle: list/detail/create/replace/soft delete aktif (`Device.Read/Write/Delete`), zone_id opsional dengan validasi storage zone aktif; binding memerlukan device aktif bertipe GPS dan vehicle aktif satu tenant.
 - [ ] API pengelolaan tenant/user/role/permission bila diperlukan alur bisnis;
   endpoint autentikasi dan CLI provisioning tidak menyelesaikan CRUD administrasi.
 
 - [x] Transaksi receiving: create header + item/batch atomik, list/detail,
   complete seluruh keputusan inspeksi dan cancel CREATED; validasi parent aktif,
   relasi pemasok-bahan, quantity/uom, expired date, tenant/permission/version.
+- [x] Bukti inspeksi bahan baku saat receiving: item penerimaan menyimpan suhu
+  manual, kondisi visual dan referensi foto kondisi bahan; kode batch/QR tetap
+  disiapkan untuk render/print di frontend.
+- [x] List batch bahan mendukung pencarian kode/nama bahan atau kode batch, filter
+  kategori bahan, serta urutan FIFO/FEFO untuk prioritas pemakaian.
 - [x] Registry receiving/batch, SUPPLIED/RECEIVED, movement RECEIVING untuk accepted,
   event created/completed/cancelled internal dalam transaksi yang sama; baca batch.
 - [x] Kontrak 7 endpoint baru, contoh payload/response, event catalog/changelog dan
@@ -116,6 +120,11 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
   saldo batch/per storage dan available quantity yang memperhitungkan expiry/status.
   Version batch mencegah alokasi ganda; validasi quantity, tipe storage dan permission
   Stock.Read/Putaway. Registry, movement STORAGE dan event stock.putaway atomik.
+- [x] Penempatan bahan ke slot/rak: putaway menerima `zone_id` opsional, memvalidasi
+  zone milik storage yang dipilih, dan menyimpan lokasi rak pada ledger immutable.
+- [x] Pengeluaran bahan manual/scan dari penyimpanan: endpoint manual stock issue
+  mencatat tanggal pengeluaran, storage/zone, quantity, reason/reference, movement
+  ISSUE dan event internal; saldo available serta start produksi mengurangi issue ini.
 - [x] Migrasi 0018 dan akses minimum runtime/development diterapkan lokal; kontrak
   frontend/event/changelog diperbarui. Empat tes HTTP/regresi terkait lulus;
   dua tes receiving diulang setelah kasus expiry, lintas tenant dan permission ditambah.
@@ -125,6 +134,8 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [x] Produksi: create/list/detail/start/complete/cancel, snapshot resep dan kebutuhan
   per hasil rencana, pengeluaran stok atomik, quantity hasil aktual, tenant/permission,
   version produksi/bahan, edge USED dan movement ISSUE/PRODUCTION beserta event internal.
+- [x] Selesai masak mencatat suhu makanan awal manual melalui `initial_temperature`
+  pada complete produksi; holding time tetap mulai dari finished_at saat packaging.
 - [x] Migrasi 0019, grant minimum runtime/development, GET stock-issues dan saldo
   issued/available terintegrasi. Tes HTTP produksi, receiving/stok dan master menu
   lulus; lint dan contoh kontrak diperiksa, upgrade/downgrade/upgrade uji bersih.
@@ -133,6 +144,9 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 
 - [x] Pengemasan: alokasi hasil aktual dengan version produksi, paket/nomor unik,
   identitas QR + resolve bearer, registry/edge PACKAGED/movement dan event atomik.
+- [x] Mulai pengemasan mencatat suhu awal manual per kemasan melalui
+  `initial_temperature`; waktu awal pengemasan memakai created_at/movement PACKAGING
+  dan QR payload tetap dirender/print frontend.
 - [x] Holding start/update/finish dengan policy frozen, anchor cooking finish,
   timer live SAFE/WARNING/EXPIRED/DISCARD_RECOMMENDED, release/discard dan log immutable.
   Release tidak menghentikan deadline; discard tidak membebaskan hasil. Migrasi 0020
@@ -144,6 +158,22 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [x] Manifest/pengiriman: create/list/detail/depart/complete/cancel, reservasi
   paket/vehicle/driver, origin dan sekolah satu kitchen, validasi holding+ETA saat
   depart, arrival terpisah dari acceptance sekolah, cancel hanya CREATED.
+- [x] Estimasi delivery saat scan/alokasi kemasan: create delivery menghitung jarak,
+  durasi dan ETA sederhana dari koordinat kitchen ke sekolah; depart bisa memakai
+  ETA otomatis bila frontend tidak mengirim override.
+- [x] Ringkasan kemasan terkirim berdasarkan armada dan tujuan: endpoint Delivery.Read
+  read-only mengagregasi delivery_count, package_count dan total_quantity per vehicle
+  atau per school tujuan.
+- [x] Tracking delivery read-only: endpoint mengambil GPS terakhir armada, suhu
+  terakhir device terkait, serta menghitung sisa jarak/waktu sederhana ke tujuan
+  terjauh. MQTT ingestion/live push dan geofence tetap pekerjaan pendukung berikutnya.
+- [x] HTTP ingestion awal telemetry GPS/suhu: endpoint Telemetry.Ingest append-only
+  mengisi gps_log dan temperature_log untuk tracking/dashboard. MQTT broker,
+  API key device, deduplikasi payload dan WebSocket tetap belum selesai.
+- [x] Monitor suhu storage dashboard: `GET /dashboard/storage-temperatures`
+  menampilkan storage aktif, sampel suhu terakhir, batas min/max dan status
+  OK/LOW/HIGH/UNSUPPORTED_UNIT/NO_DATA untuk kebutuhan dashboard. Grafik histori,
+  WebSocket dan alarm otomatis masih TODO.
 - [x] Status/version paket terintegrasi; holding tidak menimpa paket yang sudah
   dikelola pengiriman. Registry, edge LOADED/DELIVERED, movement dan event atomik.
   Migrasi 0021 dan akses minimum lokal diterapkan; dokumentasi diperbarui. Delapan
@@ -161,13 +191,56 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
   dan Alembic check bersih; upgrade/downgrade/upgrade database uji lulus.
   Enam endpoint beserta dokumentasi frontend/event/changelog tersedia. Koreksi bukti,
   backdated/partial reporting dan alarm otomatis belum tersedia.
+- [x] Complaint intake: create/list/detail immutable (`Complaint.Write/Read`),
+  validasi package dan school satu tenant, school aktif, manifest noncancelled,
+  registry COMPLAINT, edge REPORTED, movement COMPLAINT dan event internal atomik.
+  Kontrak frontend/event/changelog serta permission helper diperbarui.
+- [x] Complaint incident report: intake mendukung scan `package_code` dan foto
+  bukti operasional; endpoint report/list report menyatukan package, batch
+  produksi, lokasi/delivery/receipt sekolah, konsumsi, bahan baku, expiry bahan,
+  suhu receiving, manual issue bahan dan traceability movement. Recall otomatis
+  dan update/delete complaint belum tersedia.
+- [x] Recall dasar: start/list/detail/close (`Recall.Execute/Read`) untuk production
+  batch satu tenant, snapshot package terdampak, registry RECALL, edge RECALLED,
+  movement RECALL per package dan event `recall.started/completed` internal atomik.
+  Eksekusi recall menandai package nonterminal menjadi RECALLED serta menulis
+  edge/movement/event `recall.executed`. Penarikan fisik dan notification outbox
+  sudah menyusul; provider eksternal dan verifikasi otomatis masih TODO.
+- [x] Bukti penarikan fisik recall: endpoint append-only create/list withdrawal
+  mencatat evidence_code, package opsional, quantity/uom, kondisi, foto dan waktu
+  penarikan; menulis movement/event `recall.withdrawal_recorded` serta menaikkan
+  version recall. Notifikasi dan verifikasi otomatis masih TODO.
+- [x] Notification outbox operasional: event recall otomatis membuat item
+  `DASHBOARD` PENDING; endpoint list/mark-sent/mark-failed tersedia dengan
+  permission Notification.Read/Dispatch. Provider email/WhatsApp, retry worker dan
+  subscription realtime masih TODO.
+- [x] Dashboard notification outbox: `GET /dashboard/notifications` menampilkan
+  jumlah PENDING/SENT/FAILED/CANCELLED dan pending per channel untuk monitoring
+  operasional recall/notifikasi.
+- [x] Seed demo frontend end-to-end: `backend/scripts/seed_demo_ready.py` membuat
+  tenant/user login demo, permission lengkap, master, workflow 14 tahap, IoT
+  sample, complaint report, recall withdrawal dan notification outbox untuk
+  implementasi frontend/integration test development. Data demo dilarang untuk
+  production.
+- [x] Wrapper migration eksplisit: `backend/scripts/migrate_with_status.py`
+  membungkus Alembic upgrade agar operator melihat output JSON before/after,
+  returncode dan status.
+- [x] Traceability read: detail asset, relasi langsung, timeline movement dan traversal
+  forward/backward terbatas (`Traceability.Read`) untuk investigasi package/batch/
+  complaint/recall. Passport asset dan impact downstream berbasis traversal forward
+  tersedia read-only. Repair registry, replay event, bukti penarikan fisik dan
+  notifikasi recall belum tersedia.
+- [x] Dashboard read: `GET /dashboard/home`, `/storage`, `/storage-temperatures`,
+  `/fleet`, `/holding` dan `/recall` (`Dashboard.Read`) menyediakan counter tenant
+  dan suhu storage terakhir read-only untuk ringkasan operasional per domain.
+  Realtime, cache materialized, SLA alarm dan analytics dashboard belum tersedia.
 
-- [x] Sinkronisasi dokumentasi: README/indeks backend, schema dan runtime head 0022,
+- [x] Sinkronisasi dokumentasi: README/indeks backend, schema dan runtime head 0029,
   permission master/transaksi, registry serta status frontend/TODO. Hapus artefak
   NUL README; verifikasi daftar operasi OpenAPI, permission dan tautan lokal.
 
-**Pekerjaan berikutnya: keluhan, penelusuran batch/paket terdampak, investigasi
-serta pembuatan/pelaksanaan/penyelesaian recall.**
+**Pekerjaan berikutnya: notifikasi operasional, bukti penarikan fisik recall dan
+dashboard/ringkasan bisnis.**
 
 ## P0 — Fondasi instalasi FastAPI
 
@@ -434,7 +507,7 @@ serta pembuatan/pelaksanaan/penyelesaian recall.**
 ## P3 — Modul bisnis (docs/05, 09, 12–14, 17)
 
 - [ ] Master data dan authentication.
-- [ ] Device/digital twin: registry, binding, calibration, firmware, heartbeat (docs/12).
+- [ ] Device/digital twin: calibration, firmware lifecycle, heartbeat dan telemetry ingestion (docs/12).
 - [ ] Telemetry: ingestion MQTT async, validasi payload, deduplikasi, event storage.
 - [ ] Storage dan receiving: pemantauan kondisi dan penerimaan bahan.
 - [ ] Production, packaging, QR, dan asset movement.
@@ -445,7 +518,7 @@ serta pembuatan/pelaksanaan/penyelesaian recall.**
 - [ ] Fleet: GPS, perjalanan, geofence, dan riwayat pengiriman.
 - [ ] School receiving dan complaint.
 - [ ] Food recall dan pelacakan paket terdampak.
-- [ ] Notification melalui email/WhatsApp.
+- [ ] Notification melalui email/WhatsApp; outbox dashboard internal sudah aktif.
 - [ ] Integrasi ERP MBG via REST API.
 - [ ] Analytics/AI dan Google Maps setelah kebutuhan API serta secret tersedia.
 - [ ] Setiap modul memiliki API, application, domain, infrastructure, schemas,
@@ -453,7 +526,7 @@ serta pembuatan/pelaksanaan/penyelesaian recall.**
 
 ## P4 — Dashboard dan realtime (docs/15, 16)
 
-- [ ] REST dashboard untuk home/storage/fleet/holding/analytics.
+- [ ] REST dashboard analytics; home/storage/fleet/holding/recall/notification counter sudah aktif.
 - [ ] WebSocket dashboard/device/fleet/storage/holding/alarm dengan autentikasi.
 - [ ] Redis cache dan distribusi event antarworker.
 - [ ] Frontend Vue 3 serta integrasi peta dan alarm.

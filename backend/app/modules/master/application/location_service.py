@@ -15,7 +15,7 @@ from app.modules.master.infrastructure.orm import (
     StorageZone,
     Vehicle,
 )
-from app.modules.master.schemas.fleet import DriverInput, VehicleInput
+from app.modules.master.schemas.fleet import DeviceInput, DriverInput, VehicleInput
 from app.modules.master.schemas.locations import KitchenInput, SchoolInput, StorageInput, ZoneInput
 from app.modules.traceability.infrastructure.registry import sync_source
 
@@ -34,6 +34,7 @@ class LocationService:
             'kitchen': (Kitchen, 'kitchen_id', 'Kitchen', KitchenInput),
             'storage': (Storage, 'storage_id', 'Storage', StorageInput),
             'zone': (StorageZone, 'zone_id', 'StorageZone', ZoneInput),
+            'device': (Device, 'device_id', 'Device', DeviceInput),
         }[kind]
         self.table = model.__table__
 
@@ -64,7 +65,8 @@ class LocationService:
         await require_permission(self.db, self.scope, f'{self.permission}.Read')
         query = self._query()
         if parent_id is not None:
-            parent_column = {'storage': 'kitchen_id', 'school': 'kitchen_id', 'zone': 'storage_id', 'vehicle': 'driver_id'}[self.kind]
+            parent_column = {'storage': 'kitchen_id', 'school': 'kitchen_id', 'zone': 'storage_id',
+                             'vehicle': 'driver_id', 'device': 'zone_id'}[self.kind]
             query = query.where(self.table.c[parent_column] == parent_id)
         rows = (await self.db.execute(query.order_by(self.table.c.created_at.desc(), self.table.c[self.pk].desc())
                                       .offset(offset).limit(limit + 1))).mappings().all()
@@ -88,11 +90,19 @@ class LocationService:
                 if device is None:
                     raise LocationConflictError('Active GPS device in this tenant required')
             return
+        if self.kind == 'device':
+            if values['zone_id'] is not None:
+                zone = await self.db.scalar(select(StorageZone.zone_id).where(
+                    StorageZone.zone_id == values['zone_id'], StorageZone.tenant_id == self.scope.tenant_id,
+                    StorageZone.deleted_at.is_(None), StorageZone.status == 'ACTIVE').with_for_update(read=True))
+                if zone is None:
+                    raise LocationConflictError('Active parent storage zone in this tenant required')
+            return
         # Lock ancestors root-first, so operational parent changes cannot race child creation.
         if self.kind in ('storage', 'school'):
             kitchen_id = values['kitchen_id']
         else:
-            kitchen_id = await self.db.scalar(select(Storage.kitchen_id).where(
+            kitchen_id = await self.db.scalar(select(Storage.storage_id).where(
                 Storage.storage_id == values['storage_id'], Storage.tenant_id == self.scope.tenant_id,
                 Storage.deleted_at.is_(None)))
         kitchen = await self.db.scalar(select(Kitchen.kitchen_id).where(
@@ -141,7 +151,7 @@ class LocationService:
             await self.db.execute(update(self.table).where(*self._visible(), self.table.c[self.pk] == identifier,
                 self.table.c.version == expected_version).values(**fields, updated_by=self.scope.actor_id,
                 updated_at=func.clock_timestamp(), version=self.table.c.version + 1))
-        if self.kind in ('storage', 'school', 'vehicle'):
+        if self.kind in ('storage', 'school', 'vehicle', 'device'):
             await sync_source(self.db, self.scope, self.kind.upper(), identifier)
         return await self._get(identifier)
 

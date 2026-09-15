@@ -25,7 +25,7 @@ def timer(production, package, now):
     elapsed = (now - production['finished_at']).total_seconds()
     state = ('DISCARD_RECOMMENDED' if elapsed >= policy['discard_minutes'] * 60 else
              'EXPIRED' if seconds <= 0 else 'WARNING' if seconds <= policy['warning_minutes'] * 60 else 'SAFE')
-    effective = package['status'] if package['status'] in ('DISCARDED', 'REJECTED', 'CONSUMED') else (
+    effective = package['status'] if package['status'] in ('DISCARDED', 'REJECTED', 'CONSUMED', 'RECALLED') else (
         'EXPIRED' if state in ('EXPIRED', 'DISCARD_RECOMMENDED') else package['status'])
     return {'remaining_seconds': seconds, 'remaining_minutes': floor(seconds / 60), 'timer_status': state,
             'effective_status': effective,

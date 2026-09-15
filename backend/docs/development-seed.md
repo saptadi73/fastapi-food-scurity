@@ -1,6 +1,7 @@
 # Seed development
 
-Status 2026-09-11: sudah diterapkan pada database lokal fsos, tenant `FSOS_DEV`.
+Status 2026-09-15: seed minimal `FSOS_DEV` sudah tersedia dan seed demo frontend
+`FSOS_DEMO` sudah disiapkan melalui script terpisah.
 Seed adalah fixture development, bukan bootstrap admin production atau data bisnis
 nyata. Script hanya berjalan jika ENVIRONMENT tepat `development`.
 
@@ -19,6 +20,62 @@ Fixture membuat total 23 record tenant/actor/RBAC/master, di luar enam record
 registry. Tidak membuat alarm aktif, sampel telemetry, receiving, produksi,
 pengiriman, complaint, recall, atau transaksi palsu. Field suhu/holding yang tidak
 diberikan tetap kosong; tidak menetapkan ambang keamanan pangan contoh sebagai default.
+
+## Seed demo frontend end-to-end
+
+Script `backend/scripts/seed_demo_ready.py` membuat data demo yang lebih lengkap
+untuk implementasi frontend dan integration test manual. Guard environment hanya
+mengizinkan `development` atau `testing`; jangan jalankan pada production.
+
+Data yang dibuat:
+
+| Jenis | Isi |
+| --- | --- |
+| Tenant | `FSOS_DEMO` / FSOS Frontend Demo |
+| User login | `frontend-admin` dengan password development `DemoFrontend123!` |
+| Role/permission | Role `FRONTEND_ADMIN` dengan permission master, transaksi, dashboard, traceability, telemetry, notification |
+| Master | Kitchen, cold/dry storage, zone/rak, supplier, dua raw material, school, driver, vehicle, device temperature/GPS, binding, food item, recipe, packaging type |
+| Workflow | Receiving bahan, putaway, stock issue QC, production batch, package, delivery, school receiving, consumption |
+| IoT | Temperature storage, temperature vehicle, GPS route dan alarm suhu demo |
+| Incident | Complaint via package demo, report-ready traceability, recall, withdrawal evidence dan notification outbox |
+
+ID dan kode penting untuk frontend:
+
+| Kebutuhan frontend | Nilai demo |
+| --- | --- |
+| Login tenant | Gunakan `tenant_id` dari output JSON script |
+| Username | `frontend-admin` |
+| Password | `DemoFrontend123!` |
+| Package scan | `PKG-2026-0001` |
+| Production batch | `MO-2026-0001` |
+| Vehicle | `VH-BOX-01` |
+| School | `SCH-DEMO-01` |
+
+Jalankan setelah migrasi dan runtime role:
+
+```powershell
+.\venv\Scripts\python.exe -m alembic -c backend\alembic.ini upgrade head
+.\venv\Scripts\python.exe backend\scripts\provision_runtime_role.py
+.\venv\Scripts\python.exe backend\scripts\seed_demo_ready.py
+```
+
+Output JSON memuat `tenant_id`, username/password demo, jumlah record baru,
+package_code, complaint_id dan recall_id. Pengulangan normal tidak membuat duplikat.
+Script tidak menghapus data existing, tidak reset sequence dan tidak mengubah record
+yang sudah ada.
+
+Endpoint frontend yang langsung dapat dicoba setelah seed demo:
+
+| Layar | Endpoint |
+| --- | --- |
+| Login | `POST /api/v1/auth/login` dengan tenant_id output script |
+| Dashboard | `GET /dashboard/home`, `/dashboard/storage-temperatures`, `/dashboard/notifications` |
+| Tracking | `GET /deliveries/{delivery_id}/tracking` dari daftar delivery |
+| Complaint scan | `POST /complaints` dengan `package_code=PKG-2026-0001` dan school demo |
+| Incident dashboard | `GET /complaints/reports` dan `GET /complaints/{complaint_id}/report` |
+| Traceability | Gunakan asset UUID dari report untuk passport/impact |
+| Recall | `GET /recalls`, `GET /recalls/{recall_id}`, withdrawal list |
+| Notification | `GET /notifications`, mark sent/failed untuk item pending |
 
 Actor pemeliharaan tidak diberi password (`password_hash` awal NULL). Actor ini
 dipakai CLI/service administratif melalui akses database tepercaya, **bukan akun

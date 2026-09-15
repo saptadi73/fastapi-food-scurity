@@ -56,7 +56,7 @@ Limit = Annotated[int, Query(ge=1, le=100)]
 
 
 @router.post('/packages', status_code=201, response_model=PackageEnvelope,
-    description='Package.Write. Allocate positive quantity from completed production with expected_version of production. Kitchen and packaging type same tenant; no over-allocation, including discarded packages. Freeze holding policy once; expiry anchored to cooking finish. Atomic production version, package registry, PACKAGED edge, movement and event. QR payload identifies UUID; rendering is client-side.')
+    description='Package.Write. Allocate positive quantity from completed production with expected_version of production and optional initial_temperature. Kitchen and packaging type same tenant; no over-allocation, including discarded packages. Freeze holding policy once; expiry anchored to cooking finish. Atomic production version, package registry, PACKAGED edge, movement and event. QR payload identifies UUID; rendering is client-side.')
 async def create(request: Request, payload: PackageInput, service: ServiceDep):
     return envelope(request, code=201, data=await service.create(payload))
 

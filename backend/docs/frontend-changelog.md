@@ -1,5 +1,257 @@
 # Perubahan kontrak frontend
 
+## 2026-09-15 - Seed demo frontend end-to-end
+
+- Menambahkan `backend/scripts/seed_demo_ready.py` untuk data demo frontend:
+  tenant/user login, permission lengkap, master operasional, workflow 14 tahap,
+  IoT sample, complaint report, recall withdrawal dan notification outbox.
+- Menambahkan `backend/scripts/migrate_with_status.py` agar migration command
+  memberi output JSON before/after dan status sukses/gagal.
+- Tidak ada endpoint baru; kontrak HTTP tetap 165 operasi aktif.
+- Dokumentasi frontend menunjuk ke data login/kode demo di `development-seed.md`.
+
+## 2026-09-15 - Complaint incident report dan foto bukti
+
+- `POST /api/v1/complaints` sekarang menerima salah satu dari `package_id` atau
+  `package_code`; `package_code` mendukung hasil scan QR/label di frontend.
+- `ComplaintInput` dan `ComplaintData` menambah `photo` nullable untuk referensi
+  foto bukti operasional.
+- Menambahkan `GET /api/v1/complaints/reports` dan
+  `GET /api/v1/complaints/{identifier}/report` dengan `Complaint.Read`.
+- Report menyatukan complaint, package, batch produksi, lokasi/delivery/receipt
+  sekolah, konsumsi, bahan baku produksi, expiry bahan, suhu receiving, manual
+  issue bahan dan traceability movement. Operasi aktif naik menjadi 165.
+
+## 2026-09-15 - Dashboard notification outbox
+
+- Menambahkan `GET /api/v1/dashboard/notifications` dengan `Dashboard.Read`.
+- Response berisi jumlah outbox `PENDING`, `SENT`, `FAILED`, `CANCELLED` dan
+  pending per channel dashboard/email/whatsapp/telegram. Operasi aktif naik
+  menjadi 163.
+- Endpoint read-only; tidak mengirim provider eksternal atau membuka subscription.
+
+## 2026-09-15 - Notification outbox operasional
+
+- Menambahkan `GET /api/v1/notifications`,
+  `POST /api/v1/notifications/{identifier}/mark-sent` dan
+  `POST /api/v1/notifications/{identifier}/mark-failed`.
+- Event recall otomatis membuat item outbox `DASHBOARD` `PENDING`; worker/operator
+  dapat menandai `SENT` atau `FAILED` dengan `Notification.Dispatch`.
+- Menambahkan permission `Notification.Read` dan `Notification.Dispatch`.
+  Operasi aktif naik menjadi 162.
+- Ini belum integrasi provider email/WhatsApp/Telegram, retry worker atau
+  subscription realtime frontend.
+
+## 2026-09-15 - Bukti penarikan fisik recall
+
+- Menambahkan `POST /api/v1/recalls/{identifier}/withdrawals` untuk mencatat
+  bukti penarikan fisik append-only dengan `Recall.Execute`.
+- Menambahkan `GET /api/v1/recalls/{identifier}/withdrawals` untuk daftar bukti
+  dengan `Recall.Read`, pagination dan filter `package_id`.
+- Bukti mencatat kode evidence, package opsional, jumlah/uom opsional, kondisi,
+  foto URI/path, waktu penarikan dan selesai. Operasi aktif naik menjadi 159.
+- Backend menulis movement `RECALL`, menaikkan version recall dan event internal
+  `recall.withdrawal_recorded`; belum ada notifikasi atau verifikasi otomatis.
+
+## 2026-09-15 - Dashboard suhu storage terbaru
+
+- Menambahkan `GET /api/v1/dashboard/storage-temperatures` dengan permission
+  `Dashboard.Read`.
+- Response paginated memuat storage aktif, sampel suhu terakhir, batas suhu,
+  device terkait dan status `OK`, `LOW`, `HIGH`, `UNSUPPORTED_UNIT` atau
+  `NO_DATA`. Operasi aktif naik menjadi 157.
+- Endpoint ini read-only dari `temperature_log`; belum WebSocket, MQTT
+  subscription, alarm evaluator atau grafik historis.
+
+## 2026-09-15 - HTTP ingestion telemetry GPS/suhu
+
+- Menambahkan `POST /api/v1/telemetry/gps` dan
+  `POST /api/v1/telemetry/temperatures` dengan permission `Telemetry.Ingest`.
+- Endpoint append-only mengisi `gps_log` dan `temperature_log` yang dibaca oleh
+  tracking delivery. Operasi aktif naik menjadi 156.
+- Ini belum MQTT broker, API key device, deduplikasi payload atau WebSocket live.
+
+## 2026-09-15 - Tracking delivery read-only
+
+- Menambahkan `GET /api/v1/deliveries/{identifier}/tracking` dengan `Delivery.Read`.
+- Response berisi GPS terakhir kendaraan, suhu terakhir dari device GPS kendaraan
+  bila ada, sisa jarak garis lurus dan estimasi sisa waktu ke tujuan terjauh.
+- Operasi aktif naik menjadi 154. Endpoint ini read-only, bukan MQTT ingestion,
+  WebSocket atau live push.
+
+## 2026-09-15 - Ringkasan kemasan delivery
+
+- Menambahkan `GET /api/v1/deliveries/packages/by-vehicle` untuk jumlah kemasan
+  dan total quantity per armada.
+- Menambahkan `GET /api/v1/deliveries/packages/by-destination` untuk jumlah kemasan
+  dan total quantity per sekolah tujuan.
+- Keduanya read-only dengan `Delivery.Read`, offset/limit dan filter status.
+  Operasi aktif naik menjadi 153.
+
+## 2026-09-15 - Estimasi route delivery
+
+- `POST /api/v1/deliveries` menerima `average_speed_kmph` opsional dan menghitung
+  `estimated_distance_km`, `estimated_duration_minutes`, serta
+  `estimated_arrival_time` dari koordinat kitchen ke sekolah tujuan.
+- `POST /api/v1/deliveries/{identifier}/depart` kini boleh tanpa
+  `estimated_arrival_time`; backend menghitung ETA otomatis bila koordinat lengkap.
+- `DeliveryData` menambah `estimated_distance_km` dan `estimated_duration_minutes`.
+  Tidak ada endpoint baru; operasi aktif tetap 151.
+
+## 2026-09-15 - Suhu awal pengemasan
+
+- `POST /api/v1/packages` menerima `initial_temperature` opsional nullable sebagai
+  suhu awal manual saat kemasan dibuat.
+- `PackageData` pada detail/list/resolve dan event package menambah
+  `initial_temperature`. Tidak ada endpoint baru; operasi aktif tetap 151.
+
+## 2026-09-15 - Suhu awal selesai masak
+
+- `POST /api/v1/production-batches/{identifier}/complete` menerima
+  `initial_temperature` opsional nullable sebagai suhu makanan awal manual saat
+  selesai masak.
+- `ProductionData` pada detail/list/event production menambah
+  `initial_temperature`. Tidak ada endpoint baru; operasi aktif tetap 151.
+
+## 2026-09-15 - Pengeluaran bahan manual/scan
+
+- Menambahkan `POST /api/v1/raw-material-batches/{identifier}/manual-stock-issues`
+  dengan permission `Stock.Issue` untuk mencatat bahan keluar dari storage tanpa
+  production batch.
+- Menambahkan `GET /api/v1/raw-material-batches/{identifier}/manual-stock-issues`
+  dengan `Stock.Read` untuk ledger manual issue. Operasi aktif naik menjadi 151.
+- GET stock sekarang mengurangi `available_quantity` dengan issue produksi dan
+  manual issue. Start produksi juga memperhitungkan manual issue agar stok tidak
+  terpakai ganda.
+
+## 2026-09-15 - Search batch FEFO/FIFO
+
+- `GET /api/v1/raw-material-batches` menambah query `search`, `material_category`
+  dan `sort=CREATED_DESC|FIFO|FEFO`.
+- `search` mencari `material_code`, `material_name` dan `batch_code` secara
+  case-insensitive. `FEFO` menaruh expired date terdekat lebih dulu dan null
+  terakhir; `FIFO` memakai waktu receiving paling lama.
+- Tidak ada endpoint baru, response schema tetap `BatchPage`.
+
+## 2026-09-15 - Putaway sampai storage zone/rak
+
+- `POST /api/v1/raw-material-batches/{identifier}/putaway` menerima `zone_id`
+  opsional nullable untuk menempatkan batch bahan ke slot/rak storage.
+- `StockEntryData` pada respons putaway, ledger dan payload event `stock.putaway`
+  menambah `zone_id`. Balance tetap agregasi per storage karena issue produksi
+  saat ini masih memilih storage, belum zone.
+- Tidak ada endpoint baru; jumlah operasi HTTP tetap 149.
+
+## 2026-09-15 - Bukti kondisi penerimaan bahan baku
+
+- `POST /api/v1/receivings` menerima `items[].condition` dan `items[].photo`
+  opsional untuk inspeksi visual/foto bahan baku. Keduanya ikut muncul di
+  `ReceivingDetail.items[]` dan payload event receiving internal.
+- Tidak ada endpoint baru; jumlah operasi HTTP tetap 149. `photo` hanya referensi
+  file/URL, bukan upload atau validasi akses file oleh backend.
+
+## 2026-09-15 - Dashboard domain aktif
+
+- Menambahkan `GET /api/v1/dashboard/storage`, `/fleet`, `/holding` dan `/recall`
+  dengan permission `Dashboard.Read`.
+- Endpoint read-only mengembalikan counter tenant per domain untuk storage,
+  armada/pengiriman, holding/alarm dan recall.
+- Operasi aktif naik menjadi 149. Analytics dashboard, cache materialized,
+  subscription realtime dan SLA alert masih belum tersedia.
+
+## 2026-09-15 - Dashboard home aktif
+
+- Menambahkan `GET /api/v1/dashboard/home` dengan permission `Dashboard.Read`.
+- Endpoint read-only mengembalikan counter tenant: complaint aktif, recall terbuka,
+  delivery in transit, package per status utama, production completed dan batch
+  bahan accepted.
+- Operasi aktif naik menjadi 145. Tidak ada cache materialized, event baru,
+  subscription realtime, SLA alarm atau agregasi lintas tenant.
+
+## 2026-09-15 - Traceability passport dan impact aktif
+
+- Menambahkan `GET /api/v1/traceability/assets/{asset_uuid}/passport` untuk
+  snapshot asset, relasi parent/child langsung dan movement terbaru.
+- Menambahkan `GET /api/v1/traceability/assets/{asset_uuid}/impact` untuk impact
+  downstream berbasis traversal forward, termasuk affected_counts dan subset
+  package/complaint/recall.
+- Operasi aktif naik menjadi 144. Endpoint tetap read-only dengan `Traceability.Read`;
+  tidak ada registry repair, event baru, status package baru atau subscription.
+
+## 2026-09-14 - Eksekusi recall paket aktif
+
+- Menambahkan endpoint `POST /api/v1/recalls/{identifier}/execute` dengan
+  `Recall.Execute` dan `expected_version`.
+- Execute menandai package terdampak nonterminal menjadi `RECALLED`, mempertahankan
+  package `CONSUMED`/`DISCARDED`/`REJECTED`, menulis edge package -> recall,
+  movement `RECALL`, menaikkan version recall dan event internal `recall.executed`.
+- Operasi aktif naik menjadi 142. Tidak ada notifikasi, bukti penarikan fisik,
+  idempotency key, update reason, delete recall atau subscription frontend.
+
+## 2026-09-14 - Traceability read aktif
+
+- Menambahkan endpoint `GET /api/v1/traceability/assets/{asset_uuid}`,
+  `/relationships`, `/movements` dan `/traverse` untuk investigasi graph/movement.
+- Endpoint memakai permission `Traceability.Read`, membaca `digital_asset`,
+  `asset_relationship` dan `asset_movement` secara read-only.
+- Traversal mendukung `direction=forward|backward`, `depth` 1..6 dan batas node
+  `limit` 1..200; response menyertakan `truncated` bila batas node tercapai.
+- Operasi aktif naik menjadi 141. Tidak ada registry repair, movement baru, event
+  baru, replay, subscription frontend atau eksekusi recall otomatis.
+
+## 2026-09-14 - Recall dasar aktif
+
+- Menambahkan endpoint `POST /api/v1/recalls`, `GET /api/v1/recalls`,
+  `GET /api/v1/recalls/{identifier}` dan `POST /api/v1/recalls/{identifier}/close`.
+- Recall memakai permission `Recall.Execute` untuk start/close dan `Recall.Read`
+  untuk list/detail; response detail menyertakan snapshot package terdampak dari
+  production batch.
+- Start recall menyimpan registry `RECALL`, edge `RECALLED`, movement `RECALL`
+  per package batch dan event internal `recall.started`. Close mengisi
+  `completed_at`, menaikkan version dan menulis event `recall.completed`.
+- Operasi aktif naik menjadi 137. Tidak ada perubahan status package, notifikasi,
+  penarikan fisik, impact analysis lintas graph atau subscription frontend.
+
+## 2026-09-14 - Complaint intake aktif
+
+- Menambahkan endpoint `POST /api/v1/complaints`, `GET /api/v1/complaints` dan
+  `GET /api/v1/complaints/{identifier}` untuk mencatat dan membaca keluhan paket.
+- Complaint memakai permission `Complaint.Write`/`Complaint.Read`, package dan
+  school satu tenant, school aktif, serta manifest delivery noncancelled yang
+  menghubungkan package ke school tersebut.
+- POST menyimpan complaint immutable, registry `COMPLAINT`, edge `REPORTED`,
+  movement `COMPLAINT` dan event internal `complaint.recorded` secara atomik.
+- Operasi aktif naik menjadi 133. Tidak ada update/delete complaint, perubahan
+  status package, recall otomatis, notifikasi realtime atau subscription frontend.
+
+## 2026-09-14 - CRUD binding perangkat-kendaraan aktif
+
+- Menambahkan endpoint `GET /api/v1/device-bindings`,
+  `POST /api/v1/device-bindings`, `GET /api/v1/device-bindings/{identifier}`,
+  `PUT /api/v1/device-bindings/{identifier}` dan
+  `DELETE /api/v1/device-bindings/{identifier}`.
+- Binding memakai permission `Device.Read`, `Device.Write`, `Device.Delete`,
+  validasi device aktif bertipe `GPS`, vehicle aktif, tenant sama, unique pair,
+  soft delete dan `expected_version`.
+- `frontend-api.md` diperbarui (operasi aktif: 130; CRUD menjadi 14 master),
+  `event-catalog.md` menandai binding CRUD aktif tanpa producer/consumer realtime,
+  dan Alembic head menjadi `20260911_0023`.
+- Tidak ada event runtime, movement, GPS log, cascade delete atau subscription
+  frontend baru; frontend memakai respons mutasi dan GET ulang.
+
+## 2026-09-14 - CRUD master device aktif
+
+- Menambahkan endpoint `GET /api/v1/devices`, `POST /api/v1/devices`,
+  `GET /api/v1/devices/{identifier}`, `PUT /api/v1/devices/{identifier}` dan
+  `DELETE /api/v1/devices/{identifier}` untuk CRUD master perangkat.
+- Mengaktifkan permission `Device.Read`, `Device.Write`, `Device.Delete`, `expected_version`,
+  parent `zone_id` aktif dan soft delete; registrasi `DEVICE` disinkronkan atomik.
+- Binding perangkat-kendaraan ditambahkan pada entri berikutnya; event runtime belum ada.
+- `frontend-api.md` diperbarui (operasi aktif: 125; CRUD menjadi 13 master),
+  dan `event-catalog.md` kini menandai CRUD device aktif tanpa producer/consumer aktif.
+- [Kontrak frontend master device](frontend-api.md#kontrak-master-device-dan-binding) dan
+  [catatan event device](event-catalog.md#crud-master-device) ditambahkan.
+
 ## 2026-09-11 - Penerimaan bahan dan batch
 
 - Tujuh operasi receiving/batch tersedia; total 75 operasi HTTP, master CRUD tetap

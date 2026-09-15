@@ -35,4 +35,5 @@ class Complaint(AuditMixin, Base):
     package_id: Mapped[UUID]
     school_id: Mapped[UUID]
     description: Mapped[str] = mapped_column(Text)
+    photo: Mapped[str | None] = mapped_column(Text)
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

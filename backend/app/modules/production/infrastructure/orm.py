@@ -35,6 +35,7 @@ class ProductionBatch(AuditMixin, Base):
         CheckConstraint("version >= 1", name="ck_production_version"),
         CheckConstraint("planned_quantity IS NULL OR (planned_quantity > 0 AND planned_quantity <> 'NaN'::numeric)", name='ck_production_planned'),
         CheckConstraint("actual_quantity IS NULL OR (planned_quantity IS NOT NULL AND actual_quantity >= 0 AND actual_quantity <= planned_quantity AND actual_quantity <> 'NaN'::numeric)", name='ck_production_actual'),
+        CheckConstraint("initial_temperature IS NULL OR initial_temperature <> 'NaN'::numeric", name='ck_production_initial_temperature'),
         Index("ix_production_tenant_kitchen", "tenant_id", "kitchen"),
         Index("ix_production_tenant_menu", "tenant_id", "menu"),
         Index("ix_production_created_at", "created_at"),
@@ -46,6 +47,7 @@ class ProductionBatch(AuditMixin, Base):
     menu: Mapped[UUID]
     planned_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
     actual_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    initial_temperature: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     holding_policy: Mapped[dict | None] = mapped_column(JSONB)
     recipe_snapshot: Mapped[dict | None] = mapped_column(JSONB)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -100,6 +102,7 @@ class Package(AuditMixin, Base):
         CheckConstraint("package_number > 0", name="ck_package_number"),
         CheckConstraint("version >= 1", name="ck_package_version"),
         CheckConstraint("quantity IS NULL OR (quantity > 0 AND quantity <> 'NaN'::numeric)", name='ck_package_quantity'),
+        CheckConstraint("initial_temperature IS NULL OR initial_temperature <> 'NaN'::numeric", name='ck_package_initial_temperature'),
         Index("ix_package_tenant_type", "tenant_id", "package_type_id"),
         Index("ix_package_expired_at", "expired_at"),
         Index("ix_package_created_at", "created_at"),
@@ -111,6 +114,7 @@ class Package(AuditMixin, Base):
     package_type_id: Mapped[UUID | None]
     package_number: Mapped[int]
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    initial_temperature: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     holding_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     holding_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Snapshot dapat negatif setelah expired; bukan bukti bahwa paket aman dikonsumsi.

@@ -16,11 +16,15 @@ from app.core.database.session import close_database
 from app.core.responses.envelope import Envelope, envelope
 from app.modules.authentication.api.rate_limit import AuthLimitMiddleware, AuthRateLimiter
 from app.modules.authentication.api.router import router as auth_router
+from app.modules.complaint.api import router as complaints_router
 from app.modules.consumption.api.workflow import router as school_workflow_router
+from app.modules.dashboard.api import router as dashboard_router
 from app.modules.fleet.api.deliveries import router as deliveries_router
 from app.modules.master.api.alarm_rules import router as alarm_router
 from app.modules.master.api.drivers import router as drivers_router
 from app.modules.master.api.food_items import router as food_items_router
+from app.modules.master.api.devices import router as devices_router
+from app.modules.master.api.device_bindings import router as device_bindings_router
 from app.modules.master.api.holding_rules import router as holding_router
 from app.modules.master.api.kitchens import router as kitchens_router
 from app.modules.master.api.packaging_types import router as packaging_types_router
@@ -32,11 +36,15 @@ from app.modules.master.api.storages import router as storages_router
 from app.modules.master.api.supplier_materials import router as supplier_materials_router
 from app.modules.master.api.suppliers import router as suppliers_router
 from app.modules.master.api.vehicles import router as vehicles_router
+from app.modules.notification.api import router as notifications_router
 from app.modules.packaging.api.router import router as packages_router
 from app.modules.production.api.router import router as production_router
+from app.modules.recall.api import router as recalls_router
 from app.modules.receiving.api.router import router as receiving_router
 from app.modules.telemetry.api.alarms import router as telemetry_alarm_router
+from app.modules.telemetry.api.ingestion import router as telemetry_ingestion_router
 from app.modules.telemetry.api.sessions import router as device_session_router
+from app.modules.traceability.api import router as traceability_router
 
 logger = logging.getLogger("fsos")
 
@@ -67,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(holding_router, prefix=settings.api_prefix)
     app.include_router(alarm_router, prefix=settings.api_prefix)
     app.include_router(telemetry_alarm_router, prefix=settings.api_prefix)
+    app.include_router(telemetry_ingestion_router, prefix=settings.api_prefix)
     app.include_router(device_session_router, prefix=settings.api_prefix)
     app.include_router(kitchens_router, prefix=settings.api_prefix)
     app.include_router(storages_router, prefix=settings.api_prefix)
@@ -76,21 +85,63 @@ def create_app() -> FastAPI:
     app.include_router(supplier_materials_router, prefix=settings.api_prefix)
     app.include_router(schools_router, prefix=settings.api_prefix)
     app.include_router(drivers_router, prefix=settings.api_prefix)
+    app.include_router(devices_router, prefix=settings.api_prefix)
+    app.include_router(device_bindings_router, prefix=settings.api_prefix)
+    app.include_router(dashboard_router, prefix=settings.api_prefix)
     app.include_router(vehicles_router, prefix=settings.api_prefix)
     app.include_router(food_items_router, prefix=settings.api_prefix)
     app.include_router(recipes_router, prefix=settings.api_prefix)
     app.include_router(packaging_types_router, prefix=settings.api_prefix)
     app.include_router(school_workflow_router, prefix=settings.api_prefix)
     app.include_router(deliveries_router, prefix=settings.api_prefix)
+    app.include_router(complaints_router, prefix=settings.api_prefix)
+    app.include_router(recalls_router, prefix=settings.api_prefix)
+    app.include_router(notifications_router, prefix=settings.api_prefix)
+    app.include_router(traceability_router, prefix=settings.api_prefix)
     app.include_router(packages_router, prefix=settings.api_prefix)
     app.include_router(production_router, prefix=settings.api_prefix)
     app.include_router(receiving_router, prefix=settings.api_prefix)
     original_openapi = app.openapi
 
+    master_like_paths = (
+        f'{settings.api_prefix}/auth/',
+        f'{settings.api_prefix}/holding-rules',
+        f'{settings.api_prefix}/alarm-rules',
+        f'{settings.api_prefix}/alarms',
+        f'{settings.api_prefix}/telemetry',
+        f'{settings.api_prefix}/device-sessions',
+        f'{settings.api_prefix}/kitchens',
+        f'{settings.api_prefix}/storages',
+        f'{settings.api_prefix}/storage-zones',
+        f'{settings.api_prefix}/suppliers',
+        f'{settings.api_prefix}/raw-materials',
+        f'{settings.api_prefix}/supplier-materials',
+        f'{settings.api_prefix}/schools',
+        f'{settings.api_prefix}/drivers',
+        f'{settings.api_prefix}/devices',
+        f'{settings.api_prefix}/device-bindings',
+        f'{settings.api_prefix}/dashboard',
+        f'{settings.api_prefix}/vehicles',
+        f'{settings.api_prefix}/receivings',
+        f'{settings.api_prefix}/raw-material-batches',
+        f'{settings.api_prefix}/food-items',
+        f'{settings.api_prefix}/recipes',
+        f'{settings.api_prefix}/production-batches',
+        f'{settings.api_prefix}/packages',
+        f'{settings.api_prefix}/packaging-types',
+        f'{settings.api_prefix}/deliveries',
+        f'{settings.api_prefix}/complaints',
+        f'{settings.api_prefix}/recalls',
+        f'{settings.api_prefix}/notifications',
+        f'{settings.api_prefix}/traceability',
+        f'{settings.api_prefix}/school-receivings',
+        f'{settings.api_prefix}/consumptions',
+    )
+
     def documented_openapi():
         schema = original_openapi()
         for path, operations in schema['paths'].items():
-            if path.startswith((f'{settings.api_prefix}/auth/', f'{settings.api_prefix}/holding-rules', f'{settings.api_prefix}/alarm-rules', f'{settings.api_prefix}/alarms', f'{settings.api_prefix}/device-sessions', f'{settings.api_prefix}/kitchens', f'{settings.api_prefix}/storages', f'{settings.api_prefix}/storage-zones', f'{settings.api_prefix}/suppliers', f'{settings.api_prefix}/raw-materials', f'{settings.api_prefix}/supplier-materials', f'{settings.api_prefix}/schools', f'{settings.api_prefix}/drivers', f'{settings.api_prefix}/vehicles', f'{settings.api_prefix}/receivings', f'{settings.api_prefix}/raw-material-batches', f'{settings.api_prefix}/food-items', f'{settings.api_prefix}/recipes', f'{settings.api_prefix}/production-batches', f'{settings.api_prefix}/packages', f'{settings.api_prefix}/packaging-types', f'{settings.api_prefix}/deliveries', f'{settings.api_prefix}/school-receivings', f'{settings.api_prefix}/consumptions')):
+            if path.startswith(master_like_paths):
                 for operation in operations.values():
                     operation.get('responses', {}).pop('422', None)
         return schema
@@ -125,7 +176,7 @@ def create_app() -> FastAPI:
                 status_code=500,
             )
         response.headers["X-Request-ID"] = request.state.request_id
-        if is_auth or request.url.path.startswith((f'{settings.api_prefix}/holding-rules', f'{settings.api_prefix}/alarm-rules', f'{settings.api_prefix}/alarms', f'{settings.api_prefix}/device-sessions', f'{settings.api_prefix}/kitchens', f'{settings.api_prefix}/storages', f'{settings.api_prefix}/storage-zones', f'{settings.api_prefix}/suppliers', f'{settings.api_prefix}/raw-materials', f'{settings.api_prefix}/supplier-materials', f'{settings.api_prefix}/schools', f'{settings.api_prefix}/drivers', f'{settings.api_prefix}/vehicles', f'{settings.api_prefix}/receivings', f'{settings.api_prefix}/raw-material-batches', f'{settings.api_prefix}/food-items', f'{settings.api_prefix}/recipes', f'{settings.api_prefix}/production-batches', f'{settings.api_prefix}/packages', f'{settings.api_prefix}/packaging-types', f'{settings.api_prefix}/deliveries', f'{settings.api_prefix}/school-receivings', f'{settings.api_prefix}/consumptions')):
+        if is_auth or request.url.path.startswith(master_like_paths):
             response.headers['Cache-Control'] = 'no-store'
             response.headers['Pragma'] = 'no-cache'
         logger.info(

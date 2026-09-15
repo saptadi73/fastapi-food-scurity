@@ -232,9 +232,11 @@ perubahan deleted_at registry. Frontend memperbarui daftar dari respons/GET.
 
 ## Cakupan modul sekolah dan master lain
 
-CRUD sekolah kini tersedia. Kendaraan/driver juga kini memiliki CRUD. Menu/resep kini memiliki CRUD. Jenis kemasan kini memiliki CRUD;
-master device/binding belum memiliki endpoint. Keberadaan tabel, registry source adapter atau referensi
-penghalang delete tidak berarti terdapat producer/event runtime dari modul tersebut.
+CRUD sekolah kini tersedia. Kendaraan/driver juga kini memiliki CRUD. Menu/resep kini
+memiliki CRUD. Jenis kemasan kini memiliki CRUD; master device juga memiliki CRUD
+HTTP aktif. Binding perangkat-kendaraan juga kini memiliki CRUD HTTP aktif.
+Keberadaan tabel, registry source adapter atau referensi penghalang delete tidak
+berarti terdapat producer/event runtime dari modul tersebut.
 Matriks HTTP terverifikasi ada di [cakupan frontend](frontend-api.md#cakupan-crud-dan-status-modul).
 Klarifikasi status ini tidak menambahkan event, channel atau payload baru.
 
@@ -266,6 +268,41 @@ ordering pengiriman, retry/replay broker atau subscription. Mengganti driver/GPS
 vehicle tidak mencatat movement/GPS/delivery atau mengubah riwayat pengiriman lama.
 POST duplicate retry 409; DELETE ulang 404. Contoh lengkap ada di
 [kontrak kendaraan/driver](frontend-api.md#kontrak-kendaraan-dan-driver).
+
+
+## CRUD master device
+
+Status: lima operasi master device (`/api/v1/devices`) tersedia. Device.Write/Delete
+memutasi table `device` dan sinkronisasi registry `DEVICE` secara atomik dengan
+tenant/actor bearer, permission Device.Write/Delete; Read terpisah via Device.Read.
+`zone_id` divalidasi aktif dan nondeleted pada tenant bila disediakan. `DELETE`
+hanya soft delete, menambah version/audit dan ditolak bila perangkat masih
+direferensikan binding aktif.
+
+Tidak ada event producer/consumer, transport/channel, payload event berversi,
+ordering, retry/replay atau subscription yang aktif saat ini untuk CRUD device.
+Tidak menulis event_log/movement/relationship saat write/delete device. Digital twin
+aktif akan mengubah status ini bila diimplementasikan.
+Contoh lengkap ada di [kontrak master device dan binding](frontend-api.md#kontrak-master-device-dan-binding).
+
+
+## CRUD binding device/vehicle
+
+Status: lima operasi `/api/v1/device-bindings` tersedia sebagai relasi administratif
+antara device GPS aktif dan vehicle aktif dalam tenant yang sama. Producer runtime:
+tidak ada. Consumer runtime: tidak ada. Transport/channel/topic: tidak tersedia.
+Permission mengikuti `Device.Read`, `Device.Write` dan `Device.Delete`.
+
+POST/PUT memutasi table `device_binding` dengan tenant/actor bearer, unique pair
+tenant-device-vehicle, audit dan version. DELETE adalah soft delete dengan
+`expected_version`; tidak menghapus device, vehicle, gps_log, delivery, movement,
+event_log atau asset registry. Soft delete device/vehicle ditolak saat masih
+direferensikan binding aktif.
+
+Tidak ada event producer/consumer, payload event berversi, ordering, deduplikasi,
+retry/replay, broker acknowledgment atau subscription frontend. Frontend memakai
+respons mutasi dan GET ulang untuk memperbarui tampilan. Contoh lengkap ada di
+[kontrak master device dan binding](frontend-api.md#kontrak-master-device-dan-binding).
 
 
 ## Event receiving tersimpan
@@ -344,6 +381,8 @@ menggunakan struktur sama dengan snapshot final dan actor penyelesaian:
         "quantity": "2.500000",
         "uom": "kg",
         "temperature": "3.20",
+        "condition": "GOOD",
+        "photo": "example/raw-receiving/batch-001.jpg",
         "accepted": null,
         "batch": {
           "tenant_id": "77777777-7777-4777-8777-777777777777",
@@ -385,8 +424,9 @@ retry sukses dengan version lama 409, rollback tidak menyisakan event/ledger/mov
 Tidak ada urutan global atau jaminan delivery eksternal.
 
 Payload v1 required: schema_version integer 1, actor_id UUID string, entry object
-schema StockEntryData (semua field persis respons putaway), uom string snapshot
-receiving item. Contoh konstruksi payload dari respons putaway:
+schema StockEntryData (semua field persis respons putaway, termasuk `zone_id`
+nullable), uom string snapshot receiving item. Contoh konstruksi payload dari
+respons putaway:
 
 ```javascript
 const payload = {
@@ -401,8 +441,18 @@ Contoh JSON entry lengkap tersedia pada [kontrak putaway](frontend-api.md#stok-b
 Movement STORAGE memakai asset_uuid registry batch/kitchen/storage, remarks UUID
 entry. Qty parsial terdapat pada entry.quantity; event ini tidak menyatakan seluruh
 batch berada di satu storage. Tidak ada event baru saat GET saldo, expiry tanggal,
-atau master menjadi inactive; saldo available dihitung saat baca. Pemakaian bahan tersedia melalui production.started;
-transfer dan adjustment ledger/event tetap rencana.
+atau master menjadi inactive; saldo available dihitung saat baca. Pemakaian bahan
+untuk produksi tersedia melalui production.started; pengeluaran manual tersedia
+melalui stock.manual_issued. Transfer dan adjustment ledger/event tetap rencana.
+
+`stock.manual_issued` **aktif internal**: producer `StockService.manual_issue`,
+trigger POST manual-stock-issues sukses, disimpan atomik bersama ledger `stock_issue`,
+version batch, movement ISSUE dan event_log. Entity type RAW_MATERIAL_BATCH,
+entity_uuid = ID batch. Tenant dari bearer account dengan permission Stock.Issue.
+Consumer eksternal, bus, MQTT/WebSocket, retry publisher, replay dan notifikasi
+belum diimplementasikan. Ordering per batch memakai issue.batch_version; retry
+dengan version lama 409. Payload v1 required: schema_version integer 1, actor_id
+UUID string, issue object ManualStockIssueData, uom string snapshot receiving item.
 
 
 ## CRUD menu dan resep
@@ -428,7 +478,7 @@ Entity type PRODUCTION_BATCH, entity_uuid ID batch. Empat event:
 |---|---|---|
 | production.created | POST create, Production.Write | Rencana CREATED, snapshot resep, registry |
 | production.started | POST start, Production.Start | RUNNING, ledger production_item, version bahan, edge USED, movement ISSUE, registry |
-| production.completed | POST complete, Production.Complete | COMPLETED, actual quantity, waktu, registry dan movement PRODUCTION di kitchen |
+| production.completed | POST complete, Production.Complete | COMPLETED, actual quantity, suhu awal manual, waktu, registry dan movement PRODUCTION di kitchen |
 | production.cancelled | POST cancel CREATED, Production.Cancel | CANCELLED, registry; tanpa stok/movement |
 
 Semua payload v1: schema_version integer 1, actor_id UUID string,
@@ -456,12 +506,13 @@ const payload = {
 ```
 
 Started menyertakan item sumber, quantity/UOM/storage dan batch_version; completed
-menyertakan hasil aktual tanpa mengembalikan stok untuk yield loss, cancelled tidak
+menyertakan hasil aktual dan initial_temperature manual tanpa mengembalikan stok untuk yield loss, cancelled tidak
 memiliki item. Movement ISSUE menggunakan asset_uuid batch bahan/storage/kitchen,
 remarks UUID production_item; movement PRODUCTION menggunakan asset_uuid hasil dan
 kitchen. Snapshot tidak berubah ketika resep master diperbarui. Tidak ada event
-Stock.Read/GET atau event terpisah stock.issued; bukti pengeluaran ada pada
-production.started. Event paket/holding kini tersedia internal seperti bagian berikut; traversal API belum tersedia.
+Stock.Read/GET; bukti pengeluaran produksi ada pada production.started dan
+pengeluaran manual/scan ada pada stock.manual_issued. Event paket/holding kini tersedia internal seperti bagian berikut;
+traceability read tersedia sebagai query HTTP, bukan event stream.
 
 
 ## Paket dan holding internal
@@ -471,12 +522,12 @@ entity_type PACKAGE dan entity_uuid package_id. Tenant/actor dari bearer, tidak 
 credential pada QR/payload. Master PackagingType CRUD hanya audit/version, tidak
 menghasilkan event/registry. Event berikut memakai payload schema_version 1,
 actor_id UUID string dan package object persis PackageData respons aksi (termasuk
-calculated_at, timer, frozen policy dan QR). Field/nullable dan contoh record lengkap
+initial_temperature, calculated_at, timer, frozen policy dan QR). Field/nullable dan contoh record lengkap
 ada di [kontrak paket/holding](frontend-api.md#kontrak-kemasan-paket-dan-holding).
 
 | Event | Trigger/permission | Efek transaksi |
 |---|---|---|
-| package.created | POST packages / Package.Write | Alokasi hasil, version produksi, policy frozen, package registry, PACKAGED edge, PACKAGING movement |
+| package.created | POST packages / Package.Write | Alokasi hasil, suhu awal pengemasan manual, version produksi, policy frozen, package registry, PACKAGED edge, PACKAGING movement |
 | holding.started | POST holding/start / Holding.Start | Paket PACKAGED, anchor cooking finish, version, registry, holding_log |
 | holding.updated | POST holding/update / Holding.Update | Refresh timer, version, registry, holding_log; termasuk refresh EXPIRED yang sudah tercatat |
 | holding.expired | POST holding/update pertama menjadi EXPIRED / Holding.Update | Materialisasi expiry, version, registry, holding_log |
@@ -526,7 +577,7 @@ nested termasuk timer/calculated_at). Field/nullable dan contoh snapshot lengkap
 
 | Event | Trigger/permission | Efek atomik |
 |---|---|---|
-| delivery.created | POST deliveries / Delivery.Write | Reservasi vehicle/driver/paket, ALLOCATED dan version paket, manifest, registry; tanpa movement |
+| delivery.created | POST deliveries / Delivery.Write | Reservasi vehicle/driver/paket, ALLOCATED dan version paket, estimasi route, manifest, registry; tanpa movement |
 | delivery.departed | POST depart / Delivery.Depart | IN_TRANSIT, departure/ETA, package versions, registry, edge LOADED dan movement VEHICLE_LOADING |
 | delivery.completed | POST complete / Delivery.Complete | COMPLETED dan arrival time, paket DELIVERED, registry, edge/movement DELIVERED/DELIVERY |
 | delivery.cancelled | POST cancel CREATED / Delivery.Cancel | CANCELLED, paket RELEASED atau EXPIRED, resource bebas, registry; manifest tetap, tanpa movement |
@@ -607,6 +658,102 @@ null jika semua dibuang. Tidak berarti hasil pemeriksaan keamanan menyeluruh.
 
 Row locks school/delivery/package dan expected_version paket menjaga urutan per
 paket: delivery completion -> satu receipt -> satu consumption untuk accepted.
+
+
+## Event complaint internal
+
+Status **aktif internal PostgreSQL event_log**, producer `ComplaintService`.
+Consumer aktif: penyimpanan audit internal; belum ada subscriber, publisher,
+notifikasi otomatis, MQTT/WebSocket, endpoint replay atau channel frontend.
+Tenant/actor berasal dari bearer yang masih aktif dan permission `Complaint.Write`.
+
+| Event | Trigger/auth | Entity type | Payload snapshot |
+|---|---|---|---|
+| complaint.recorded | POST /complaints; Complaint.Write | COMPLAINT | complaint: ComplaintData lengkap termasuk photo nullable |
+
+Payload schema_version=1, actor_id UUID string dan snapshot `ComplaintData`
+sesuai [kontrak complaint](frontend-api.md#kontrak-complaint-intake). Contoh:
+
+```javascript
+const complaintEventPayload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  complaint: complaintResponse.data
+};
+```
+
+POST complaint membuat registry COMPLAINT, edge REPORTED package -> complaint,
+dan movement COMPLAINT untuk asset package dari school ke null dengan remarks
+complaint_id. Event, registry, relationship, movement dan row complaint berada
+dalam satu transaksi; kegagalan salah satunya membatalkan seluruh pencatatan.
+`package_code` scan hanya diselesaikan menjadi `package_id` sebelum insert; field
+photo adalah referensi bukti. Tidak ada perubahan status package, delivery,
+school_receiving, consumption, recall, alarm atau notifikasi. Endpoint report
+complaint adalah read-only. Ordering hanya mengikuti transaksi database; tidak ada
+deduplikasi, retry/replay broker atau guarantee delivery eksternal.
+
+
+## Event recall internal
+
+Status **aktif internal PostgreSQL event_log**, producer `RecallService`.
+Consumer aktif: penyimpanan audit internal dan `notification_outbox` untuk
+notifikasi dashboard operasional; belum ada publisher provider eksternal,
+MQTT/WebSocket, endpoint replay atau channel frontend.
+Tenant/actor berasal dari bearer yang masih aktif dan permission `Recall.Execute`.
+
+| Event | Trigger/auth | Entity type | Payload snapshot |
+|---|---|---|---|
+| recall.started | POST /recalls; Recall.Execute | RECALL | recall: RecallData lengkap dengan affected_packages |
+| recall.executed | POST /recalls/{id}/execute; Recall.Execute | RECALL | recall: RecallData dengan package nonterminal sudah RECALLED |
+| recall.withdrawal_recorded | POST /recalls/{id}/withdrawals; Recall.Execute | RECALL | recall: RecallData, withdrawal: RecallWithdrawalData |
+| recall.completed | POST /recalls/{id}/close; Recall.Execute | RECALL | recall: RecallData lengkap dengan completed_at |
+
+Payload schema_version=1, actor_id UUID string dan snapshot `RecallData` sesuai
+[kontrak recall](frontend-api.md#kontrak-recall-dasar). Contoh:
+
+```javascript
+const recallEventPayload = {
+  schema_version: 1,
+  actor_id: "88888888-8888-4888-8888-888888888888",
+  recall: recallResponse.data
+};
+```
+
+Start recall membuat registry RECALL, edge RECALLED production_batch -> recall,
+dan movement RECALL untuk setiap package pada production batch dengan remarks
+recall_id. Execute recall menandai package nonterminal sebagai RECALLED, membuat
+edge RECALLED package -> recall dan movement RECALL per package. Withdrawal
+recall membuat bukti append-only, movement RECALL pada package terkait atau asset
+recall, dan event berisi snapshot withdrawal. Close recall memperbarui
+completed_at/version dan registry RECALL. Event, registry,
+relationship, movement dan row recall berada dalam transaksi yang sama dengan
+mutasi API terkait; kegagalan salah satunya membatalkan transaksi. Tidak ada
+perubahan delivery, school_receiving, consumption atau alarm. Notification outbox
+yang dibuat masih channel internal `DASHBOARD`; tidak ada deduplikasi,
+retry/replay broker atau guarantee delivery eksternal.
+
+
+## Traceability read
+
+Status **aktif read-only** untuk `/api/v1/traceability/assets/*`, termasuk detail,
+relationships, movements, traverse, passport dan impact. Endpoint membaca
+digital_asset, asset_relationship dan asset_movement yang sudah dibuat oleh event
+bisnis sebelumnya. Tidak ada producer, consumer, transport/channel, payload event
+baru, ordering broker, retry/replay atau subscription frontend.
+
+Traversal forward/backward, passport dan impact adalah query snapshot saat request,
+bukan event stream. `truncated=true` pada respons traverse/impact berarti hasil
+mencapai batas node, bukan kegagalan publisher. Completeness bergantung pada modul
+bisnis yang sudah menulis registry/edge/movement; data legacy tanpa registry/edge
+tidak otomatis diperbaiki.
+
+
+## Dashboard read
+
+Status **aktif read-only** untuk `/api/v1/dashboard/*`. Endpoint membaca counter
+dari tabel bisnis tenant saat request. Tidak ada producer, consumer, transport/
+channel, payload event baru, ordering broker, retry/replay atau subscription
+frontend. Nilai dashboard bukan event stream dan bukan SLA alarm.
 Version bukti immutable selalu 1 untuk record API baru, bukan sequence event global.
 Timestamps received_time/consumed_at server tidak mendahului tahap sebelumnya;
 created_at bukan jaminan ordering lintas paket. Bukti, package version, registry,

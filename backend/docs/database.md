@@ -2,7 +2,7 @@
 
 PostgreSQL 18 lokal berjalan di localhost:5432. Database `fsos` yang disediakan
 pengguna telah dihubungkan melalui `backend/.env`. Kredensial tidak dicatat di
-dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260911_0022`.
+dokumentasi. PostGIS dan pgcrypto aktif; revisi terkini adalah `20260915_0032`.
 
 [Profil privilege fsos_runtime](runtime-database-role.md) sudah diprovisioning
 sebagai grup NOLOGIN. Login fsos_app kini dipakai DATABASE_URL; migrasi/maintenance
@@ -210,9 +210,10 @@ Tahap kesepuluh menambahkan konsumsi, keluhan, dan recall (docs/07):
 - `recall`: UUID, tenant, batch produksi, reason wajib, started_at, completed_at
   opsional, audit/version. Waktu selesai tidak boleh mendahului mulai. Beberapa
   kasus recall per batch dapat dicatat; aturan kasus aktif ditangani domain nanti.
-- Penyimpanan recall belum mengubah status paket, menghitung dampak, mengirim
-  notifikasi, atau menjalankan penarikan. Permission Recall.Execute, workflow,
-  daftar paket terdampak, dan audit immutable masih TODO.
+- Recall dasar kini dapat dicatat dan ditutup melalui API tanpa mengubah status
+  paket, menghitung dampak lintas graph, mengirim notifikasi, atau menjalankan
+  penarikan fisik. Permission Recall.Execute tersedia untuk start/close; daftar
+  paket terdampak adalah snapshot package pada production batch.
 - Tes memastikan referensi valid, satu consumption final per paket, waktu/alasan
   wajib, serta rollback tahap kesepuluh yang mempertahankan tabel pengiriman.
 
@@ -269,8 +270,10 @@ Tahap ketujuh menambahkan transaksi penerimaan bahan (docs/07):
   batch_code, expired_date opsional, status, QR opsional, audit/version. Kode batch
   dan QR unik per tenant. QR masih identifier; gambar/tautan QR belum dibuat.
 - `receiving_item`: UUID, tenant, receiving, batch, quantity Numeric(14,6), satuan,
-  temperature opsional, accepted nullable, dan audit/version. Quantity wajib positif
-  dan bukan NaN. `accepted=NULL` berarti belum diperiksa, bukan diterima otomatis.
+  temperature opsional, condition/photo opsional, accepted nullable, dan audit/version.
+  Quantity wajib positif dan bukan NaN. `accepted=NULL` berarti belum diperiksa,
+  bukan diterima otomatis. Photo adalah referensi file/URL bukti kondisi bahan,
+  bukan isi gambar atau upload yang dikelola database.
 - Keputusan tambahan terhadap field draft: kitchen penerima dan master material
   wajib agar batch dapat ditelusuri; satuan item disimpan sebagai snapshot transaksi.
   Satu batch berasal dari satu penerimaan dan memiliki satu receiving_item.
@@ -469,6 +472,15 @@ Upgrade/downgrade masuk pengujian roundtrip pada database terpisah.
 | 0020 | package quantity/holding_started_at/holding_finished_at; production_batch holding_policy JSONB | [Paket/holding](frontend-api.md#kontrak-kemasan-paket-dan-holding) |
 | 0021 | delivery kitchen_id/estimated_arrival_time, FK kitchen dan validasi ETA; delivery_item immutable | [Pengiriman](frontend-api.md#kontrak-pengiriman) |
 | 0022 | school_receiving expected/received_quantity, condition, notes, uom, timer_status; consumption school_receiving_id, consumed/discarded_quantity, notes, uom, timer_status; constraints/FK dan kedua bukti immutable | [Sekolah/konsumsi](frontend-api.md#kontrak-penerimaan-sekolah-dan-konsumsi) |
+| 0024 | receiving_item condition/photo nullable untuk bukti inspeksi bahan baku | [Receiving](frontend-api.md#kontrak-transaksi-penerimaan-bahan) |
+| 0025 | stock_entry zone_id nullable untuk penempatan slot/rak saat putaway | [Putaway/saldo](frontend-api.md#stok-batch-bahan-dan-putaway) |
+| 0026 | stock_issue ledger immutable untuk pengeluaran bahan manual/scan dari storage | [Putaway/saldo](frontend-api.md#stok-batch-bahan-dan-putaway) |
+| 0027 | production_batch initial_temperature nullable untuk suhu awal manual selesai masak | [Produksi](frontend-api.md#kontrak-transaksi-produksi) |
+| 0028 | package initial_temperature nullable untuk suhu awal manual pengemasan | [Paket/holding](frontend-api.md#alokasi-paket-dan-qr) |
+| 0029 | delivery estimated_distance_km/estimated_duration_minutes dan ETA create/depart otomatis | [Pengiriman](frontend-api.md#kontrak-pengiriman) |
+| 0030 | recall_withdrawal append-only untuk bukti penarikan fisik recall | [Recall](frontend-api.md#kontrak-recall-dasar) |
+| 0031 | notification_outbox untuk antrian notifikasi dashboard recall | [Notification](frontend-api.md#kontrak-notification-outbox) |
+| 0032 | complaint.photo nullable untuk bukti foto dan endpoint report insiden | [Complaint](frontend-api.md#kontrak-complaint-intake) |
 
 Kolom baru pada tabel existing bersifat nullable agar bukti legacy tidak diisi
 asumsi/backfill. Service tidak menganggap legacy quantity/snapshot null sebagai
@@ -479,7 +491,7 @@ Discrepancy_quantity dihitung sebagai expected - received dalam respons, bukan k
 
 Constraints numeric dan FK tidak menggantikan transisi service, permission dan
 scope tenant. Row lock + expected_version paket/batch melindungi mutasi bersamaan.
-Bukti stock_entry, production_item, delivery_item, school_receiving dan consumption
+Bukti stock_entry, stock_issue, production_item, delivery_item, school_receiving dan consumption
 menolak UPDATE/DELETE baris serta TRUNCATE melalui trigger. Bukti holding memakai
 holding_log yang sudah immutable sejak schema telemetry; migrasi 0020 tidak membuat
 tabel holding baru. Trigger bukan perlindungan dari owner yang dapat mengubah DDL.
@@ -487,9 +499,20 @@ tabel holding baru. Trigger bukan perlindungan dari owner yang dapat mengubah DD
 Migrasi 0022 telah diterapkan lokal dan roundtrip upgrade/downgrade/upgrade diperiksa
 pada database uji terpisah. Jangan downgrade database aplikasi untuk verifikasi.
 Setelah `alembic upgrade head`, jalankan `backend/scripts/provision_runtime_role.py`
-melalui ADMIN_DATABASE_URL: profil saat ini memerlukan head tepat 0022. Pemberian
+melalui ADMIN_DATABASE_URL: profil saat ini memerlukan head tepat 0032. Pemberian
 permission RBAC terpisah, lihat [permission transaksi](receiving-permissions.md).
 
-Kontrak API dan event bukan konsekuensi otomatis schema. Complaint/recall sudah
-memiliki tabel tetapi belum API transaksi; source adapter juga bukan traversal
-atau impact analysis. Rincian event atomik pada [event catalog](event-catalog.md).
+Untuk output eksplisit saat migrasi, gunakan wrapper:
+
+```powershell
+.\venv\Scripts\python.exe backend\scripts\migrate_with_status.py
+```
+
+Script mencetak JSON fase `before` dan `after`, target, returncode, status, serta
+head Alembic yang dikenal kode. Ini tidak mengganti Alembic, hanya membungkus
+`alembic upgrade head` agar operator mendapat konfirmasi yang mudah dibaca.
+
+Kontrak API dan event bukan konsekuensi otomatis schema. Complaint, recall dan
+traceability read kini memiliki API aktif; source adapter tetap bukan bukti adanya
+repair registry, replay atau subscription realtime. Rincian event atomik pada
+[event catalog](event-catalog.md).

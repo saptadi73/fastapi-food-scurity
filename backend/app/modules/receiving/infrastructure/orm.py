@@ -86,6 +86,8 @@ class ReceivingItem(AuditMixin, Base):
         CheckConstraint("quantity > 0 AND quantity <> 'NaN'::numeric", name="ck_receiving_item_quantity"),
         CheckConstraint("temperature IS NULL OR temperature <> 'NaN'::numeric", name="ck_receiving_item_temperature"),
         CheckConstraint("length(trim(uom)) > 0", name="ck_receiving_item_uom"),
+        CheckConstraint("condition IS NULL OR length(trim(condition)) > 0", name="ck_receiving_item_condition"),
+        CheckConstraint("photo IS NULL OR length(trim(photo)) > 0", name="ck_receiving_item_photo"),
         CheckConstraint("version >= 1", name="ck_receiving_item_version"),
         Index("ix_receiving_item_tenant_receiving", "tenant_id", "receiving_id"),
         Index("ix_receiving_item_created_at", "created_at"),
@@ -97,6 +99,8 @@ class ReceivingItem(AuditMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 6))
     uom: Mapped[str] = mapped_column(String(30))
     temperature: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    condition: Mapped[str | None] = mapped_column(String(100))
+    photo: Mapped[str | None] = mapped_column(String(1024))
     accepted: Mapped[bool | None]
 
 
@@ -108,15 +112,49 @@ class StockEntry(AuditMixin, Base):
                              ['raw_material_batch.tenant_id', 'raw_material_batch.raw_material_batch_id'],
                              ondelete='RESTRICT'),
         ForeignKeyConstraint(['tenant_id', 'storage_id'], ['storage.tenant_id', 'storage.storage_id'], ondelete='RESTRICT'),
+        ForeignKeyConstraint(['tenant_id', 'zone_id'], ['storage_zone.tenant_id', 'storage_zone.zone_id'], ondelete='RESTRICT'),
         CheckConstraint("quantity > 0 AND quantity <> 'NaN'::numeric", name='ck_stock_quantity'),
         CheckConstraint('batch_version >= 1', name='ck_stock_batch_version'),
         CheckConstraint('deleted_at IS NULL AND deleted_by IS NULL', name='ck_stock_not_deleted'),
         UniqueConstraint('tenant_id', 'raw_material_batch_id', 'batch_version', name='uq_stock_batch_version'),
         Index('ix_stock_storage', 'tenant_id', 'storage_id'),
+        Index('ix_stock_zone', 'tenant_id', 'zone_id'),
     )
     stock_entry_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID]
     raw_material_batch_id: Mapped[UUID]
     storage_id: Mapped[UUID]
+    zone_id: Mapped[UUID | None]
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 6))
     batch_version: Mapped[int]
+
+
+class StockIssue(AuditMixin, Base):
+    """Manual/scanned raw material issue ledger; production issues remain ProductionItem."""
+    __tablename__ = 'stock_issue'
+    __table_args__ = (
+        ForeignKeyConstraint(['tenant_id', 'raw_material_batch_id'],
+                             ['raw_material_batch.tenant_id', 'raw_material_batch.raw_material_batch_id'],
+                             ondelete='RESTRICT'),
+        ForeignKeyConstraint(['tenant_id', 'storage_id'], ['storage.tenant_id', 'storage.storage_id'], ondelete='RESTRICT'),
+        ForeignKeyConstraint(['tenant_id', 'zone_id'], ['storage_zone.tenant_id', 'storage_zone.zone_id'], ondelete='RESTRICT'),
+        CheckConstraint("quantity > 0 AND quantity <> 'NaN'::numeric", name='ck_stock_issue_quantity'),
+        CheckConstraint('batch_version >= 1', name='ck_stock_issue_batch_version'),
+        CheckConstraint("length(trim(reason)) > 0", name='ck_stock_issue_reason'),
+        CheckConstraint("reference_code IS NULL OR length(trim(reference_code)) > 0", name='ck_stock_issue_reference_code'),
+        CheckConstraint('deleted_at IS NULL AND deleted_by IS NULL', name='ck_stock_issue_not_deleted'),
+        UniqueConstraint('tenant_id', 'raw_material_batch_id', 'batch_version', name='uq_stock_issue_batch_version'),
+        Index('ix_stock_issue_storage', 'tenant_id', 'storage_id'),
+        Index('ix_stock_issue_zone', 'tenant_id', 'zone_id'),
+        Index('ix_stock_issue_issued_at', 'issued_at'),
+    )
+    stock_issue_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID]
+    raw_material_batch_id: Mapped[UUID]
+    storage_id: Mapped[UUID]
+    zone_id: Mapped[UUID | None]
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 6))
+    batch_version: Mapped[int]
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(String(200))
+    reference_code: Mapped[str | None] = mapped_column(String(100))
