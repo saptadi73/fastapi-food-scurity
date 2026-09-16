@@ -442,7 +442,8 @@ dashboard/ringkasan bisnis.**
   Seed FSOS_DEV: 23 record fixture, tujuh master contoh dan enam aset registry;
   dua kali dijalankan pada fsos dengan created=23 lalu 0. Tes penolakan konflik,
   pencabutan izin, environment production, dan rollback lulus.
-- [x] Tambahkan `/api/v1/ready`: PostgreSQL 18, PostGIS/pgcrypto, dan Alembic heads;
+- [x] Tambahkan /api/v1/ready: PostgreSQL 18, PostGIS/pgcrypto, dan Alembic heads;
+- [x] Tambahkan /api/v1/health/database untuk test koneksi database eksplisit dari frontend/devops;
   timeout, respons 503 tersanitasi, serta liveness terpisah. Diverifikasi pada fsos.
 - [x] Uji readiness berhasil/gagal, timeout, extension hilang, revisi tidak cocok,
   envelope, dan dokumentasi 503; 15 tes API/readiness lulus.
@@ -571,4 +572,6 @@ dashboard/ringkasan bisnis.**
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.
+
+
 

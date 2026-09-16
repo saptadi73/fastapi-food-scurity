@@ -253,6 +253,32 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-store"},
         )
 
+    @app.get(
+        f"{settings.api_prefix}/health/database",
+        response_model=Envelope,
+        responses={503: {"model": Envelope, "description": "Koneksi database belum siap"}},
+        tags=["System"],
+        summary="Test koneksi database",
+        description=(
+            "Permission: publik, tanpa payload atau parameter. Endpoint eksplisit untuk "
+            "frontend/devops menguji koneksi database aplikasi. Memakai pemeriksaan yang "
+            "sama dengan /ready: PostgreSQL 18, PostGIS/pgcrypto, dan Alembic heads. "
+            "200: data.status=ready; 503: data.status=not_ready. Tidak mengekspos URL, "
+            "nama database, credential, exception SQL, atau menjalankan migrasi."
+        ),
+    )
+    async def database_health(request: Request):
+        checks = await check_readiness()
+        is_ready = all(value == "ok" for value in checks.values())
+        code = 200 if is_ready else 503
+        return JSONResponse(
+            envelope(request, code=code, message="Database Ready" if is_ready else "Database Not Ready",
+                     data={"status": "ready" if is_ready else "not_ready", "checks": checks}
+                     ).model_dump(mode="json"),
+            status_code=code,
+            headers={"Cache-Control": "no-store"},
+        )
+
     return app
 
 

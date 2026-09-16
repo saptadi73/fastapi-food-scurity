@@ -48,7 +48,7 @@ Perbedaan host atau port berarti origin berbeda. CORS bukan autentikasi.
 | `X-Correlation-ID` | Request opsional | Menghubungkan request satu aktivitas; dipotong maksimal 128 karakter |
 | `X-Request-ID` | Response | UUID baru setiap request; tersedia untuk JavaScript melalui CORS |
 | `Content-Type: application/json` | Response API | Format envelope |
-| `Cache-Control: no-store` | Response `/ready`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/devices*`, `/device-bindings*`, `/telemetry*`, `/dashboard*`, `/notifications*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*`, `/receivings*`, `/raw-material-batches*`, `/food-items*`, `/recipes*`, `/production-batches*`, `/packages*`, `/packaging-types*`, `/deliveries*`, `/complaints*`, `/recalls*`, `/traceability*`, `/school-receivings*`, `/consumptions*` | Respons tidak boleh disimpan cache |
+| `Cache-Control: no-store` | Response `/ready`, `/health/database`, `/auth/*`, `/holding-rules*`, `/alarm-rules*`, `/alarms*`, `/device-sessions*`, `/devices*`, `/device-bindings*`, `/telemetry*`, `/dashboard*`, `/notifications*`, `/kitchens*`, `/storages*`, `/storage-zones*`, `/suppliers*`, `/raw-materials*`, `/supplier-materials*`, `/schools*`, `/vehicles*`, `/drivers*`, `/receivings*`, `/raw-material-batches*`, `/food-items*`, `/recipes*`, `/production-batches*`, `/packages*`, `/packaging-types*`, `/deliveries*`, `/complaints*`, `/recalls*`, `/traceability*`, `/school-receivings*`, `/consumptions*` | Respons tidak boleh disimpan cache |
 | `Content-Type: application/json` | Request POST autentikasi | Body JSON wajib; bukan form OAuth |
 | `Authorization: Bearer <access_token>` | Request `/auth/me` | Access JWT dengan sesi aktif |
 | `Retry-After` | Response 429 autentikasi | Detik sebelum mencoba lagi; diekspos lewat CORS |
@@ -146,7 +146,8 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/consumptions` | Daftar konsumsi | Tanpa body; filter/pagination | 200 ConsumptionPage |
 | GET | `/api/v1/consumptions/{identifier}` | Bukti konsumsi | Tanpa body | 200 ConsumptionData |
 | GET | `/api/v1/health` | Liveness proses API | Tidak ada | 200 |
-| GET | `/api/v1/ready` | Kesiapan database aplikasi | Tidak ada | 200 atau 503 |
+| GET | /api/v1/ready | Kesiapan database aplikasi | Tidak ada | 200 atau 503 |
+| GET | /api/v1/health/database | Test koneksi database eksplisit | Tidak ada | 200 atau 503 |
 | POST | `/api/v1/auth/login` | Autentikasi akun dalam tenant | tenant atau tenant_id, username, password | 200 |
 | POST | `/api/v1/auth/refresh` | Rotasi token sesi | refresh_token | 200 |
 | POST | `/api/v1/auth/logout` | Cabut satu sesi | refresh_token | 200 |
@@ -346,6 +347,18 @@ Respons **200 OK**:
 `data.status` selalu string `ok`; `data.service` adalah string dari konfigurasi
 `APP_NAME` dan dapat berbeda antarlingkungan. Keduanya wajib, bukan nullable.
 Error internal tak terduga memakai 500 sebagaimana bagian error bersama.
+
+### GET /api/v1/health/database
+
+Endpoint publik untuk test koneksi database secara eksplisit dari frontend/devops. Pemeriksaan sama dengan `/ready`: PostgreSQL 18, extension PostGIS/pgcrypto, dan Alembic heads. Tidak mengekspos URL, nama database, credential, exception SQL, atau menjalankan migrasi. Respons 200 memakai message `Database Ready`; respons 503 memakai message `Database Not Ready`; bentuk `data.status` dan `data.checks` sama dengan `/ready`.
+
+```http
+GET /api/v1/health/database HTTP/1.1
+Accept: application/json
+X-Correlation-ID: frontend-db-check-001
+```
+
+Gunakan endpoint ini bila UI ingin tombol "Test Database Connection" terpisah dari readiness aplikasi. Untuk startup gate/load balancer, `/ready` tetap cukup.
 
 ### GET /api/v1/ready
 
@@ -6223,4 +6236,6 @@ diisi ingestion HTTP/MQTT; tidak membuat device, subscription atau event baru.
 
 Semua hitungan dibatasi tenant bearer dan record nondeleted. Ini snapshot query saat
 request, bukan agregat materialized, cache, event stream, alarm, atau indikator SLA.
+
+
 

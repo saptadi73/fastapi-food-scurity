@@ -32,6 +32,11 @@ def test_readiness_http(monkeypatch, checks, status):
         assert body['meta']['request_id'] == response.headers['X-Request-ID']
         assert response.headers['Cache-Control'] == 'no-store'
         assert '503' in client.get('/openapi.json').json()['paths']['/api/v1/ready']['get']['responses']
+        db_response = client.get('/api/v1/health/database')
+        assert db_response.status_code == status
+        assert db_response.json()['data']['checks'] == checks
+        assert db_response.headers['Cache-Control'] == 'no-store'
+        assert probe.await_count == 2
 
 
 @pytest.mark.parametrize(
