@@ -260,6 +260,9 @@ dashboard/ringkasan bisnis.**
 - [x] Verifikasi pip check, tes API, lint, dan startup server HTTP.
 - [x] Tulis panduan menjalankan aplikasi pada Windows di README.
 
+- [x] Perbaiki response `GET /production-batches` untuk data demo/legacy:
+  `recipe_snapshot` pendek dinormalisasi agar list batch produksi tidak 500;
+  seed demo baru menyimpan snapshot resep lengkap.
 ## P1 â€” Layanan dan database (docs/04, 06â€“08, 18)
 
 - [x] Verifikasi PostgreSQL 18 yang sudah berjalan serta database/user yang disediakan pengguna.
@@ -573,6 +576,7 @@ dashboard/ringkasan bisnis.**
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.
+
 
 
 

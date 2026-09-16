@@ -31,6 +31,20 @@ class ProductionConflictError(Exception):
 
 
 class ProductionService(ReceivingService):
+    def normalize_recipe_snapshot(self, snapshot):
+        if snapshot is None:
+            return None
+        normalized = dict(snapshot)
+        normalized.setdefault('schema_version', 1)
+        normalized.setdefault('food_version', 1)
+        normalized.setdefault('items', [])
+        return normalized
+
+    def normalize_production(self, row):
+        data = dict(row)
+        data['recipe_snapshot'] = self.normalize_recipe_snapshot(data.get('recipe_snapshot'))
+        return data
+
     async def active(self, model, key, identifier):
         try:
             row = await self.row(model, key, identifier, lock=True)
@@ -41,7 +55,7 @@ class ProductionService(ReceivingService):
         return row
 
     async def detail(self, identifier):
-        result = await self.row(ProductionBatch, 'production_batch_id', identifier)
+        result = self.normalize_production(await self.row(ProductionBatch, 'production_batch_id', identifier))
         result['items'] = [dict(r) for r in (await self.db.execute(select(ProductionItem.__table__).where(
             *self.visible(ProductionItem), ProductionItem.production_batch_id == identifier
         ).order_by(ProductionItem.production_item_id))).mappings()]
@@ -60,7 +74,7 @@ class ProductionService(ReceivingService):
                 query = query.where(getattr(ProductionBatch, key) == value)
         rows = (await self.db.execute(query.order_by(ProductionBatch.created_at.desc(), ProductionBatch.production_batch_id.desc())
             .offset(offset).limit(limit + 1))).mappings().all()
-        return {'items': [dict(r) for r in rows[:limit]], 'offset': offset, 'limit': limit,
+        return {'items': [self.normalize_production(r) for r in rows[:limit]], 'offset': offset, 'limit': limit,
                 'next_offset': offset + limit if len(rows) > limit else None}
 
     async def create(self, payload):

@@ -268,7 +268,14 @@ async def seed(session) -> dict:
         'batch_code': 'MO-2026-0001', 'kitchen': kitchen, 'menu': food, 'planned_quantity': Decimal('300.000000'),
         'actual_quantity': Decimal('295.000000'), 'initial_temperature': Decimal('72.50'),
         'holding_policy': {'maximum_minutes': 120, 'warning_minutes': 90, 'discard_minutes': 150},
-        'recipe_snapshot': {'food_code': 'MENU-NASI-AYAM', 'food_name': 'Nasi Ayam Demo', 'uom': 'portion'},
+        'recipe_snapshot': {'schema_version': 1, 'food_version': 1, 'food_category': 'HOT_MEAL',
+            'holding_limit_minutes': 120, 'uom': 'portion', 'food_code': 'MENU-NASI-AYAM',
+            'food_name': 'Nasi Ayam Demo', 'items': [
+                {'recipe_id': str(did('recipe:rice')), 'version': 1, 'raw_material_id': str(material_rice),
+                 'quantity': '0.120000', 'required_quantity': '36.000000', 'uom': 'kg'},
+                {'recipe_id': str(did('recipe:chicken')), 'version': 1, 'raw_material_id': str(material_chicken),
+                 'quantity': '0.080000', 'required_quantity': '24.000000', 'uom': 'kg'},
+            ]},
         'started_at': BASE + timedelta(minutes=30), 'finished_at': BASE + timedelta(minutes=90),
         'holding_started_at': BASE + timedelta(minutes=90), 'holding_expired_at': BASE + timedelta(minutes=210),
         'status': 'COMPLETED', **audit()})
