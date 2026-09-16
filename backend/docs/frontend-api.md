@@ -283,6 +283,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/packages` | Daftar paket + timer | Tanpa body; filter/pagination | 200 |
 | GET | `/api/v1/packages/resolve` | Resolve QR | Tanpa body; qr_payload query | 200 |
 | GET | `/api/v1/packages/{identifier}` | Detail paket + timer | Tanpa body | 200 |
+| GET | `/api/v1/packages/{identifier}/delivery-context` | Konteks manifest delivery paket | Tanpa body | 200 |
 | GET | `/api/v1/production-batches/{identifier}/packaging` | Sisa alokasi hasil | Tanpa body | 200 |
 | POST | `/api/v1/packages/{identifier}/holding/start` | Mulai holding paket | expected_version | 200 |
 | POST | `/api/v1/packages/{identifier}/holding/update` | Refresh/materialisasi expiry | expected_version | 200 |
@@ -3855,7 +3856,7 @@ POST tanpa idempotency key: retry kode/plat yang sudah disimpan memberi 409.
 
 Status: **7 operasi aktif**, bagian penerimaan bahan. Prefix semua path `/api/v1`.
 Tidak tersedia PUT/PATCH/DELETE receiving/item/batch. Item dan batch dibuat atomik
-melalui receiving; kesalahan draft diselesaikan dengan cancel lalu create baru
+melalui receiving; kesalahan draft diselesaikan dengan cancel lalu create baru. Frontend FSOS saat ini memakai workflow cepat untuk raw material receiving: `POST /receivings` satu item lalu langsung `POST /receivings/{id}/complete` dengan keputusan `accepted=true`, sehingga batch tampil sebagai ACCEPTED dan QR dapat dirender/print di browser
 menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibatalkan.
 
 | Method/path | Tujuan dan permission independen | Payload | Sukses |
@@ -5004,6 +5005,7 @@ Authorization: Bearer <access_token>
 | GET `/packages` | Package.Read | Tanpa body; production_batch_id UUID optional, offset/limit | 200 page PackageData |
 | GET `/packages/{identifier}` | Package.Read | UUID path; tanpa body/query | 200 PackageData |
 | GET `/packages/resolve` | Package.Read | Tanpa body; qr_payload string 1..100 wajib | 200 PackageData |
+| GET `/packages/{identifier}/delivery-context` | Package.Read | UUID path; tanpa body/query | 200 PackageDeliveryContextData |
 | GET `/production-batches/{identifier}/packaging` | Package.Read | UUID produksi; tanpa body/query | 200 AllocationData |
 
 PackageInput seluruh field required/nonnull:
@@ -5050,6 +5052,13 @@ created_at/ID menurun. Filter produksi asing memberi list kosong. QR payload kan
 `fsos:package:<package_id>` non-secret, unik berdasarkan UUID. Frontend dapat merender
 payload ini sebagai QR; **belum ada endpoint gambar/label cetak QR**. Resolve memerlukan
 bearer; payload bukan hak akses atau token. UUID paket tenant lain/tidak ada/deleted 404.
+
+Delivery context adalah endpoint read-only untuk auto-fill frontend saat scan
+penerimaan sekolah. Endpoint membaca package tenant yang sama, lalu mencari manifest
+delivery non-CANCELLED terbaru yang memuat package tersebut. Jika belum ada manifest
+atau hanya ada manifest CANCELLED, field delivery nullable bernilai null; respons tetap
+200 selama package ada. Endpoint tidak membuat penerimaan sekolah, tidak mengubah timer,
+status paket, delivery, movement, atau event.
 
 ```http
 POST /api/v1/packages
@@ -5116,11 +5125,23 @@ holding_eligible boolean nonnull.
 GET /api/v1/packages?production_batch_id=44444444-4444-4444-8444-444444444444&offset=0&limit=20
 GET /api/v1/packages/22222222-2222-4222-8222-222222222222
 GET /api/v1/packages/resolve?qr_payload=fsos%3Apackage%3A22222222-2222-4222-8222-222222222222
+GET /api/v1/packages/22222222-2222-4222-8222-222222222222/delivery-context
 GET /api/v1/production-batches/44444444-4444-4444-8444-444444444444/packaging
 ```
 
 Gunakan bearer, tanpa body. Get/resolve mengembalikan PackageData termasuk `asset_uuid` registry package bila tersedia, dengan timer dihitung
-ulang pada calculated_at; page memakai items array PackageData. AllocationData contoh
+ulang pada calculated_at; page memakai items array PackageData. Delivery context
+mengembalikan:
+
+```json
+{"package_id":"22222222-2222-4222-8222-222222222222","package_version":8,"package_status":"DELIVERED","delivery_item_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","delivery_id":"11111111-1111-4111-8111-111111111111","delivery_status":"COMPLETED","school":"33333333-3333-4333-8333-333333333333","departure_time":"2026-09-11T09:00:00Z","arrival_time":"2026-09-11T09:10:00Z","estimated_arrival_time":"2026-09-11T09:12:00Z"}
+```
+
+Frontend school receiving memakai `delivery_id`, `school`, `package_version` dan
+`package_status` untuk mengisi form receipt setelah `GET /packages/resolve`.
+Backend `POST /school-receivings` tetap memvalidasi bahwa delivery sudah COMPLETED,
+package DELIVERED, tujuan school cocok manifest, version paket belum stale, dan aturan
+receipt terpenuhi. AllocationData contoh
 setelah mengalokasi 2 dari hasil 3:
 
 ```json
@@ -6236,6 +6257,7 @@ diisi ingestion HTTP/MQTT; tidak membuat device, subscription atau event baru.
 
 Semua hitungan dibatasi tenant bearer dan record nondeleted. Ini snapshot query saat
 request, bukan agregat materialized, cache, event stream, alarm, atau indikator SLA.
+
 
 
 

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+﻿from datetime import UTC, datetime, timedelta
 from math import floor
 from uuid import UUID, uuid4
 
@@ -8,6 +8,7 @@ from app.core.database.scope import RecordNotFoundError, VersionConflictError
 from app.core.events.orm import EventLog
 from app.modules.authentication.infrastructure.authorization import require_permission
 from app.modules.master.infrastructure.orm import HoldingRule, Kitchen, PackagingType
+from app.modules.fleet.infrastructure.orm import Delivery, DeliveryItem
 from app.modules.packaging.schemas.packages import HoldingPolicy, PackageData
 from app.modules.production.infrastructure.orm import Package, ProductionBatch
 from app.modules.receiving.application.service import ReceivingService
@@ -62,6 +63,35 @@ class PackageService(ReceivingService):
             raise PackagingConflictError('Invalid package QR payload') from None
         return await self.projection(await self.row(Package, 'package_id', identifier))
 
+    async def delivery_context(self, identifier):
+        await require_permission(self.db, self.scope, 'Package.Read')
+        package = await self.row(Package, 'package_id', identifier)
+        row = (await self.db.execute(select(
+            DeliveryItem.delivery_item_id,
+            DeliveryItem.delivery_id,
+            DeliveryItem.school_id.label('school'),
+            Delivery.status.label('delivery_status'),
+            Delivery.departure_time,
+            Delivery.arrival_time,
+            Delivery.estimated_arrival_time,
+        ).join(Delivery, (Delivery.tenant_id == DeliveryItem.tenant_id) &
+            (Delivery.delivery_id == DeliveryItem.delivery_id)).where(
+            *self.visible(DeliveryItem), *self.visible(Delivery),
+            DeliveryItem.package_id == identifier,
+            Delivery.status != 'CANCELLED',
+        ).order_by(Delivery.created_at.desc(), Delivery.delivery_id.desc()).limit(1))).mappings().one_or_none()
+        return {
+            'package_id': identifier,
+            'package_version': package['version'],
+            'package_status': package['status'],
+            'delivery_item_id': None if row is None else row['delivery_item_id'],
+            'delivery_id': None if row is None else row['delivery_id'],
+            'delivery_status': None if row is None else row['delivery_status'],
+            'school': None if row is None else row['school'],
+            'departure_time': None if row is None else row['departure_time'],
+            'arrival_time': None if row is None else row['arrival_time'],
+            'estimated_arrival_time': None if row is None else row['estimated_arrival_time'],
+        }
     async def list(self, *, offset=0, limit=20, production_batch_id=None):
         await require_permission(self.db, self.scope, 'Package.Read')
         query = select(Package.__table__).where(*self.visible(Package))
@@ -197,3 +227,4 @@ class PackageService(ReceivingService):
         await self.db.execute(insert(EventLog).values(event_uuid=uuid4(), event_type=name, entity_type='PACKAGE',
             entity_uuid=package['package_id'], payload={'schema_version': 1, 'actor_id': str(self.scope.actor_id),
             'package': PackageData.model_validate(package).model_dump(mode='json')}, **self.audit))
+

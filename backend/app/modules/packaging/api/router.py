@@ -1,4 +1,4 @@
-from typing import Annotated
+﻿from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,6 +14,7 @@ from app.modules.packaging.schemas.packages import (
     AllocationEnvelope,
     HoldingFinishInput,
     HoldingInput,
+    PackageDeliveryContextEnvelope,
     PackageEnvelope,
     PackageInput,
     PackagePageEnvelope,
@@ -73,6 +74,12 @@ async def resolve(request: Request, service: ServiceDep, qr_payload: Annotated[s
     return envelope(request, data=await service.resolve(qr_payload))
 
 
+@router.get('/packages/{identifier}/delivery-context', response_model=PackageDeliveryContextEnvelope,
+    description='Package.Read. UUID package; returns current package version/status and latest non-cancelled delivery manifest context for frontend school receiving auto-fill. Read-only; no timer mutation or receiving decision.')
+async def delivery_context(request: Request, identifier: UUID, service: ServiceDep):
+    return envelope(request, data=await service.delivery_context(identifier))
+
+
 @router.get('/packages/{identifier}', response_model=PackageEnvelope,
     description='Package.Read. UUID path; no body/query. Live remaining_seconds/minutes and timer status; does not publish events or mutate persisted status. Legacy missing policy gives UNKNOWN, ineligible.')
 async def detail(request: Request, identifier: UUID, service: ServiceDep):
@@ -101,3 +108,4 @@ async def refresh(request: Request, identifier: UUID, payload: HoldingInput, ser
     description='Holding.Finish. UUID package + expected_version and outcome RELEASED or DISCARDED. Release only unexpired PACKAGED; discard any nonfinal package. Release ends holding station workflow but time continues counting for eligibility. No output reallocation on discard. Atomic version/registry/log/event.')
 async def finish(request: Request, identifier: UUID, payload: HoldingFinishInput, service: ServiceDep):
     return envelope(request, data=await service.holding(identifier, payload, 'finish'))
+

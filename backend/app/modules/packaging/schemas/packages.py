@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+﻿from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -69,6 +69,28 @@ class PackageEnvelope(Envelope):
     data: PackageData
 
 
+class PackageDeliveryContextData(BaseModel):
+    package_id: UUID
+    package_version: int
+    package_status: str
+    delivery_item_id: UUID | None = None
+    delivery_id: UUID | None = None
+    delivery_status: str | None = None
+    school: UUID | None = None
+    departure_time: datetime | None = None
+    arrival_time: datetime | None = None
+    estimated_arrival_time: datetime | None = None
+
+    @field_validator('departure_time', 'arrival_time', 'estimated_arrival_time')
+    @classmethod
+    def context_utc(cls, value):
+        return value.astimezone(UTC) if value else None
+
+
+class PackageDeliveryContextEnvelope(Envelope):
+    data: PackageDeliveryContextData
+
+
 class PackagePage(Page):
     items: list[PackageData]
 
@@ -89,3 +111,4 @@ class AllocationData(BaseModel):
 
 class AllocationEnvelope(Envelope):
     data: AllocationData
+

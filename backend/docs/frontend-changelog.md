@@ -1,5 +1,32 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-16 - Frontend School Consumption workflow
+
+- Project frontend memperluas halaman scan `Penerimaan Sekolah` (`/scan/school-receiving`) dengan form finalisasi konsumsi/discard setelah paket diterima sekolah.
+- Tidak ada endpoint backend baru; frontend memakai kontrak aktif `POST /api/v1/consumptions`, `GET /api/v1/consumptions`, dan `GET /api/v1/consumptions/{identifier}`.
+- Form mengirim `package_id`, `expected_version`, `consumed_quantity`, `discarded_quantity`, dan `notes`. Backend tetap memvalidasi package sudah `RECEIVED`, receipt accepted tersedia, consumed + discarded sama dengan received quantity, dan notes wajib untuk discard atau konsumsi di luar holding policy.
+## 2026-09-16 - Package delivery context untuk school receiving
+
+- Menambahkan `GET /api/v1/packages/{identifier}/delivery-context` dengan `Package.Read` untuk auto-fill form penerimaan sekolah setelah scan QR paket.
+- Response berisi `package_id`, `package_version`, `package_status`, serta konteks manifest non-CANCELLED terbaru bila ada: `delivery_item_id`, `delivery_id`, `delivery_status`, `school`, `departure_time`, `arrival_time`, dan `estimated_arrival_time`.
+- Endpoint read-only; tidak membuat school receiving, tidak mengubah timer/status paket, delivery, movement, atau event. Frontend `/scan/school-receiving` kini memakai endpoint ini untuk mengisi otomatis `delivery_id`, `school`, dan version paket sebelum submit `POST /school-receivings`.
+## 2026-09-16 - Frontend School Receiving scan workflow
+
+- Project frontend memperluas halaman scan `Penerimaan Sekolah` (`/scan/school-receiving`) untuk desain point 13: resolve QR paket, auto-fill version paket dan quantity, lalu mencatat penerimaan sekolah dengan `delivery_id`, `school`, `received_quantity`, `condition`, `accepted`, suhu manual, referensi foto, dan notes.
+- Tidak ada endpoint backend baru; halaman memakai kontrak aktif `GET /api/v1/packages/resolve` dan `POST /api/v1/school-receivings`. Frontend juga menambahkan helper typed untuk `GET /school-receivings`, `GET /school-receivings/{identifier}` dan `POST /school-receivings`.
+- Dampak frontend: operator sekolah dapat scan paket yang tiba, mencatat suhu manual dan bukti operasional, serta menentukan accepted/rejected sesuai kondisi fisik. Delivery harus sudah `COMPLETED` dan package harus `DELIVERED`; backend tetap memvalidasi manifest, tujuan sekolah, version paket, timer, quantity dan aturan notes.
+## 2026-09-16 - Frontend Delivery manifest dan dispatch
+
+- Project frontend memperluas halaman `Pengiriman Aktif` (`/deliveries`) menjadi workflow operasional untuk desain point 9, 11 dan 12: create manifest, daftar/filter status delivery, detail paket per manifest, depart/loading armada dengan ETA opsional, complete perjalanan, cancel manifest `CREATED`, dan tautan live tracking.
+- Tidak ada endpoint backend baru; halaman memakai kontrak aktif `POST /api/v1/deliveries`, `GET /api/v1/deliveries`, `GET /api/v1/deliveries/{identifier}`, `POST /api/v1/deliveries/{identifier}/depart`, `POST /api/v1/deliveries/{identifier}/complete`, `POST /api/v1/deliveries/{identifier}/cancel`, dan `GET /api/v1/deliveries/{identifier}/tracking`.
+- Dampak frontend: operator dapat mengisi paket hasil scan/label, tujuan sekolah, version paket, armada dan driver untuk membuat manifest; kemudian mengubah status menjadi `IN_TRANSIT` saat loading/berangkat dan `COMPLETED` saat perjalanan selesai. Penerimaan sekolah dengan suhu manual/foto tetap menjadi prioritas UI berikutnya.
+## 2026-09-16 - Frontend Production Batch workflow
+
+- Project frontend menambahkan halaman `Production Batch` (`/production-batches`) untuk daftar/filter batch produksi, pembuatan manufacturing order/cooking batch, detail bahan terpakai, pembatalan batch `CREATED`, dan penyelesaian batch `RUNNING` dengan `actual_quantity` serta `initial_temperature`.
+- Tidak ada endpoint backend baru; halaman memakai kontrak aktif `GET/POST /api/v1/production-batches`, `GET /api/v1/production-batches/{identifier}`, `POST /api/v1/production-batches/{identifier}/complete`, dan `POST /api/v1/production-batches/{identifier}/cancel`.
+- Dampak frontend: desain point 6-7 kini memiliki screen khusus untuk kode masak/manufacturing order, jumlah produksi, status cooking, waktu selesai masak, suhu inti awal, dan dasar alur holding/packaging berikutnya. Aksi start produksi dengan scan/pemakaian bahan masih menjadi prioritas lanjutan agar point 6 lengkap end-to-end di UI.
+- Update lanjutan: frontend sekarang menyediakan aksi `Mulai` untuk batch `CREATED` melalui `POST /api/v1/production-batches/{identifier}/start`. Modal menerima daftar bahan hasil scan/manual input berisi `raw_material_batch_id`, `storage_id`, `expected_version` batch bahan, dan `quantity`. Endpoint backend tetap kontrak aktif yang sama; backend melakukan validasi stok, expiry, tenant, version dan pengurangan stok atomik.
+- Update cek stok bahan: modal start produksi frontend sekarang memakai `GET /api/v1/raw-material-batches/{identifier}/stock` untuk mengisi otomatis `expected_version` batch bahan, `storage_id` pertama yang memiliki `available_quantity > 0`, dan default `quantity` sesuai saldo tersedia. Ini memperhalus flow FEFO/FIFO karena operator dapat memilih batch dari daftar FEFO lalu memvalidasi saldo aktual sebelum `POST /production-batches/{identifier}/start`.
 ## 2026-09-15 - Login memakai tenant code
 
 - `POST /api/v1/auth/login` sekarang menerima field `tenant` berisi tenant code
@@ -728,6 +755,14 @@ database/koneksi/runtime diselaraskan ke head 0022; permission supply diperluas
 pada dokumentasi menjadi 18 kode dan transaksi menjadi 26 kode. Status registry,
 penerimaan sekolah, konsumsi, stok dan pengiriman diperbarui; artefak NUL README
 dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
+
+
+
+
+
+
+
+
 
 
 

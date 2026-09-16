@@ -42,6 +42,20 @@ passport dan impact analysis kini tersedia read-only untuk investigasi/recall. E
 serta validasi rule/action dikerjakan pada tahap bisnis yang membutuhkannya;
 jangan menunggu deployment untuk menyelesaikan logika bisnis.
 
+Catatan frontend 2026-09-16: halaman Raw Material Receiving dan Production Batch
+mulai diselaraskan dengan desain FSOS. Production Batch sudah menyediakan
+list/filter, create manufacturing order/cooking batch, detail bahan, cancel
+`CREATED`, dan complete `RUNNING` dengan jumlah aktual serta suhu inti awal.
+Update frontend lanjutan: aksi Mulai produksi sudah tersedia untuk batch
+`CREATED` dengan input hasil scan/manual `raw_material_batch_id`, `storage_id`,
+`expected_version` bahan, dan `quantity`, lalu memanggil endpoint start agar stok
+dikurangi atomik dan batch menjadi `RUNNING`. Cek stok bahan di modal Mulai produksi sudah memakai `GET /raw-material-batches/{id}/stock` untuk mengisi version, storage available, dan default quantity sebelum start. Prioritas UI berikutnya: lanjut delivery/school receiving yang belum sekaya desain awal.
+
+
+Catatan frontend delivery 2026-09-16: halaman Delivery sudah menyediakan create manifest, detail paket, depart/loading armada dengan ETA opsional, complete perjalanan, cancel manifest CREATED, filter status/armada, dan tautan tracking. Ini menutup sebagian desain point 9, 11, dan 12. Prioritas UI berikutnya: penerimaan sekolah point 13 dengan scan paket, suhu manual, kondisi/foto, dan accepted/received quantity.
+
+Catatan frontend school receiving 2026-09-16: halaman scan Penerimaan Sekolah sudah menyediakan resolve QR paket, form receipt dengan delivery_id, school, version paket, received_quantity, condition GOOD/DAMAGED/MISSING, accepted/rejected, suhu manual, referensi foto dan notes. Ini menutup desain point 13 secara operasional. Package delivery-context sudah tersedia untuk auto-fill delivery_id dan school setelah scan paket. Finalisasi consumed-discarded sudah tersedia pada scan Penerimaan Sekolah memakai endpoint consumptions. Prioritas berikutnya: build/test integrasi frontend-backend dan memperhalus UX picker/scan agar input UUID manual makin berkurang.
+
 Ketentuan pelaksanaan:
 
 - Selesaikan alur modul secara utuh: operasi API, aturan/transisi bisnis, transaksi,
@@ -260,6 +274,7 @@ dashboard/ringkasan bisnis.**
 - [x] Verifikasi pip check, tes API, lint, dan startup server HTTP.
 - [x] Tulis panduan menjalankan aplikasi pada Windows di README.
 
+- [x] Frontend raw material receiving form: supplier, dapur, tanggal, bahan, batch, qty, suhu, expired date, kondisi, foto dan QR; submit create+complete agar batch ACCEPTED siap print QR.
 - [x] Perbaiki response `GET /production-batches` untuk data demo/legacy:
   `recipe_snapshot` pendek dinormalisasi agar list batch produksi tidak 500;
   seed demo baru menyimpan snapshot resep lengkap.
@@ -576,6 +591,15 @@ dashboard/ringkasan bisnis.**
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.
+
+
+
+
+
+
+
+
+
 
 
 
