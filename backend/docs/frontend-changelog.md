@@ -1,5 +1,12 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-17 - Routing jalan fleet Google Routes API
+
+- Estimasi pada create/depart delivery dan `GET /api/v1/deliveries/{identifier}/tracking` sekarang hanya memakai Google Routes API `computeRouteMatrix`, tanpa Mapbox, OSRM atau Haversine.
+- Method, path, payload dan bentuk response tidak berubah. Nilai `estimated_distance_km`, `estimated_duration_minutes`, `remaining_distance_km`, `remaining_duration_minutes`, dan `estimated_arrival_time` kini dapat berasal dari jarak/durasi berkendara aktual.
+- Frontend tidak mengirim atau menerima Google API key. Koordinat berasal dari master kitchen/sekolah dan GPS armada; untuk multi-tujuan backend memilih tujuan dengan durasi terlama, belum mengoptimalkan urutan stop. Jika Google tidak tersedia, field estimasi dapat null.
+- Halaman frontend `/deliveries/tracking` menampilkan marker armada, dapur dan sekolah tujuan serta garis rute berkendara Google Maps. Konteks tujuan dibaca dari detail delivery dan master lokasi; rute dihitung ulang setelah armada berpindah minimal sekitar 100 meter untuk mengendalikan pemakaian API.
+
 ## 2026-09-16 - Frontend School Consumption workflow
 
 - Project frontend memperluas halaman scan `Penerimaan Sekolah` (`/scan/school-receiving`) dengan form finalisasi konsumsi/discard setelah paket diterima sekolah.

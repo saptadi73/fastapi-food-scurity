@@ -542,7 +542,9 @@ dashboard/ringkasan bisnis.**
 - [ ] Food recall dan pelacakan paket terdampak.
 - [ ] Notification melalui email/WhatsApp; outbox dashboard internal sudah aktif.
 - [ ] Integrasi ERP MBG via REST API.
-- [ ] Analytics/AI dan Google Maps setelah kebutuhan API serta secret tersedia.
+- [x] Integrasikan Google Routes API sebagai satu-satunya routing fleet untuk
+  estimasi create/depart serta remaining distance/time.
+- [ ] Analytics/AI lanjutan dan optimasi urutan multi-stop delivery.
 - [ ] Setiap modul memiliki API, application, domain, infrastructure, schemas,
   dan tes repository/service/rule/API sesuai docs/17.
 
@@ -552,6 +554,8 @@ dashboard/ringkasan bisnis.**
 - [ ] WebSocket dashboard/device/fleet/storage/holding/alarm dengan autentikasi.
 - [ ] Redis cache dan distribusi event antarworker.
 - [ ] Frontend Vue 3 serta integrasi peta dan alarm.
+  Live tracking delivery sudah menampilkan marker armada/dapur/sekolah, rute Google,
+  remaining distance/time dan ETA; realtime push dan visual alarm tetap TODO.
 
 ## P5 â€” Deployment dan operasional (docs/18)
 

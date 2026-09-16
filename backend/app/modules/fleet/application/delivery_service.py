@@ -1,10 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from math import asin, cos, radians, sin, sqrt
 from uuid import uuid4
 
+import httpx
 from sqlalchemy import insert, or_, select, update
 
+from app.core.config.settings import get_settings
 from app.core.database.scope import RecordNotFoundError, VersionConflictError
 from app.core.events.orm import EventLog
 from app.modules.authentication.infrastructure.authorization import require_permission
@@ -23,33 +24,66 @@ class DeliveryConflictError(Exception):
 
 
 class DeliveryService(PackageService):
-    def distance_km(self, lat1, lon1, lat2, lon2):
-        start_lat, start_lon = radians(float(lat1)), radians(float(lon1))
-        end_lat, end_lon = radians(float(lat2)), radians(float(lon2))
-        dlat, dlon = end_lat - start_lat, end_lon - start_lon
-        a = sin(dlat / 2) ** 2 + cos(start_lat) * cos(end_lat) * sin(dlon / 2) ** 2
-        return 6371.0088 * 2 * asin(sqrt(a))
+    @staticmethod
+    def coordinates(origin, destinations):
+        if origin['latitude'] is None or origin['longitude'] is None:
+            return None
+        if not destinations or any(item['latitude'] is None or item['longitude'] is None
+                                   for item in destinations):
+            return None
+        return [(float(origin['latitude']), float(origin['longitude']))] + [
+            (float(item['latitude']), float(item['longitude'])) for item in destinations]
 
-    def estimate_route(self, kitchen, schools, *, average_speed_kmph=None, anchor=None):
-        if kitchen['latitude'] is None or kitchen['longitude'] is None:
-            return {'estimated_distance_km': None, 'estimated_duration_minutes': None,
-                    'estimated_arrival_time': None}
-        distances = []
-        for school in schools:
-            if school['latitude'] is None or school['longitude'] is None:
-                return {'estimated_distance_km': None, 'estimated_duration_minutes': None,
-                        'estimated_arrival_time': None}
-            distances.append(self.distance_km(kitchen['latitude'], kitchen['longitude'],
-                                              school['latitude'], school['longitude']))
-        if not distances:
-            return {'estimated_distance_km': None, 'estimated_duration_minutes': None,
-                    'estimated_arrival_time': None}
-        distance = max(distances)
-        speed = float(average_speed_kmph or Decimal('30'))
-        minutes = max(1, int((distance / speed) * 60 + 0.999999))
-        return {'estimated_distance_km': Decimal(str(distance)).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP),
+    @staticmethod
+    def route_result(routes, anchor):
+        usable = [(distance, duration) for distance, duration in routes
+                  if distance is not None and duration is not None and distance >= 0 and duration >= 0]
+        if not usable:
+            raise ValueError('Routing provider returned no usable route')
+        distance_m, duration_s = max(usable, key=lambda route: route[1])
+        minutes = max(1, int((duration_s / 60) + 0.999999))
+        return {'estimated_distance_km': Decimal(str(distance_m / 1000)).quantize(
+                    Decimal('0.001'), rounding=ROUND_HALF_UP),
                 'estimated_duration_minutes': minutes,
-                'estimated_arrival_time': (anchor or datetime.now(UTC)) + timedelta(minutes=minutes)}
+                'estimated_arrival_time': anchor + timedelta(minutes=minutes)}
+
+    async def google_routes(self, coordinates, anchor):
+        settings = get_settings()
+        api_key = settings.google_map_api_key.get_secret_value()
+        if not api_key:
+            raise ValueError('Google Maps API key is not configured')
+
+        def waypoint(point):
+            return {'waypoint': {'location': {'latLng': {
+                'latitude': point[0], 'longitude': point[1]}}}}
+
+        async with httpx.AsyncClient(timeout=settings.routing_timeout_seconds) as client:
+            response = await client.post('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix',
+                headers={'X-Goog-Api-Key': api_key,
+                         'X-Goog-FieldMask': 'destinationIndex,distanceMeters,duration,status,condition'},
+                json={'origins': [waypoint(coordinates[0])],
+                      'destinations': [waypoint(point) for point in coordinates[1:]],
+                      'travelMode': 'DRIVE', 'routingPreference': 'TRAFFIC_AWARE'})
+            response.raise_for_status()
+            rows = response.json()
+        routes = []
+        for row in rows:
+            if row.get('condition') == 'ROUTE_EXISTS' and not row.get('status'):
+                routes.append((float(row['distanceMeters']), float(str(row['duration']).removesuffix('s'))))
+        return self.route_result(routes, anchor)
+
+    async def estimate_route(self, origin, destinations, *, average_speed_kmph=None, anchor=None):
+        anchor = anchor or datetime.now(UTC)
+        coordinates = self.coordinates(origin, destinations)
+        if coordinates is None:
+            return {'estimated_distance_km': None, 'estimated_duration_minutes': None,
+                    'estimated_arrival_time': None}
+        try:
+            return await self.google_routes(coordinates, anchor)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            pass
+        return {'estimated_distance_km': None, 'estimated_duration_minutes': None,
+                'estimated_arrival_time': None}
 
     async def parents(self, data, school_ids, active=True):
         # Driver before vehicle matches master vehicle update; then kitchen/schools.
@@ -117,18 +151,14 @@ class DeliveryService(PackageService):
         remaining_minutes = None
         eta = delivery['estimated_arrival_time']
         if gps is not None:
-            distances = [self.distance_km(gps['latitude'], gps['longitude'], school['latitude'], school['longitude'])
-                         for school in schools if school['latitude'] is not None and school['longitude'] is not None]
-            if distances:
-                distance = max(distances)
-                remaining_distance = Decimal(str(distance)).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
-                speed = float(gps['speed'] or 0)
-                if speed <= 0 and delivery['estimated_distance_km'] and delivery['estimated_duration_minutes']:
-                    speed = float(delivery['estimated_distance_km']) / (delivery['estimated_duration_minutes'] / 60)
-                if speed <= 0:
-                    speed = 30
-                remaining_minutes = max(1, int((distance / speed) * 60 + 0.999999))
-                eta = now + timedelta(minutes=remaining_minutes)
+            speed = float(gps['speed'] or 0)
+            if speed <= 0 and delivery['estimated_distance_km'] and delivery['estimated_duration_minutes']:
+                speed = float(delivery['estimated_distance_km']) / (delivery['estimated_duration_minutes'] / 60)
+            estimate = await self.estimate_route(gps, schools,
+                average_speed_kmph=speed if speed > 0 else Decimal('30'), anchor=now)
+            remaining_distance = estimate['estimated_distance_km']
+            remaining_minutes = estimate['estimated_duration_minutes']
+            eta = estimate['estimated_arrival_time'] or eta
         return {'delivery_id': identifier, 'vehicle': delivery['vehicle'], 'status': delivery['status'],
                 'destination_count': len({item['school_id'] for item in manifest}),
                 'latest_gps': None if gps is None else {k: gps[k] for k in
@@ -225,8 +255,8 @@ class DeliveryService(PackageService):
         parents = await self.parents(data, [i.school_id for i in payload.items])
         await self.available_resources(data)
         now, checked = datetime.now(UTC), []
-        estimates = self.estimate_route(parents['kitchen_id'], parents['schools'],
-                                        average_speed_kmph=average_speed, anchor=now)
+        estimates = await self.estimate_route(parents['kitchen_id'], parents['schools'],
+                                              average_speed_kmph=average_speed, anchor=now)
         for item in sorted(payload.items, key=lambda i: i.package_id):
             try:
                 package = await self.row(Package, 'package_id', item.package_id, lock=True)
@@ -262,7 +292,7 @@ class DeliveryService(PackageService):
         items = await self.manifest(identifier)
         if not items:
             raise DeliveryConflictError('Delivery manifest cannot be empty')
-        await self.parents(initial, [i['school_id'] for i in items], active=action == 'depart')
+        parents = await self.parents(initial, [i['school_id'] for i in items], active=action == 'depart')
         current = await self.row(Delivery, 'delivery_id', identifier, lock=True)
         if current['version'] != payload.expected_version:
             raise VersionConflictError()
@@ -274,8 +304,8 @@ class DeliveryService(PackageService):
         now = datetime.now(UTC)
         eta = payload.estimated_arrival_time
         if action == 'depart' and eta is None:
-            eta = self.estimate_route(parents['kitchen_id'], parents['schools'],
-                                      anchor=now)['estimated_arrival_time']
+            eta = (await self.estimate_route(parents['kitchen_id'], parents['schools'],
+                                             anchor=now))['estimated_arrival_time']
         if action == 'depart' and eta is None:
             raise DeliveryConflictError('Estimated arrival required when route coordinates are incomplete')
         if action == 'depart' and eta <= now:

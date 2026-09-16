@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     jwt_access_token_minutes: int = 15
     jwt_refresh_token_days: int = 7
     google_map_api_key: SecretStr = SecretStr("")
+    routing_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     openai_api_key: SecretStr = SecretStr("")
 
 

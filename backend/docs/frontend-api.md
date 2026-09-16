@@ -5343,10 +5343,12 @@ hanya boleh digunakan satu delivery CREATED atau IN_TRANSIT sekaligus. Paket han
 boleh berada pada satu manifest non-CANCELLED, termasuk yang COMPLETED. Check dilakukan
 di bawah row lock driver, vehicle, kitchen, sekolah, dan paket berurutan.
 
-Create menghitung estimasi jarak dan durasi dari koordinat kitchen asal ke sekolah
-tujuan terjauh memakai rumus garis lurus/haversine dan default 30 km/jam bila
-`average_speed_kmph` tidak dikirim. Untuk multi-sekolah, estimasi adalah jarak
-terjauh satu arah, bukan optimasi rute multi-stop. Jika koordinat kitchen/sekolah
+Create menghitung estimasi jarak jalan dan durasi dari koordinat kitchen asal ke
+sekolah tujuan memakai Google Routes API `computeRouteMatrix`; API key tetap hanya
+di backend. Untuk multi-sekolah, estimasi memilih tujuan dengan durasi terlama,
+bukan optimasi urutan rute multi-stop. `average_speed_kmph` dipertahankan untuk
+kompatibilitas payload tetapi tidak dipakai oleh kalkulasi Google. Jika koordinat
+kitchen/sekolah
 belum lengkap, field estimasi null dan depart wajib menerima ETA manual. Create
 mengubah package.status menjadi ALLOCATED dan version paket +1, membuat header/
 version 1 dan manifest immutable, sync registry paket/delivery serta event. Tidak
@@ -5410,16 +5412,25 @@ jumlah kemasan gunakan `package_count`.
 
 Tracking delivery memakai Delivery.Read dan read-only. `GET /deliveries/{identifier}/tracking`
 mengambil GPS terakhir dari `gps_log` berdasarkan vehicle manifest, suhu terakhir dari
-`temperature_log` device GPS kendaraan bila ada, lalu menghitung sisa jarak garis lurus
-ke sekolah tujuan terjauh. Remaining duration memakai speed GPS terakhir; bila speed
-kosong/nol, memakai estimasi route delivery; fallback 30 km/jam. Jika belum ada GPS
+`temperature_log` device GPS kendaraan bila ada, lalu meminta jarak jalan dan durasi
+dari posisi kendaraan ke seluruh sekolah tujuan melalui Google Routes API. Backend
+memilih tujuan dengan durasi terlama. Jika Google gagal, timeout, key/quota tidak
+valid atau Routes API tidak aktif, remaining distance/duration dapat null. Jika belum ada GPS
 atau koordinat tujuan tidak lengkap, `latest_gps` dan remaining field dapat null.
 Response field: delivery_id, vehicle, status, destination_count, latest_gps nullable
 (gps_log_id, recorded_at, latitude, longitude, speed, heading), latest_temperature
 nullable (temperature_log_id, device_uuid, recorded_at, temperature, unit),
 remaining_distance_km nullable, remaining_duration_minutes nullable,
-estimated_arrival_time nullable dan calculated_at UTC. Endpoint ini bukan MQTT
-ingestion, bukan WebSocket dan tidak menulis event.
+estimated_arrival_time nullable dan calculated_at UTC. API key Google tidak pernah
+dikirim ke frontend. Endpoint ini bukan MQTT ingestion, bukan
+WebSocket dan tidak menulis event.
+
+Halaman frontend `/deliveries/tracking` memakai key browser terpisah
+`VITE_GOOGLE_MAPS_API_KEY` untuk Google Maps JavaScript API dan Directions API.
+Key browser wajib dibatasi dengan HTTP referrer/domain frontend; jangan memakai
+`GOOGLE_MAP_API_KEY` backend yang dibatasi berdasarkan IP server. Frontend membaca
+detail delivery serta master kitchen/sekolah untuk marker dan garis rute, sedangkan
+angka remaining distance/time/ETA tetap berasal dari endpoint tracking backend.
 
 ### HTTP ingestion telemetry GPS dan suhu
 
