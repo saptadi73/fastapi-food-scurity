@@ -255,6 +255,7 @@ dashboard/ringkasan bisnis.**
 - [x] Siapkan SQLAlchemy async session dan konfigurasi Alembic (belum schema).
 - [x] Siapkan endpoint `/api/v1/health`, Swagger, ReDoc, dan OpenAPI.
 - [x] Terapkan envelope API docs/16, request ID, error handler, dan CORS.
+- [x] Batasi CORS backend hanya untuk ENVIRONMENT development/testing; production ditangani NGINX/reverse proxy.
 - [x] Siapkan JSON logging console.
 - [x] Verifikasi pip check, tes API, lint, dan startup server HTTP.
 - [x] Tulis panduan menjalankan aplikasi pada Windows di README.
@@ -572,6 +573,7 @@ dashboard/ringkasan bisnis.**
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.
+
 
 
 

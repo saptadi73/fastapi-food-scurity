@@ -148,14 +148,15 @@ def create_app() -> FastAPI:
 
     app.openapi = documented_openapi
     app.add_middleware(AuthLimitMiddleware, prefix=f'{settings.api_prefix}/auth/')
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Correlation-ID"],
-        expose_headers=["X-Request-ID", "Retry-After"],
-    )
+    if settings.environment in {"development", "testing"}:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Correlation-ID"],
+            expose_headers=["X-Request-ID", "Retry-After"],
+        )
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):

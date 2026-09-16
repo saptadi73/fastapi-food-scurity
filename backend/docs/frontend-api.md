@@ -73,7 +73,7 @@ masih TODO. Permission bisnis tetap harus diperiksa per operasi dari database. J
 | `meta.execution_time_ms` | number | Durasi hingga envelope dibentuk dalam milidetik; bukan latency jaringan |
 
 Semua field envelope di atas selalu dikirim oleh handler API. Nilai UUID,
-timestamp, dan durasi pada contoh hanya ilustrasi. Respons CORS preflight atau
+timestamp, dan durasi pada contoh hanya ilustrasi. Pada production, preflight CORS harus dijawab NGINX sebelum request diteruskan ke backend. Respons CORS preflight atau
 error dari proxy/jaringan dapat berada di luar envelope aplikasi.
 
 ## Cakupan CRUD dan status modul
@@ -6236,6 +6236,7 @@ diisi ingestion HTTP/MQTT; tidak membuat device, subscription atau event baru.
 
 Semua hitungan dibatasi tenant bearer dan record nondeleted. Ini snapshot query saat
 request, bukan agregat materialized, cache, event stream, alarm, atau indikator SLA.
+
 
 
 

@@ -158,7 +158,7 @@ def test_commit_failure_does_not_deliver_tokens(monkeypatch):
 
 def test_rate_limit_response_retains_cors(monkeypatch):
     import main
-    settings = main.get_settings().model_copy(update={'cors_origins': ['http://frontend.test']})
+    settings = main.get_settings().model_copy(update={'environment': 'development', 'cors_origins': ['http://frontend.test']})
     monkeypatch.setattr(main, 'get_settings', lambda: settings)
     app = create_app()
     app.state.auth_limiter = rate_limit.AuthRateLimiter(limit=1)
@@ -171,3 +171,18 @@ def test_rate_limit_response_retains_cors(monkeypatch):
         assert response.headers['Access-Control-Allow-Origin'] == 'http://frontend.test'
         assert 'Retry-After' in response.headers['Access-Control-Expose-Headers']
         assert client.options('/api/v1/auth/me', headers={**headers, 'Access-Control-Request-Method': 'GET'}).status_code == 200
+
+
+def test_backend_cors_disabled_in_production(monkeypatch):
+    import main
+    settings = main.get_settings().model_copy(update={'environment': 'production', 'cors_origins': ['http://frontend.test']})
+    monkeypatch.setattr(main, 'get_settings', lambda: settings)
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get('/api/v1/health', headers={'Origin': 'http://frontend.test'})
+        assert response.status_code == 200
+        assert 'Access-Control-Allow-Origin' not in response.headers
+        assert client.options('/api/v1/health', headers={
+            'Origin': 'http://frontend.test',
+            'Access-Control-Request-Method': 'GET',
+        }).status_code != 200
