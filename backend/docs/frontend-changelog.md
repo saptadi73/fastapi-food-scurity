@@ -1,5 +1,15 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Klarifikasi master kendaraan dan GPS
+
+- Field tipe kendaraan pada master kendaraan sekarang menggunakan dropdown
+  terkontrol.
+- Latitude/longitude kendaraan diberi label posisi awal/fallback; lokasi live
+  berasal dari telemetry GPS melalui `DeviceBinding` pada endpoint
+  `/api/v1/device-bindings`.
+- Field `gps_device` tetap tersedia untuk kompatibilitas data lama, tetapi
+  binding operasional baru dilakukan melalui Binding GPS Armada.
+
 ## 2026-09-20 - Nama pemasok dan bahan pada relasi supplier-material
 
 - `GET /api/v1/supplier-materials` dan detail/create/update response kini
