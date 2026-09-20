@@ -14,7 +14,7 @@ from uuid import UUID, uuid5
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import func, insert, select, text
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config.settings import get_settings
@@ -22,9 +22,12 @@ from app.core.database.session import close_database, get_admin_engine
 from app.core.events.orm import EventLog
 from app.core.database.scope import ActorScope
 from app.modules.authentication.infrastructure.orm import User
-from app.modules.master.infrastructure.orm import FoodItem, Kitchen, RawMaterial, Recipe, Storage, StorageZone, Supplier, SupplierMaterial
-from app.modules.production.infrastructure.orm import ProductionBatch
+from app.modules.fleet.infrastructure.orm import Delivery, DeliveryItem
+from app.modules.master.infrastructure.orm import (Device, Driver, FoodItem, Kitchen, PackagingType, RawMaterial, Recipe,
+    School, Storage, StorageZone, Supplier, SupplierMaterial, Vehicle)
+from app.modules.production.infrastructure.orm import Package, ProductionBatch, ProductionItem
 from app.modules.receiving.infrastructure.orm import RawMaterialBatch, Receiving, ReceivingItem, StockEntry
+from app.modules.telemetry.infrastructure.orm import GPSLog, TemperatureLog
 from app.modules.traceability.infrastructure.orm import AssetMovement, AssetRelationship
 from app.modules.traceability.infrastructure.registry import sync_source
 
@@ -240,6 +243,175 @@ async def seed(session, tenant: UUID, actor: UUID, food_code: str, menu_name: st
             'note': 'Sekolah belum dipakai pada resep/produksi; sekolah digunakan pada delivery dan school receiving.'}
 
 
+async def continue_distribution(session, tenant: UUID, actor: UUID, food_code: str, planned_quantity: Decimal) -> dict:
+    """Continue the deterministic seed into production, packaging and live delivery."""
+    scope = ActorScope(tenant, actor)
+    production_id = did(tenant, f'production:{food_code}')
+    production = await existing(session, ProductionBatch, 'production_batch_id', production_id)
+    if production is None:
+        raise ValueError('Batch production seed belum ada; jalankan seed tanpa --continue-distribution dahulu')
+    kitchen = await existing(session, Kitchen, 'kitchen_id', production['kitchen'])
+    food = await existing(session, FoodItem, 'food_item_id', production['menu'])
+    if kitchen is None or food is None:
+        raise ValueError('Dapur atau menu batch produksi tidak ditemukan')
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    snapshot = production['recipe_snapshot'] or {}
+    if production['status'] == 'CREATED':
+        for line in snapshot.get('items', []):
+            batch_id = did(tenant, f'raw-batch:{food_code}:{line["raw_material_id"]}')
+            batch = await existing(session, RawMaterialBatch, 'raw_material_batch_id', batch_id)
+            if batch is None or batch['status'] != 'ACCEPTED':
+                raise ValueError(f'Batch bahan untuk {line["raw_material_id"]} belum ACCEPTED')
+            stock = (await session.execute(select(StockEntry.__table__).where(
+                StockEntry.tenant_id == tenant, StockEntry.raw_material_batch_id == batch_id,
+                StockEntry.deleted_at.is_(None),
+            ).order_by(StockEntry.batch_version.desc()))).mappings().first()
+            if stock is None:
+                raise ValueError('Stock entry bahan belum tersedia')
+            production_item_id = did(tenant, f'production-item:{food_code}:{line["raw_material_id"]}')
+            await insert_once(session, ProductionItem, 'production_item_id', production_item_id, {
+                'production_batch_id': production_id, 'raw_material_batch_id': batch_id,
+                'storage_id': stock['storage_id'], 'batch_version': batch['version'] + 1,
+                'quantity': Decimal(str(line['required_quantity'])), 'uom': line['uom'], **audit(tenant, actor),
+            })
+            await session.execute(update(RawMaterialBatch.__table__).where(
+                RawMaterialBatch.tenant_id == tenant, RawMaterialBatch.raw_material_batch_id == batch_id,
+                RawMaterialBatch.version == batch['version'],
+            ).values(version=batch['version'] + 1, updated_at=now, updated_by=actor))
+        await session.execute(update(ProductionBatch.__table__).where(
+            ProductionBatch.tenant_id == tenant, ProductionBatch.production_batch_id == production_id,
+        ).values(status='RUNNING', started_at=now, version=production['version'] + 1,
+                 updated_at=now, updated_by=actor))
+        production = await existing(session, ProductionBatch, 'production_batch_id', production_id)
+
+    if production['status'] == 'RUNNING':
+        holding_policy = {'schema_version': 1, 'rule_id': None, 'rule_version': None,
+                          'food_category': food['category'], 'maximum_minutes': 120,
+                          'warning_minutes': 90, 'discard_minutes': 150}
+        await session.execute(update(ProductionBatch.__table__).where(
+            ProductionBatch.tenant_id == tenant, ProductionBatch.production_batch_id == production_id,
+        ).values(status='COMPLETED', actual_quantity=planned_quantity,
+                 initial_temperature=Decimal('75.00'), finished_at=now,
+                 holding_policy=holding_policy, version=production['version'] + 1,
+                 updated_at=now, updated_by=actor))
+        production = await existing(session, ProductionBatch, 'production_batch_id', production_id)
+    if production['status'] != 'COMPLETED':
+        raise ValueError(f'Batch produksi harus COMPLETED, status saat ini {production["status"]}')
+
+    package_type = (await session.execute(select(PackagingType.__table__).where(
+        PackagingType.tenant_id == tenant, PackagingType.deleted_at.is_(None),
+    ).order_by(PackagingType.code))).mappings().first()
+    if package_type is None:
+        package_type_id = did(tenant, 'packaging:seed-tray')
+        await insert_once(session, PackagingType, 'package_type_id', package_type_id, {
+            'code': 'SEED-TRAY-750', 'name': 'Seed Tray 750ml', 'material': 'Food grade',
+            'volume': Decimal('750.000'), **audit(tenant, actor),
+        })
+        package_type = await existing(session, PackagingType, 'package_type_id', package_type_id)
+
+    package_id = did(tenant, f'package:{food_code}')
+    package = await existing(session, Package, 'package_id', package_id)
+    expiry = production['finished_at'] + timedelta(minutes=120)
+    if package is None:
+        await insert_once(session, Package, 'package_id', package_id, {
+            'package_code': f'PKG-{food_code}-001'[:100], 'production_batch_id': production_id,
+            'package_type_id': package_type['package_type_id'], 'package_number': 1,
+            'quantity': planned_quantity, 'initial_temperature': Decimal('68.00'),
+            'holding_started_at': production['finished_at'], 'holding_finished_at': now,
+            'remaining_minutes': max(0, int((expiry - now).total_seconds() // 60)),
+            'expired_at': expiry, 'status': 'RELEASED', **audit(tenant, actor), 'version': 3,
+        })
+        package = await existing(session, Package, 'package_id', package_id)
+    elif package['status'] not in {'RELEASED', 'ALLOCATED', 'IN_TRANSIT'}:
+        await session.execute(update(Package.__table__).where(
+            Package.tenant_id == tenant, Package.package_id == package_id,
+        ).values(status='RELEASED', holding_finished_at=now, version=package['version'] + 1,
+                 updated_at=now, updated_by=actor))
+        package = await existing(session, Package, 'package_id', package_id)
+
+    package_asset = await sync_source(session, scope, 'PACKAGE', package_id)
+    production_asset = await sync_source(session, scope, 'PRODUCTION_BATCH', production_id)
+    kitchen_asset = await sync_source(session, scope, 'KITCHEN', kitchen['kitchen_id'])
+    await insert_once(session, AssetRelationship, 'relationship_uuid', did(tenant, f'rel:packaged:{package_id}'), {
+        'parent_uuid': production_asset['asset_uuid'], 'child_uuid': package_asset['asset_uuid'],
+        'relationship_type': 'PACKAGED', **audit(tenant, actor),
+    })
+    await insert_once(session, AssetMovement, 'movement_id', did(tenant, f'movement:packaging:{package_id}'), {
+        'asset_type': 'PACKAGE', 'asset_uuid': package_asset['asset_uuid'], 'movement_type': 'PACKAGING',
+        'from_location': None, 'to_location': kitchen_asset['asset_uuid'], 'operator': actor,
+        'movement_time': now, 'remarks': None, **audit(tenant, actor),
+    })
+
+    school = (await session.execute(select(School.__table__).where(
+        School.tenant_id == tenant, School.kitchen_id == kitchen['kitchen_id'],
+        School.deleted_at.is_(None), School.status == 'ACTIVE',
+    ).order_by(School.school_code))).mappings().first()
+    vehicle = (await session.execute(select(Vehicle.__table__).where(
+        Vehicle.tenant_id == tenant, Vehicle.deleted_at.is_(None), Vehicle.status == 'ACTIVE',
+    ).order_by(Vehicle.vehicle_code))).mappings().first()
+    if school is None or vehicle is None:
+        raise ValueError('Minimal satu school pada dapur asal dan vehicle ACTIVE diperlukan untuk manifest')
+    driver_id = vehicle['driver_id'] or await session.scalar(select(Driver.driver_id).where(
+        Driver.tenant_id == tenant, Driver.deleted_at.is_(None), Driver.status == 'ACTIVE',
+    ).order_by(Driver.driver_code).limit(1))
+    if driver_id is None:
+        raise ValueError('Driver ACTIVE diperlukan untuk manifest')
+
+    delivery_id = did(tenant, f'delivery:{food_code}')
+    delivery = await existing(session, Delivery, 'delivery_id', delivery_id)
+    if delivery is None:
+        await insert_once(session, Delivery, 'delivery_id', delivery_id, {
+            'vehicle': vehicle['vehicle_id'], 'driver': driver_id, 'kitchen_id': kitchen['kitchen_id'],
+            'estimated_arrival_time': now + timedelta(minutes=30),
+            'estimated_distance_km': Decimal('4.500'), 'estimated_duration_minutes': 20,
+            'departure_time': now, 'arrival_time': None, 'status': 'IN_TRANSIT',
+            **audit(tenant, actor), 'version': 2,
+        })
+        await insert_once(session, DeliveryItem, 'delivery_item_id', did(tenant, f'delivery-item:{food_code}'), {
+            'delivery_id': delivery_id, 'package_id': package_id, 'school_id': school['school_id'],
+            **audit(tenant, actor),
+        })
+        await session.execute(update(Package.__table__).where(
+            Package.tenant_id == tenant, Package.package_id == package_id,
+        ).values(status='IN_TRANSIT', version=package['version'] + 1, updated_at=now, updated_by=actor))
+    elif delivery['status'] not in {'IN_TRANSIT', 'COMPLETED'}:
+        raise ValueError(f'Delivery seed sudah ada dengan status {delivery["status"]}; tidak diubah otomatis')
+
+    delivery_asset = await sync_source(session, scope, 'DELIVERY', delivery_id)
+    vehicle_asset = await sync_source(session, scope, 'VEHICLE', vehicle['vehicle_id'])
+    await insert_once(session, AssetRelationship, 'relationship_uuid', did(tenant, f'rel:loaded:{package_id}'), {
+        'parent_uuid': package_asset['asset_uuid'], 'child_uuid': delivery_asset['asset_uuid'],
+        'relationship_type': 'LOADED', **audit(tenant, actor),
+    })
+    await insert_once(session, AssetMovement, 'movement_id', did(tenant, f'movement:loading:{package_id}'), {
+        'asset_type': 'PACKAGE', 'asset_uuid': package_asset['asset_uuid'], 'movement_type': 'VEHICLE_LOADING',
+        'from_location': kitchen_asset['asset_uuid'], 'to_location': vehicle_asset['asset_uuid'],
+        'operator': actor, 'movement_time': now, 'remarks': str(delivery_id), **audit(tenant, actor),
+    })
+
+    gps_points = [(-6.200000, 106.800000), (-6.205000, 106.810000), (-6.210000, 106.820000)]
+    for index, (latitude, longitude) in enumerate(gps_points):
+        await insert_once(session, GPSLog, 'gps_log_id', did(tenant, f'gps:{food_code}:{index}'), {
+            'vehicle_uuid': vehicle['vehicle_id'], 'recorded_at': now - timedelta(minutes=10 - index * 4),
+            'mqtt_message_id': None, 'latitude': Decimal(str(latitude)), 'longitude': Decimal(str(longitude)),
+            'speed': Decimal('28.000'), 'heading': Decimal('90.000'), 'altitude': Decimal('20.000'),
+            'hdop': Decimal('0.900'), 'satellite': 12, **audit(tenant, actor),
+        })
+    if vehicle['gps_device'] is not None:
+        device = await existing(session, Device, 'device_id', vehicle['gps_device'])
+        if device is not None:
+            await insert_once(session, TemperatureLog, 'temperature_log_id', did(tenant, f'temp:gps:{food_code}'), {
+                'device_uuid': device['device_uuid'], 'storage_uuid': None, 'package_uuid': None,
+                'production_batch_uuid': None, 'recorded_at': now, 'mqtt_message_id': None,
+                'temperature': Decimal('24.500'), 'unit': 'C', **audit(tenant, actor),
+            })
+    return {'production_batch_id': str(production_id), 'package_id': str(package_id),
+            'delivery_id': str(delivery_id), 'delivery_status': 'IN_TRANSIT',
+            'school': school['school_name'], 'vehicle': vehicle['vehicle_code'],
+            'tracking_endpoint': f'/api/v1/deliveries/{delivery_id}/tracking'}
+
+
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tenant-id', required=True, type=UUID)
@@ -251,6 +423,8 @@ async def main():
     parser.add_argument('--supplier-name', default=None, help='Nama supplier ACTIVE; jika kosong memakai supplier pertama')
     parser.add_argument('--material-name', action='append', dest='material_names',
                         help='Nama bahan ACTIVE; dapat diulang. Jika kosong memakai maksimal dua bahan pertama.')
+    parser.add_argument('--continue-distribution', action='store_true',
+                        help='Lanjutkan seed ke produksi selesai, paket RELEASED, manifest IN_TRANSIT dan GPS demo')
     parser.add_argument('--allow-production', action='store_true')
     args = parser.parse_args()
     settings = get_settings()
@@ -261,6 +435,9 @@ async def main():
             result = await seed(session, args.tenant_id, args.actor_id, args.food_code,
                                 args.menu_name, args.planned_quantity, args.kitchen_name,
                                 args.supplier_name, args.material_names)
+            if args.continue_distribution:
+                result['distribution'] = await continue_distribution(
+                    session, args.tenant_id, args.actor_id, args.food_code, args.planned_quantity)
         print(json.dumps(result, default=str, indent=2))
         return 0
     finally:
