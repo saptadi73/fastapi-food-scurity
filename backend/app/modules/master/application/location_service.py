@@ -61,13 +61,15 @@ class LocationService:
         await require_permission(self.db, self.scope, f'{self.permission}.Read')
         return await self._get(identifier)
 
-    async def list(self, *, offset=0, limit=20, parent_id=None):
+    async def list(self, *, offset=0, limit=20, parent_id=None, device_type=None):
         await require_permission(self.db, self.scope, f'{self.permission}.Read')
         query = self._query()
         if parent_id is not None:
             parent_column = {'storage': 'kitchen_id', 'school': 'kitchen_id', 'zone': 'storage_id',
                              'vehicle': 'driver_id', 'device': 'zone_id'}[self.kind]
             query = query.where(self.table.c[parent_column] == parent_id)
+        if self.kind == 'device' and device_type is not None:
+            query = query.where(self.table.c.device_type == device_type)
         rows = (await self.db.execute(query.order_by(self.table.c.created_at.desc(), self.table.c[self.pk].desc())
                                       .offset(offset).limit(limit + 1))).mappings().all()
         return {'items': [dict(r) for r in rows[:limit]], 'offset': offset, 'limit': limit,

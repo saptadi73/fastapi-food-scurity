@@ -176,8 +176,8 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/devices/{identifier}` | Detail perangkat | Tidak ada | 200 |
 | PUT | `/api/v1/devices/{identifier}` | Ganti perangkat | DeviceInput + expected_version | 200 |
 | DELETE | `/api/v1/devices/{identifier}` | Soft delete master | Tidak ada; expected_version query wajib | 200 |
-| GET | `/api/v1/device-bindings` | Daftar binding perangkat-kendaraan | Tidak ada; filter/pagination | 200 |
-| POST | `/api/v1/device-bindings` | Buat binding perangkat-kendaraan | DeviceBindingInput | 201 |
+| GET | `/api/v1/device-bindings` | Daftar binding Device GPS-armada | Tidak ada; filter/pagination | 200 |
+| POST | `/api/v1/device-bindings` | Buat binding Device GPS ke armada | DeviceBindingInput | 201 |
 | GET | `/api/v1/device-bindings/{identifier}` | Detail binding | Tidak ada | 200 |
 | PUT | `/api/v1/device-bindings/{identifier}` | Ganti binding | DeviceBindingInput + expected_version | 200 |
 | DELETE | `/api/v1/device-bindings/{identifier}` | Putuskan hubungan perangkat-kendaraan | Tidak ada; expected_version query wajib | 200 |
@@ -1959,13 +1959,13 @@ belum menerbitkan event runtime atau GPS log.
 
 | Method/path | Tujuan | Permission | Body | Path/query |
 | --- | --- | --- | --- | --- |
-| GET /api/v1/devices | Daftar perangkat | Device.Read | Tidak ada | offset/limit/zone_id |
+| GET /api/v1/devices | Daftar seluruh Device IoT | Device.Read | Tidak ada | offset/limit/zone_id/device_type |
 | POST /api/v1/devices | Buat perangkat | Device.Write | DeviceInput | Tidak ada |
 | GET /api/v1/devices/{identifier} | Detail perangkat | Device.Read | Tidak ada | identifier UUID perangkat wajib |
 | PUT /api/v1/devices/{identifier} | Ganti definisi perangkat | Device.Write | DeviceInput + expected_version | identifier UUID wajib |
 | DELETE /api/v1/devices/{identifier} | Soft delete perangkat | Device.Delete | Tidak ada | identifier UUID; expected_version query wajib |
-| GET /api/v1/device-bindings | Daftar binding perangkat-kendaraan | Device.Read | Tidak ada | offset/limit/device_id/vehicle_id |
-| POST /api/v1/device-bindings | Buat binding | Device.Write | DeviceBindingInput | Tidak ada |
+| GET /api/v1/device-bindings | Daftar binding Device GPS-armada | Device.Read | Tidak ada | offset/limit/device_id/vehicle_id |
+| POST /api/v1/device-bindings | Buat binding Device GPS ke armada | Device.Write | DeviceBindingInput | Tidak ada |
 | GET /api/v1/device-bindings/{identifier} | Detail binding | Device.Read | Tidak ada | identifier UUID binding wajib |
 | PUT /api/v1/device-bindings/{identifier} | Ganti binding | Device.Write | DeviceBindingInput + expected_version | identifier UUID wajib |
 | DELETE /api/v1/device-bindings/{identifier} | Soft delete binding | Device.Delete | Tidak ada | identifier UUID; expected_version query wajib |

@@ -1,5 +1,15 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Klarifikasi endpoint Device dan Binding GPS Armada
+
+- `GET/POST /api/v1/devices` ditegaskan sebagai master seluruh Device IoT.
+- `GET/POST/PUT/DELETE /api/v1/device-bindings` ditegaskan khusus binding
+  Device GPS aktif ke Vehicle/Armada aktif; service backend menolak device
+  non-GPS atau vehicle nonaktif.
+- `GET /api/v1/devices` menambah filter query opsional `device_type`; frontend
+  menggunakannya agar pilihan Device pada Binding GPS Armada hanya menampilkan
+  Device bertipe GPS.
+
 ## 2026-09-20 - MQTT live consumer FSOS gateway
 
 - Consumer backend mendukung payload JSON `fsos/#`, menyimpan pesan ke

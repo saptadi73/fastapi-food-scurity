@@ -25,11 +25,15 @@ router = APIRouter(prefix='/devices', tags=['Device'], responses={
 ServiceDep = Annotated[LocationService, Depends(location_dependency('device'), scope='function')]
 
 
-@router.get('', response_model=DevicePageEnvelope, description='Bearer + Device.Read. No body; nondeleted tenant records, created_at/ID descending, offset/limit and next_offset.')
+@router.get('', response_model=DevicePageEnvelope, description='Bearer + Device.Read. Daftar seluruh Device IoT tenant; optional zone_id dan device_type filter, offset/limit dan next_offset.')
 async def list_locations(request: Request, service: ServiceDep,
                         offset: Annotated[int, Query(ge=0, le=2147483647)] = 0,
-                        limit: Annotated[int, Query(ge=1, le=100)] = 20, zone_id: Annotated[UUID | None, Query()] = None):
-    return envelope(request, data=await service.list(offset=offset, limit=limit, parent_id=zone_id))
+                        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+                        zone_id: Annotated[UUID | None, Query()] = None,
+                        device_type: Annotated[str | None, Query(min_length=1, max_length=50)] = None):
+    return envelope(request, data=await service.list(
+        offset=offset, limit=limit, parent_id=zone_id, device_type=device_type,
+    ))
 
 
 @router.get('/{identifier}', response_model=DeviceEnvelope, description='Bearer + Device.Read. No body. Missing/deleted/foreign records return 404.')
