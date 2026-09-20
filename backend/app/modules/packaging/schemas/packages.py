@@ -6,7 +6,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.responses.envelope import Envelope
-from app.modules.master.schemas.locations import AuditData, LocationInput, Page, Temperature, VersionInput
+from app.modules.master.schemas.locations import (
+    AuditData,
+    LocationInput,
+    Page,
+    Temperature,
+    VersionInput,
+)
 
 
 class HoldingPolicy(BaseModel):
@@ -29,7 +35,7 @@ class PackageInput(VersionInput, LocationInput):
 
 
 class HoldingInput(VersionInput, LocationInput):
-    pass
+    device_uuid: UUID | None = None
 
 
 class HoldingFinishInput(HoldingInput):

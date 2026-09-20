@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -8,11 +9,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pythonjsonlogger.json import JsonFormatter
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.exceptions import HTTPException
 
 from app.core.config.settings import get_settings
 from app.core.database.readiness import check_readiness
-from app.core.database.session import close_database
+from app.core.database.session import close_database, get_engine
 from app.core.responses.envelope import Envelope, envelope
 from app.modules.authentication.api.rate_limit import AuthLimitMiddleware, AuthRateLimiter
 from app.modules.authentication.api.router import router as auth_router
@@ -45,6 +47,7 @@ from app.modules.telemetry.api.alarms import router as telemetry_alarm_router
 from app.modules.telemetry.api.ingestion import router as telemetry_ingestion_router
 from app.modules.telemetry.api.mqtt_events import router as mqtt_events_router
 from app.modules.telemetry.api.sessions import router as device_session_router
+from app.modules.telemetry.application.mqtt_consumer import MQTTConsumer
 from app.modules.traceability.api import router as traceability_router
 
 logger = logging.getLogger("fsos")
@@ -57,9 +60,22 @@ async def lifespan(app: FastAPI):
         handler.setFormatter(JsonFormatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(handler)
     logger.setLevel(get_settings().log_level)
+    consumer = None
+    consumer_task = None
+    settings = get_settings()
+    if settings.mqtt_consumer_enabled:
+        if settings.mqtt_tenant_id is None:
+            raise RuntimeError('MQTT_TENANT_ID wajib diisi ketika MQTT_CONSUMER_ENABLED=true')
+        consumer = MQTTConsumer(settings, async_sessionmaker(get_engine(), expire_on_commit=False))
+        consumer_task = asyncio.create_task(consumer.run(), name='fsos-mqtt-consumer')
     try:
         yield
     finally:
+        if consumer is not None:
+            await consumer.stop()
+        if consumer_task is not None:
+            consumer_task.cancel()
+            await asyncio.gather(consumer_task, return_exceptions=True)
         await close_database()
 
 

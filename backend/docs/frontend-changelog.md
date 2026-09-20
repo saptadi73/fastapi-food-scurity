@@ -1,5 +1,34 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - MQTT live consumer FSOS gateway
+
+- Consumer backend mendukung payload JSON `fsos/#`, menyimpan pesan ke
+  `mqtt_message_log`, dan mengubah payload valid menjadi `gps_log` atau
+  `temperature_log` dengan `mqtt_message_id`.
+- Device sekarang memiliki selector opsional `mqtt_event` dan `mqtt_sensor`.
+  Ini wajib dipakai bila beberapa event berbagi topic `fsos`; topic khusus seperti
+  `fsos/suhu1` cukup memakai `mqtt_topic`.
+- GPS dihubungkan melalui `DeviceBinding` ke vehicle. Sensor makanan memakai
+  `FoodSensorBinding` aktif untuk production/holding; sensor lain dapat memakai
+  `zone_id` device untuk menemukan storage.
+- Worker hanya aktif dengan `MQTT_CONSUMER_ENABLED=true` dan `MQTT_TENANT_ID`.
+  Reconnect otomatis; payload invalid/null tidak ditulis sebagai pembacaan valid.
+
+## 2026-09-20 - Binding sensor makanan production dan holding
+
+- `POST /api/v1/production-batches/{identifier}/complete` menerima
+  `food_sensor_device_uuid` opsional. Device harus aktif, berada pada tenant yang
+  sama, dan bertipe `FOOD_TEMPERATURE`, `TEMPERATURE`, atau `FOOD_SENSOR`.
+- `POST /api/v1/packages/{identifier}/holding/start` menerima `device_uuid`
+  opsional dengan validasi device yang sama.
+- Binding disimpan sebagai fase `PRODUCTION` atau `HOLDING`. Ingest suhu ke
+  `POST /api/v1/telemetry/temperatures` wajib menyertakan tepat satu target:
+  `production_batch_uuid` untuk fase production atau `package_uuid` untuk fase
+  holding; device yang tidak memiliki binding aktif ditolak.
+- Migrasi `20260920_0033_food_sensor_binding` menambah tabel binding dan kolom
+  target pada `temperature_log`. Data sensor menjadi bukti aktual append-only;
+  tidak ada worker MQTT live baru dalam perubahan ini.
+
 ## 2026-09-20 - Discovery event MQTT tersimpan
 
 - Menambahkan `GET /api/v1/mqtt/events` dengan permission `Device.Read` untuk

@@ -35,6 +35,8 @@ class GpsIngestInput(TelemetryTimestamp):
 class TemperatureIngestInput(TelemetryTimestamp):
     device_uuid: UUID
     storage_uuid: UUID | None = None
+    package_uuid: UUID | None = None
+    production_batch_uuid: UUID | None = None
     temperature: Decimal = Field(max_digits=8, decimal_places=3)
     unit: Literal['C', 'F', 'K'] = 'C'
 
@@ -63,6 +65,8 @@ class TemperatureIngestData(BaseModel):
     tenant_id: UUID
     device_uuid: UUID
     storage_uuid: UUID | None
+    package_uuid: UUID | None
+    production_batch_uuid: UUID | None
     recorded_at: datetime
     temperature: Decimal
     unit: str

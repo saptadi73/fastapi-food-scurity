@@ -10,7 +10,7 @@ from app.modules.traceability.infrastructure.registry import SOURCES
 
 ROLE = 'fsos_runtime'
 MARKER = 'FSOS managed runtime role v1'
-INSERT_TABLES = ('school_receiving', 'consumption', 'complaint', 'recall', 'recall_withdrawal', 'notification_outbox', 'delivery', 'delivery_item', 'package', 'packaging_type', 'holding_log', 'production_batch', 'production_item', 'food_item', 'recipe', 'stock_entry', 'stock_issue', 'temperature_log', 'gps_log', 'receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'device', 'device_binding', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
+INSERT_TABLES = ('school_receiving', 'consumption', 'complaint', 'recall', 'recall_withdrawal', 'notification_outbox', 'delivery', 'delivery_item', 'package', 'packaging_type', 'holding_log', 'production_batch', 'production_item', 'food_item', 'recipe', 'stock_entry', 'stock_issue', 'temperature_log', 'gps_log', 'mqtt_message_log', 'receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'device', 'device_binding', 'food_sensor_binding', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
 UPDATES = {
     'delivery': 'status,departure_time,arrival_time,estimated_arrival_time,estimated_distance_km,estimated_duration_minutes,updated_at,updated_by,version',
     'package': 'status,remaining_minutes,holding_started_at,holding_finished_at,updated_at,updated_by,version',
@@ -26,7 +26,9 @@ UPDATES = {
     'driver': 'driver_code,driver_name,phone,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'vehicle': 'vehicle_code,plate_number,vehicle_type,capacity,gps_device,driver_id,location,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'device_binding': 'device_id,vehicle_id,updated_at,updated_by,deleted_at,deleted_by,version',
-    'device': 'device_uuid,zone_id,device_name,device_type,firmware,hardware,mqtt_topic,status,last_online,updated_at,updated_by,deleted_at,deleted_by,version',
+    'food_sensor_binding': 'ended_at,updated_at,updated_by,deleted_at,deleted_by,version',
+    'mqtt_message_log': 'processed,updated_at,updated_by,version',
+    'device': 'device_uuid,zone_id,device_name,device_type,firmware,hardware,mqtt_topic,mqtt_event,mqtt_sensor,status,last_online,updated_at,updated_by,deleted_at,deleted_by,version',
     'school': 'school_code,school_name,latitude,longitude,address,student_count,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'auth_session': 'revoked_at',
     'refresh_token': 'used_at',
@@ -44,8 +46,8 @@ UPDATES = {
 
 async def provision_runtime_role(connection):
     await connection.execute(text('SELECT pg_advisory_xact_lock(20260911, 17)'))
-    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260915_0032')")):
-        raise ValueError('Runtime grant profile requires migration 0032; review it when schema changes')
+    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260920_0034')")):
+        raise ValueError('Runtime grant profile requires migration 0034; review it when schema changes')
     existing = (await connection.execute(text("""
         SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
                shobj_description(oid, 'pg_authid') AS marker FROM pg_roles WHERE rolname='fsos_runtime'

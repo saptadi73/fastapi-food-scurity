@@ -42,6 +42,33 @@ class MQTTMessageLog(AuditMixin, Base):
     processed: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
+class FoodSensorBinding(AuditMixin, Base):
+    __tablename__ = "food_sensor_binding"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "device_uuid"], ["device.tenant_id", "device.device_uuid"],
+                             name="fk_food_sensor_binding_device", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "production_batch_id"],
+                             ["production_batch.tenant_id", "production_batch.production_batch_id"],
+                             name="fk_food_sensor_binding_production", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "package_id"], ["package.tenant_id", "package.package_id"],
+                             name="fk_food_sensor_binding_package", ondelete="RESTRICT"),
+        CheckConstraint("phase IN ('PRODUCTION', 'HOLDING')", name="ck_food_sensor_binding_phase"),
+        CheckConstraint("ended_at IS NULL OR ended_at >= started_at", name="ck_food_sensor_binding_time"),
+        CheckConstraint("version >= 1", name="ck_food_sensor_binding_version"),
+        Index("ix_food_sensor_binding_tenant_package", "tenant_id", "package_id", "started_at"),
+        Index("ix_food_sensor_binding_tenant_production", "tenant_id", "production_batch_id", "started_at"),
+    )
+    binding_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID]
+    device_uuid: Mapped[UUID]
+    production_batch_id: Mapped[UUID]
+    package_id: Mapped[UUID | None]
+    phase: Mapped[str] = mapped_column(String(20))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(default=1, server_default="1")
+
+
 class SensorAudit(AuditMixin):
     tenant_id: Mapped[UUID]
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
@@ -73,14 +100,23 @@ class TemperatureLog(SensorAudit, Base):
         *sensor_constraints("temperature"),
         ForeignKeyConstraint(["tenant_id", "storage_uuid"], ["storage.tenant_id", "storage.storage_id"],
                              name="fk_temperature_storage", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "package_uuid"], ["package.tenant_id", "package.package_id"],
+                             name="fk_temperature_package", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "production_batch_uuid"],
+                             ["production_batch.tenant_id", "production_batch.production_batch_id"],
+                             name="fk_temperature_production", ondelete="RESTRICT"),
         CheckConstraint("temperature <> 'NaN'::numeric", name="ck_temperature_finite"),
         CheckConstraint("unit IN ('C', 'F', 'K')", name="ck_temperature_unit"),
         Index("ix_temperature_storage_time", "tenant_id", "storage_uuid", "recorded_at"),
+        Index("ix_temperature_package_time", "tenant_id", "package_uuid", "recorded_at"),
+        Index("ix_temperature_production_time", "tenant_id", "production_batch_uuid", "recorded_at"),
         {"postgresql_partition_by": "RANGE (recorded_at)"},
     )
     temperature_log_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     device_uuid: Mapped[UUID]
     storage_uuid: Mapped[UUID | None]
+    package_uuid: Mapped[UUID | None]
+    production_batch_uuid: Mapped[UUID | None]
     temperature: Mapped[Decimal] = mapped_column(Numeric(8, 3))
     unit: Mapped[str] = mapped_column(String(1))
 

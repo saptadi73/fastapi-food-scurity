@@ -273,7 +273,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/production-batches` | Daftar produksi | Tidak ada; pagination/filter | 200 |
 | GET | `/api/v1/production-batches/{identifier}` | Detail produksi | Tidak ada | 200 |
 | POST | `/api/v1/production-batches/{identifier}/start` | Mulai/pakai bahan | expected_version + items sumber stok | 200 |
-| POST | `/api/v1/production-batches/{identifier}/complete` | Catat hasil dan suhu awal | expected_version + actual_quantity + initial_temperature opsional | 200 |
+| POST | `/api/v1/production-batches/{identifier}/complete` | Catat hasil, suhu awal dan binding sensor makanan opsional | expected_version + actual_quantity + initial_temperature + food_sensor_device_uuid opsional | 200 |
 | POST | `/api/v1/production-batches/{identifier}/cancel` | Batalkan CREATED | expected_version | 200 |
 | GET | `/api/v1/raw-material-batches/{identifier}/stock-issues` | Riwayat pemakaian produksi | Tidak ada; offset/limit | 200 |
 | GET | `/api/v1/packaging-types` | Daftar jenis kemasan | Tanpa body; offset/limit | 200 |
@@ -287,7 +287,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/packages/{identifier}` | Detail paket + timer | Tanpa body | 200 |
 | GET | `/api/v1/packages/{identifier}/delivery-context` | Konteks manifest delivery paket | Tanpa body | 200 |
 | GET | `/api/v1/production-batches/{identifier}/packaging` | Sisa alokasi hasil | Tanpa body | 200 |
-| POST | `/api/v1/packages/{identifier}/holding/start` | Mulai holding paket | expected_version | 200 |
+| POST | `/api/v1/packages/{identifier}/holding/start` | Mulai holding paket dan binding sensor makanan opsional | expected_version + device_uuid opsional | 200 |
 | POST | `/api/v1/packages/{identifier}/holding/update` | Refresh/materialisasi expiry | expected_version | 200 |
 | POST | `/api/v1/packages/{identifier}/holding/finish` | Release/discard | expected_version + outcome | 200 |
 | POST | `/api/v1/deliveries` | Buat manifest | kitchen_id/vehicle/driver/items | 201 |
@@ -1985,6 +1985,8 @@ Respons memakai `JSON envelope`, `X-Request-ID`, `Cache-Control: no-store`, `Pra
 | firmware | string / tidak / ya | Maksimal 100 |
 | hardware | string / tidak / ya | Maksimal 100 |
 | mqtt_topic | string / tidak / ya | Maksimal 512 |
+| mqtt_event | string / tidak / ya | Selector `payload.event` untuk topic multiplexed seperti `fsos`; maksimal 200 |
+| mqtt_sensor | integer / tidak / ya | Selector `payload.sensor`, minimal 0 |
 | status | string enum / tidak / tidak | REGISTERED/ACTIVE/INACTIVE; default REGISTERED |
 | last_online | datetime UTC / tidak / ya | ISO 8601 UTC |
 
@@ -2033,6 +2035,8 @@ POST `/api/v1/devices`:
   "firmware": "fw-1.0.0",
   "hardware": "rev-b",
   "mqtt_topic": "fsos/site/gw/a1",
+  "mqtt_event": "Suhu Makanan",
+  "mqtt_sensor": 1,
   "status": "ACTIVE",
   "last_online": "2026-09-11T08:00:00Z"
 }
@@ -5444,13 +5448,15 @@ dipakai oleh dashboard/tracking sebagai sampel terakhir.
 | Method/path | Payload | Sukses |
 |---|---|---|
 | POST `/telemetry/gps` | vehicle_uuid, latitude, longitude, speed/heading/altitude/hdop/satellite opsional, recorded_at opsional | 201 GpsIngestData |
-| POST `/telemetry/temperatures` | device_uuid, storage_uuid opsional, temperature, unit C/F/K default C, recorded_at opsional | 201 TemperatureIngestData |
+| POST `/telemetry/temperatures` | device_uuid, storage_uuid/package_uuid/production_batch_uuid opsional, temperature, unit C/F/K default C, recorded_at opsional | 201 TemperatureIngestData |
 
 `recorded_at` opsional timezone-aware dan tidak boleh masa depan; bila null/omitted,
 server memakai waktu UTC sekarang. GPS memerlukan vehicle aktif satu tenant.
 Temperature memerlukan device REGISTERED/ACTIVE satu tenant; storage bila dikirim
-harus aktif satu tenant. Tidak ada deduplikasi idempotency payload, API key device,
-validasi binding device-ke-vehicle/storage, atau parsing MQTT pada endpoint ini.
+harus aktif satu tenant. Untuk makanan jadi, kirim tepat satu dari `package_uuid`
+atau `production_batch_uuid`; backend mewajibkan binding sensor makanan aktif yang
+sesuai phase `HOLDING` atau `PRODUCTION`. Tidak ada deduplikasi idempotency payload,
+API key device, atau parsing MQTT pada endpoint ini.
 
 ```http
 POST /api/v1/telemetry/gps

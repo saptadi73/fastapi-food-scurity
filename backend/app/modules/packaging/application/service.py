@@ -7,13 +7,17 @@ from sqlalchemy import func, insert, select, update
 from app.core.database.scope import RecordNotFoundError, VersionConflictError
 from app.core.events.orm import EventLog
 from app.modules.authentication.infrastructure.authorization import require_permission
-from app.modules.master.infrastructure.orm import HoldingRule, Kitchen, PackagingType
 from app.modules.fleet.infrastructure.orm import Delivery, DeliveryItem
+from app.modules.master.infrastructure.orm import Device, HoldingRule, Kitchen, PackagingType
 from app.modules.packaging.schemas.packages import HoldingPolicy, PackageData
 from app.modules.production.infrastructure.orm import Package, ProductionBatch
 from app.modules.receiving.application.service import ReceivingService
-from app.modules.telemetry.infrastructure.orm import HoldingLog
-from app.modules.traceability.infrastructure.orm import AssetMovement, AssetRelationship, DigitalAsset
+from app.modules.telemetry.infrastructure.orm import FoodSensorBinding, HoldingLog
+from app.modules.traceability.infrastructure.orm import (
+    AssetMovement,
+    AssetRelationship,
+    DigitalAsset,
+)
 from app.modules.traceability.infrastructure.registry import sync_source
 
 
@@ -202,6 +206,20 @@ class PackageService(ReceivingService):
             if package['status'] != 'CREATED' or package['holding_started_at'] is not None or expired:
                 raise PackagingConflictError('Only unexpired CREATED package can start holding')
             production = await self.row(ProductionBatch, 'production_batch_id', package['production_batch_id'])
+            if payload.device_uuid is not None:
+                device = (await self.db.execute(select(Device.__table__).where(
+                    Device.tenant_id == self.scope.tenant_id,
+                    Device.device_uuid == payload.device_uuid,
+                    Device.deleted_at.is_(None), Device.status == 'ACTIVE',
+                    Device.device_type.in_(['FOOD_TEMPERATURE', 'TEMPERATURE', 'FOOD_SENSOR']),
+                ).with_for_update(read=True))).mappings().one_or_none()
+                if device is None:
+                    raise PackagingConflictError('Active food temperature device required')
+                await self.db.execute(insert(FoodSensorBinding).values(
+                    binding_id=uuid4(), tenant_id=self.scope.tenant_id,
+                    device_uuid=payload.device_uuid, production_batch_id=package['production_batch_id'],
+                    package_id=identifier, phase='HOLDING', started_at=now, **self.audit,
+                ))
             values.update(status='PACKAGED', holding_started_at=production['finished_at'])
         elif action == 'finish':
             if payload.outcome == 'RELEASED' and (package['status'] != 'PACKAGED' or expired):

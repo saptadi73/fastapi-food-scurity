@@ -190,6 +190,14 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
   consumer broker, live topic discovery, pembuatan Device atau binding otomatis.
 - [x] Sediakan `GET /api/v1/mqtt/topics` read-only untuk daftar topic unik,
   jumlah event, waktu terakhir dan pagination sebagai langkah awal UI discovery.
+- [x] Binding sensor makanan ke production batch/holding: `food_sensor_binding`,
+  pilihan `food_sensor_device_uuid` saat complete production, `device_uuid` saat
+  start holding, dan telemetry temperature yang wajib cocok dengan binding aktif.
+  Frontend menyediakan pilihan sensor pada complete production dan start holding;
+  MQTT consumer live opt-in tersedia dengan selector `mqtt_event`/`mqtt_sensor`,
+  parsing payload `fsos/#`, dan penulisan `mqtt_message_log`, `gps_log` serta
+  `temperature_log`. Deduplikasi broker dan event transport publik masih belum
+  tersedia.
 - [x] Monitor suhu storage dashboard: `GET /dashboard/storage-temperatures`
   menampilkan storage aktif, sampel suhu terakhir, batas min/max dan status
   OK/LOW/HIGH/UNSUPPORTED_UNIT/NO_DATA untuk kebutuhan dashboard. Grafik histori,

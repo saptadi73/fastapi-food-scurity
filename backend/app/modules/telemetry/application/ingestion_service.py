@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database.scope import ActorScope, RecordNotFoundError
 from app.modules.authentication.infrastructure.authorization import require_permission
 from app.modules.master.infrastructure.orm import Device, Storage, Vehicle
-from app.modules.telemetry.infrastructure.orm import GPSLog, TemperatureLog
+from app.modules.production.infrastructure.orm import Package, ProductionBatch
+from app.modules.telemetry.infrastructure.orm import FoodSensorBinding, GPSLog, TemperatureLog
 
 
 class TelemetryIngestionConflictError(Exception):
@@ -52,10 +53,30 @@ class TelemetryIngestionService:
             storage = await self.row(Storage, 'storage_id', payload.storage_uuid)
             if storage['status'] != 'ACTIVE':
                 raise TelemetryIngestionConflictError('Active storage required')
+        if payload.package_uuid is not None and payload.production_batch_uuid is not None:
+            raise TelemetryIngestionConflictError('Choose package_uuid or production_batch_uuid, not both')
+        if payload.package_uuid is not None or payload.production_batch_uuid is not None:
+            target_model, target_key, target_id, phase = (
+                (Package, 'package_id', payload.package_uuid, 'HOLDING')
+                if payload.package_uuid is not None else
+                (ProductionBatch, 'production_batch_id', payload.production_batch_uuid, 'PRODUCTION')
+            )
+            target = await self.row(target_model, target_key, target_id)
+            binding = await self.session.scalar(select(FoodSensorBinding.binding_id).where(
+                FoodSensorBinding.tenant_id == self.scope.tenant_id,
+                FoodSensorBinding.device_uuid == payload.device_uuid,
+                FoodSensorBinding.package_id == (target_id if phase == 'HOLDING' else None),
+                FoodSensorBinding.production_batch_id == (target['production_batch_id'] if phase == 'HOLDING' else target_id),
+                FoodSensorBinding.phase == phase, FoodSensorBinding.ended_at.is_(None),
+                FoodSensorBinding.deleted_at.is_(None),
+            ))
+            if binding is None:
+                raise TelemetryIngestionConflictError('Active food sensor binding required')
         recorded_at = payload.recorded_at or datetime.now(UTC)
         result = (await self.session.execute(insert(TemperatureLog.__table__).values(
             temperature_log_id=uuid4(), tenant_id=self.scope.tenant_id, recorded_at=recorded_at,
             mqtt_message_id=None, device_uuid=payload.device_uuid, storage_uuid=payload.storage_uuid,
+            package_uuid=payload.package_uuid, production_batch_uuid=payload.production_batch_uuid,
             temperature=payload.temperature, unit=payload.unit,
             created_by=self.scope.actor_id, updated_by=self.scope.actor_id,
         ).returning(TemperatureLog.__table__))).mappings().one()

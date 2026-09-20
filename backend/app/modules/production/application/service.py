@@ -7,7 +7,14 @@ from sqlalchemy import func, insert, select, update
 from app.core.database.scope import RecordNotFoundError, VersionConflictError
 from app.core.events.orm import EventLog
 from app.modules.authentication.infrastructure.authorization import require_permission
-from app.modules.master.infrastructure.orm import FoodItem, Kitchen, RawMaterial, Recipe, Storage
+from app.modules.master.infrastructure.orm import (
+    Device,
+    FoodItem,
+    Kitchen,
+    RawMaterial,
+    Recipe,
+    Storage,
+)
 from app.modules.production.infrastructure.orm import ProductionBatch, ProductionItem
 from app.modules.production.schemas.production import ProductionDetail, RecipeSnapshot
 from app.modules.receiving.application.service import ReceivingService
@@ -18,6 +25,7 @@ from app.modules.receiving.infrastructure.orm import (
     StockEntry,
     StockIssue,
 )
+from app.modules.telemetry.infrastructure.orm import FoodSensorBinding
 from app.modules.traceability.infrastructure.orm import (
     AssetMovement,
     AssetRelationship,
@@ -211,6 +219,20 @@ class ProductionService(ReceivingService):
                           initial_temperature=payload.initial_temperature, finished_at=now)
         await self.db.execute(update(ProductionBatch).where(*self.visible(ProductionBatch),
             ProductionBatch.production_batch_id == identifier).values(**values))
+        if not cancel and payload.food_sensor_device_uuid is not None:
+            device = (await self.db.execute(select(Device.__table__).where(
+                Device.tenant_id == self.scope.tenant_id,
+                Device.device_uuid == payload.food_sensor_device_uuid,
+                Device.deleted_at.is_(None), Device.status == 'ACTIVE',
+                Device.device_type.in_(['FOOD_TEMPERATURE', 'TEMPERATURE', 'FOOD_SENSOR']),
+            ).with_for_update(read=True))).mappings().one_or_none()
+            if device is None:
+                raise ProductionConflictError('Active food temperature device required')
+            await self.db.execute(insert(FoodSensorBinding).values(
+                binding_id=uuid4(), tenant_id=self.scope.tenant_id,
+                device_uuid=payload.food_sensor_device_uuid, production_batch_id=identifier,
+                package_id=None, phase='PRODUCTION', started_at=now, **self.audit,
+            ))
         await sync_source(self.db, self.scope, 'PRODUCTION_BATCH', identifier)
         if not cancel:
             location = await self.db.scalar(select(DigitalAsset.asset_uuid).where(*self.visible(DigitalAsset),

@@ -105,6 +105,8 @@ class Device(AuditMixin, Base):
     firmware: Mapped[str | None] = mapped_column(String(100))
     hardware: Mapped[str | None] = mapped_column(String(100))
     mqtt_topic: Mapped[str | None] = mapped_column(String(512))
+    mqtt_event: Mapped[str | None] = mapped_column(String(200))
+    mqtt_sensor: Mapped[int | None]
     status: Mapped[str] = mapped_column(String(30), default="REGISTERED", server_default="REGISTERED")
     last_online: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

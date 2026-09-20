@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from uuid import UUID
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,8 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_username: str = ""
     mqtt_password: SecretStr = SecretStr("")
+    mqtt_consumer_enabled: bool = False
+    mqtt_tenant_id: UUID | None = None
     jwt_secret: SecretStr = SecretStr("")
     jwt_access_token_minutes: int = 15
     jwt_refresh_token_days: int = 7

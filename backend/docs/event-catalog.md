@@ -22,6 +22,16 @@ untuk subscribe. Kedua endpoint sistem saat ini tidak menghasilkan event bisnis.
 Endpoint ini bukan producer event dan bukan bukti bahwa MQTT consumer/broker runtime
 sudah aktif. Ia tidak mengubah `processed`, tidak membuat Device atau binding, dan
 tidak menerbitkan `gps.updated`, `temperature.updated`, atau event publik lainnya.
+
+Binding sensor makanan disimpan pada `food_sensor_binding`. Binding `PRODUCTION`
+dibuat saat production batch diselesaikan bila `food_sensor_device_uuid` dikirim;
+binding `HOLDING` dibuat atomik saat `holding/start` bila `device_uuid` dikirim.
+Pembacaan suhu makanan melalui HTTP harus menyertakan target batch atau package
+yang memiliki binding aktif. Data suhu tetap append-only pada `temperature_log`;
+MQTT consumer live sekarang tersedia secara opt-in melalui konfigurasi worker;
+consumer menyimpan `mqtt_message_log` lalu menulis `gps_log`/`temperature_log`.
+Deduplicasi berbasis message identifier broker belum aktif dan event transport
+publik tetap belum tersedia.
 Repository kitchen juga belum menerbitkan event; create/update/soft delete hanya
 mengubah record di dalam transaksi milik application service.
 Endpoint alarm-rule create/update/ubah enabled dan holding-rule create/update

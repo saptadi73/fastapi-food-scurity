@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -48,6 +48,8 @@ class DeviceInput(LocationInput):
     firmware: str | None = Field(default=None, max_length=100)
     hardware: str | None = Field(default=None, max_length=100)
     mqtt_topic: str | None = Field(default=None, max_length=512)
+    mqtt_event: str | None = Field(default=None, max_length=200)
+    mqtt_sensor: int | None = Field(default=None, ge=0)
     status: Literal['REGISTERED', 'ACTIVE', 'INACTIVE'] = 'REGISTERED'
     last_online: datetime | None = None
 
@@ -86,6 +88,8 @@ class DeviceData(AuditData):
     firmware: str | None
     hardware: str | None
     mqtt_topic: str | None
+    mqtt_event: str | None
+    mqtt_sensor: int | None
     status: str
     last_online: datetime | None
 

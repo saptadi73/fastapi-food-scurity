@@ -93,7 +93,7 @@ async def allocation(request: Request, identifier: UUID, service: ServiceDep):
 
 
 @router.post('/packages/{identifier}/holding/start', response_model=PackageEnvelope,
-    description='Holding.Start. UUID package + expected_version. Unexpired CREATED only; becomes PACKAGED. Clock anchored to production.finished_at, never action time. Atomic version, registry, holding_log and holding.started.')
+    description='Holding.Start. UUID package + expected_version and optional device_uuid. Unexpired CREATED only; becomes PACKAGED. An active food sensor creates a HOLDING binding for subsequent temperature ingestion. Clock anchored to production.finished_at, never action time. Atomic version, registry, holding_log and holding.started.')
 async def start(request: Request, identifier: UUID, payload: HoldingInput, service: ServiceDep):
     return envelope(request, data=await service.holding(identifier, payload, 'start'))
 
