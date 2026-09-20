@@ -1,5 +1,13 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Nama pemasok dan bahan pada relasi supplier-material
+
+- `GET /api/v1/supplier-materials` dan detail/create/update response kini
+  menyertakan `supplier_code`, `supplier_name`, `material_code`, dan
+  `material_name` hasil join master tenant.
+- Request tetap memakai `supplier_id` dan `raw_material_id`; frontend menampilkan
+  nama/kode dan menyimpan UUID hanya sebagai identitas internal.
+
 ## 2026-09-20 - Klarifikasi endpoint Device dan Binding GPS Armada
 
 - `GET/POST /api/v1/devices` ditegaskan sebagai master seluruh Device IoT.

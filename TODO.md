@@ -56,6 +56,10 @@ Catatan frontend delivery 2026-09-16: halaman Delivery sudah menyediakan create 
 
 Catatan frontend school receiving 2026-09-16: halaman scan Penerimaan Sekolah sudah menyediakan resolve QR paket, form receipt dengan delivery_id, school, version paket, received_quantity, condition GOOD/DAMAGED/MISSING, accepted/rejected, suhu manual, referensi foto dan notes. Ini menutup desain point 13 secara operasional. Package delivery-context sudah tersedia untuk auto-fill delivery_id dan school setelah scan paket. Finalisasi consumed-discarded sudah tersedia pada scan Penerimaan Sekolah memakai endpoint consumptions. Prioritas berikutnya: build/test integrasi frontend-backend dan memperhalus UX picker/scan agar input UUID manual makin berkurang.
 
+Catatan frontend/master 2026-09-20: relasi pemasok-bahan kini menampilkan nama
+pemasok dan nama bahan baku pada tabel. UUID tetap dipakai untuk request dan
+identitas sistem, bukan sebagai label yang harus dihafalkan pengguna.
+
 Ketentuan pelaksanaan:
 
 - Selesaikan alur modul secara utuh: operasi API, aturan/transisi bisnis, transaksi,

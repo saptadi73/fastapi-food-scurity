@@ -27,8 +27,23 @@ class SupplyService:
     def _visible(self):
         return self.table.c.tenant_id == self.scope.tenant_id, self.table.c.deleted_at.is_(None)
 
+    def _read_query(self):
+        if self.kind != 'link':
+            return select(self.table).where(*self._visible())
+        return select(
+            self.table,
+            Supplier.supplier_code,
+            Supplier.supplier_name,
+            RawMaterial.material_code,
+            RawMaterial.material_name,
+        ).join(Supplier, (Supplier.tenant_id == self.table.c.tenant_id) &
+               (Supplier.supplier_id == self.table.c.supplier_id)).join(
+                   RawMaterial, (RawMaterial.tenant_id == self.table.c.tenant_id) &
+                   (RawMaterial.raw_material_id == self.table.c.raw_material_id),
+               ).where(*self._visible(), Supplier.deleted_at.is_(None), RawMaterial.deleted_at.is_(None))
+
     async def _get(self, identifier, lock=False):
-        query = select(self.table).where(*self._visible(), self.table.c[self.pk] == identifier)
+        query = self._read_query().where(self.table.c[self.pk] == identifier)
         if lock:
             query = query.with_for_update()
         row = (await self.db.execute(query)).mappings().one_or_none()
@@ -44,7 +59,7 @@ class SupplyService:
         if type(offset) is not int or type(limit) is not int or offset < 0 or not 1 <= limit <= 100:
             raise ValueError('Invalid pagination')
         await require_permission(self.db, self.scope, f'{self.permission}.Read')
-        query = select(self.table).where(*self._visible())
+        query = self._read_query()
         for field, value in (('supplier_id', supplier_id), ('raw_material_id', raw_material_id)):
             if value is not None:
                 query = query.where(self.table.c[field] == value)

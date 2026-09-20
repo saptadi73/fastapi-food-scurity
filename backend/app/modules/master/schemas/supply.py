@@ -83,6 +83,10 @@ class SupplierMaterialData(AuditData):
     supplier_material_id: UUID
     supplier_id: UUID
     raw_material_id: UUID
+    supplier_code: str
+    supplier_name: str
+    material_code: str
+    material_name: str
 
 
 class SupplierEnvelope(Envelope):

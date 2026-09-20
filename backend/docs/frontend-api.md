@@ -2684,6 +2684,8 @@ meskipun null) ditambah audit berikut. Semua field respons selalu hadir.
 | Field tambahan | Tipe / nullable | Makna |
 | --- | --- | --- |
 | supplier_id / raw_material_id / supplier_material_id | UUID / tidak | ID sumber sesuai modul, bukan asset_uuid registry |
+| supplier_code / supplier_name | string / tidak | Kode dan nama pemasok untuk ditampilkan di UI; berasal dari master pemasok aktif |
+| material_code / material_name | string / tidak | Kode dan nama bahan baku untuk ditampilkan di UI; berasal dari master bahan aktif |
 | tenant_id | UUID / tidak | Tenant sesi |
 | version | integer / tidak | Create 1; setiap PUT naik satu termasuk nilai identik |
 | created_at, updated_at | ISO 8601 UTC / tidak | Waktu audit |
