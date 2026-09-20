@@ -572,7 +572,7 @@ permission Read/Write dan expected_version. Lihat [kontrak master lokasi](#kontr
 Master data selain kitchen/storage/zone/sekolah/kendaraan/driver/supplier/bahan/relasi pemasok/menu/resep/jenis kemasan/holding/alarm rule, telemetry selain alarm/sesi, stok lanjutan, holding dinamis berbasis telemetry,
 traceability traversal, GPS/geofence fleet, complaint, recall, dashboard, analytics, dan cetak QR
 belum memiliki endpoint aktif. Filter dan pagination tersedia untuk aturan/alarm/sesi
-sesuai kontrak masing-masing; sort kustom dan upload belum tersedia melalui HTTP. Payloadnya belum menjadi
+sesuai kontrak masing-masing; upload foto penerimaan tersedia melalui endpoint multipart khusus. Payloadnya belum menjadi
 kontrak; akan ditambahkan saat endpoint dibuat.
 
 Tidak ada route WebSocket atau SSE aktif. Frontend belum dapat berlangganan
@@ -879,7 +879,7 @@ aktif. Tenant dan actor berasal dari sesi, tidak diterima dari body/header tenan
 Header Accept: application/json disarankan, Content-Type: application/json wajib
 untuk POST/PUT, X-Correlation-ID opsional. Respons menggunakan envelope standar,
 X-Request-ID, Cache-Control: no-store dan Pragma: no-cache, termasuk error.
-Tidak ada cookie, API key, upload atau subscription. Limiter sementara /auth/*
+Tidak ada cookie, API key atau subscription. Upload hanya tersedia pada endpoint bukti foto yang didokumentasikan di bagian receiving. Limiter sementara /auth/*
 belum mencakup endpoint holding rule; limiter bisnis lintas worker tetap TODO.
 
 | Method/path | Tujuan | Permission | Body | Path/query |
@@ -3877,8 +3877,29 @@ menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibat
 | GET `/raw-material-batches` | Daftar/search batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchPage |
 | GET `/raw-material-batches/{identifier}` | Detail batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchData |
 
+### Upload foto inspeksi penerimaan
+
+Foto tidak lagi diisi sebagai path bebas pada frontend. Upload dilakukan terlebih
+dahulu melalui `POST /uploads/receiving-photo`, lalu nilai `data.reference`
+dikirim sebagai `items[].photo` pada `POST /receivings`.
+
+| Method/path | Tujuan dan permission independen | Payload | Sukses |
+| --- | --- | --- | --- |
+| POST `/uploads/receiving-photo` | Upload bukti foto penerimaan, `Receiving.Write` | `multipart/form-data`, field wajib `file` | 201, `UploadData` |
+| GET `/uploads/receiving-photo/{file_id}` | Mengambil foto pada tenant sesi, `Receiving.Read` | Tidak ada | 200, binary image |
+
+Upload hanya menerima `image/jpeg`, `image/png`, dan `image/webp`; batas default
+10 MiB dan dapat diatur backend dengan `UPLOAD_MAX_BYTES`. File diberi nama UUID,
+disimpan di direktori tenant yang dikonfigurasi `UPLOAD_DIR`, dan tidak memakai
+nama file dari pengguna. Upload tidak membuat receiving atau event; receiving
+tetap dibuat oleh `POST /receivings` setelah upload berhasil.
+
+Error utama: 400 tipe file kosong/tidak didukung, 401 sesi invalid, 403 permission
+tidak ada, 404 file/tenant tidak ditemukan, dan 413 melebihi batas.
+
 Seluruh endpoint memakai `Authorization: Bearer <access_token>` dari sesi aktif.
-POST wajib `Content-Type: application/json`; `Accept: application/json` dianjurkan.
+Endpoint JSON wajib `Content-Type: application/json`; endpoint upload memakai
+`multipart/form-data` dan browser harus mengatur boundary secara otomatis.
 `X-Correlation-ID` opsional, maksimum yang dicatat 128 karakter. Respons memakai
 JSON envelope umum, `X-Request-ID`, `Cache-Control: no-store`, `Pragma: no-cache`.
 Tenant/operator/audit diturunkan dari sesi, tidak boleh dikirim sebagai payload.
@@ -3928,7 +3949,7 @@ menyertakan items.
 | items[].quantity | decimal number/string | Ya / tidak | >0; maksimum 14 digit total, 6 desimal (maksimum 99999999.999999); bukan NaN/infinity/bool |
 | items[].temperature | decimal number/string | Tidak / ya / null | -9999.99..9999.99, maksimal 2 desimal; suhu inspeksi dalam Celsius |
 | items[].condition | string | Tidak / ya / null | 1..100 karakter; kondisi visual/manual bahan saat diterima, misalnya `GOOD`, `DAMAGED`, atau catatan singkat |
-| items[].photo | string | Tidak / ya / null | 1..1024 karakter; referensi foto kondisi bahan, tidak di-fetch/upload/diverifikasi backend |
+| items[].photo | string | Tidak / ya / null | 1..1024 karakter; gunakan `data.reference` dari `POST /uploads/receiving-photo` |
 | items[].expired_date | date YYYY-MM-DD | Tidak / ya / null | Batch kedaluwarsa boleh dicatat agar bisa ditolak |
 | items[].qr_code | string | Tidak / ya / null | Trim, 1..255; unik per tenant dan dalam request jika bukan null |
 

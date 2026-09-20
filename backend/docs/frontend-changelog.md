@@ -1,5 +1,14 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-21 - Upload foto inspeksi penerimaan bahan
+
+- Ditambahkan `POST /api/v1/uploads/receiving-photo` untuk upload multipart foto
+  JPEG/PNG/WebP maksimal 10 MiB dengan permission `Receiving.Write`.
+- Form penerimaan memilih file lokal dan mengirim `reference` hasil upload ke
+  `items[].photo`; pengguna tidak perlu mengisi path manual.
+- Ditambahkan `GET /api/v1/uploads/receiving-photo/{file_id}` dengan permission
+  `Receiving.Read` untuk mengambil foto pada tenant yang sama.
+
 ## 2026-09-20 - Perbaikan validasi parent Storage Zone
 
 - Validasi `PUT /api/v1/storage-zones/{identifier}` sekarang mengambil

@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     google_map_api_key: SecretStr = SecretStr("")
     routing_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     openai_api_key: SecretStr = SecretStr("")
+    upload_dir: Path = BACKEND_DIR.parent / "var" / "uploads"
+    upload_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=50 * 1024 * 1024)
 
 
 @lru_cache

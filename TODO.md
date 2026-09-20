@@ -21,6 +21,7 @@ Urutan implementasi berdasarkan dependensi alur operasional:
 2. [x] **Penerimaan bahan dan stok.** Receiving, item penerimaan, batch bahan,
    validasi pemasok/lokasi/kuantitas serta pencatatan pergerakan dan ketersediaan
    bahan sesuai desain. Selesaikan alur transaksi yang bisa dipakai melalui API.
+   Bukti foto inspeksi diunggah melalui endpoint multipart dan bukan path bebas.
 3. [x] **Produksi.** Batch produksi, pemakaian bahan/resep, hasil produksi,
    transisi status dan hubungan batch bahan dengan hasil produksi.
 4. [x] **Pengemasan dan holding.** Paket, jenis kemasan, identitas/QR, alokasi hasil

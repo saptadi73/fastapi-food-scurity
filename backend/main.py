@@ -49,6 +49,7 @@ from app.modules.telemetry.api.mqtt_events import router as mqtt_events_router
 from app.modules.telemetry.api.sessions import router as device_session_router
 from app.modules.telemetry.application.mqtt_consumer import MQTTConsumer
 from app.modules.traceability.api import router as traceability_router
+from app.modules.uploads.api import router as uploads_router
 
 logger = logging.getLogger("fsos")
 
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
     app.include_router(packages_router, prefix=settings.api_prefix)
     app.include_router(production_router, prefix=settings.api_prefix)
     app.include_router(receiving_router, prefix=settings.api_prefix)
+    app.include_router(uploads_router, prefix=settings.api_prefix)
     original_openapi = app.openapi
 
     master_like_paths = (
@@ -155,6 +157,7 @@ def create_app() -> FastAPI:
         f'{settings.api_prefix}/traceability',
         f'{settings.api_prefix}/school-receivings',
         f'{settings.api_prefix}/consumptions',
+        f'{settings.api_prefix}/uploads',
     )
 
     def documented_openapi():
