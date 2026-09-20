@@ -88,7 +88,7 @@ async def seed(session, tenant: UUID, actor: UUID, food_code: str, menu_name: st
         raise ValueError('Minimal satu bahan baku ACTIVE diperlukan')
 
     food_id = did(tenant, f'food:{food_code}')
-    created = {'food': 0, 'recipes': 0, 'receiving': 0, 'batches': 0, 'stock': 0, 'production': 0}
+    created = {'food': 0, 'recipes': 0, 'storage': 0, 'zone': 0, 'receiving': 0, 'batches': 0, 'stock': 0, 'production': 0}
     food = await existing(session, FoodItem, 'food_item_id', food_id)
     if food is None:
         created['food'] += await insert_once(session, FoodItem, 'food_item_id', food_id, {
@@ -127,11 +127,34 @@ async def seed(session, tenant: UUID, actor: UUID, food_code: str, menu_name: st
             Storage.storage_type == material['storage_type'],
         ).order_by(Storage.storage_code))).mappings().first()
         if storage is None:
-            raise ValueError(f"Storage ACTIVE dengan tipe {material['storage_type']} untuk {material['material_name']} tidak ditemukan")
+            storage_type = material['storage_type']
+            temperature = {
+                'COLD_STORAGE': (Decimal('1.00'), Decimal('5.00'), 'Cold Storage Seed'),
+                'DRY_STORAGE': (Decimal('20.00'), Decimal('30.00'), 'Dry Storage Seed'),
+                'FREEZER': (Decimal('-25.00'), Decimal('-18.00'), 'Freezer Seed'),
+            }.get(storage_type, (None, None, f'{storage_type} Seed'))
+            storage_id = did(tenant, f'storage:{kitchen["kitchen_id"]}:{storage_type}')
+            storage_code = f'SEED-{storage_type}'[:50]
+            created['storage'] += await insert_once(session, Storage, 'storage_id', storage_id, {
+                'kitchen_id': kitchen['kitchen_id'], 'storage_code': storage_code,
+                'storage_name': temperature[2], 'storage_type': storage_type,
+                'temperature_min': temperature[0], 'temperature_max': temperature[1],
+                'location': None, 'status': 'ACTIVE', **audit(tenant, actor),
+            })
+            storage = await existing(session, Storage, 'storage_id', storage_id)
+        if storage is None:
+            raise ValueError(f"Storage ACTIVE dengan tipe {material['storage_type']} untuk {material['material_name']} tidak dapat dibuat")
         zone = (await session.execute(select(StorageZone.__table__).where(
             StorageZone.tenant_id == tenant, StorageZone.storage_id == storage['storage_id'],
             StorageZone.deleted_at.is_(None),
         ).order_by(StorageZone.zone_code))).mappings().first()
+        if zone is None:
+            zone_id = did(tenant, f'zone:{storage["storage_id"]}:SEED-A1')
+            created['zone'] += await insert_once(session, StorageZone, 'zone_id', zone_id, {
+                'storage_id': storage['storage_id'], 'zone_code': 'SEED-A1',
+                'zone_name': 'Rak Seed A1', **audit(tenant, actor),
+            })
+            zone = await existing(session, StorageZone, 'zone_id', zone_id)
         link_id = did(tenant, f'supplier-material:{supplier["supplier_id"]}:{material["raw_material_id"]}')
         link_exists = await session.scalar(select(SupplierMaterial.supplier_material_id).where(
             SupplierMaterial.tenant_id == tenant,
