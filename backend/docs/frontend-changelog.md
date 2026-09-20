@@ -1,5 +1,14 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Pemisahan identitas Device dan binding MQTT
+
+- Form Master Device tidak lagi meminta MQTT topic, selector event/sensor, atau
+  `last_online` sebagai input.
+- MQTT binding diatur melalui halaman Binding MQTT Device; `last_online` hanya
+  ditampilkan sebagai data telemetry.
+- Saat PUT device dari form identitas, field MQTT yang sudah terbinding tetap
+  dipertahankan.
+
 ## 2026-09-20 - Klarifikasi master kendaraan dan GPS
 
 - Field tipe kendaraan pada master kendaraan sekarang menggunakan dropdown
