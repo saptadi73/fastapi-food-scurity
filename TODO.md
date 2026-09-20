@@ -24,6 +24,7 @@ Urutan implementasi berdasarkan dependensi alur operasional:
    Bukti foto inspeksi diunggah melalui endpoint multipart dan bukan path bebas.
 3. [x] **Produksi.** Batch produksi, pemakaian bahan/resep, hasil produksi,
    transisi status dan hubungan batch bahan dengan hasil produksi.
+   Modal mulai produksi mendukung scan QR batch untuk mengisi sumber stok otomatis.
 4. [x] **Pengemasan dan holding.** Paket, jenis kemasan, identitas/QR, alokasi hasil
    produksi serta lifecycle holding start/update/finish/expired dan status kelayakan.
 5. [x] **Pengiriman.** Manifest/alokasi paket, kendaraan/driver/tujuan sekolah,

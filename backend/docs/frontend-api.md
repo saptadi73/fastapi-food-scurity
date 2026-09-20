@@ -3862,7 +3862,7 @@ POST tanpa idempotency key: retry kode/plat yang sudah disimpan memberi 409.
 
 ## Kontrak receiving dan batch bahan
 
-Status: **7 operasi aktif**, bagian penerimaan bahan. Prefix semua path `/api/v1`.
+Status: **8 operasi aktif**, bagian penerimaan bahan. Prefix semua path `/api/v1`.
 Tidak tersedia PUT/PATCH/DELETE receiving/item/batch. Item dan batch dibuat atomik
 melalui receiving; kesalahan draft diselesaikan dengan cancel lalu create baru. Frontend FSOS saat ini memakai workflow cepat untuk raw material receiving: `POST /receivings` satu item lalu langsung `POST /receivings/{id}/complete` dengan keputusan `accepted=true`, sehingga batch tampil sebagai ACCEPTED dan QR dapat dirender/print di browser
 menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibatalkan.
@@ -3875,7 +3875,13 @@ menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibat
 | POST `/receivings/{identifier}/complete` | Simpan seluruh keputusan inspeksi, `Receiving.Complete` | CompleteInput wajib | 200, ReceivingDetail |
 | POST `/receivings/{identifier}/cancel` | Batalkan CREATED, `Receiving.Cancel` | CancelInput wajib | 200, ReceivingDetail |
 | GET `/raw-material-batches` | Daftar/search batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchPage |
+| GET `/raw-material-batches/resolve?qr_code=...` | Resolve QR batch untuk scanner, `RawMaterialBatch.Read` | Query `qr_code` wajib, 1..255 | 200, BatchData |
 | GET `/raw-material-batches/{identifier}` | Detail batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchData |
+
+Resolver QR hanya mencocokkan QR yang tersimpan pada tenant sesi dan mengembalikan
+data batch. Frontend kemudian mengambil `/raw-material-batches/{identifier}/stock`
+untuk mengisi versi batch, storage dengan stok tersedia, dan quantity secara otomatis.
+QR yang tidak ditemukan atau milik tenant lain mengembalikan 404.
 
 ### Upload foto inspeksi penerimaan
 

@@ -65,6 +65,15 @@ class ReceivingService:
         await self.row(Receiving, 'receiving_id', identifier, lock=True)
         return await self.detail(identifier)
 
+    async def resolve_batch_qr(self, qr_code):
+        await require_permission(self.db, self.scope, 'RawMaterialBatch.Read')
+        row = (await self.db.execute(select(RawMaterialBatch.__table__).where(
+            *self.visible(RawMaterialBatch), RawMaterialBatch.qr_code == qr_code
+        ))).mappings().one_or_none()
+        if row is None:
+            raise RecordNotFoundError()
+        return dict(row)
+
     async def list(self, *, batch=False, offset=0, limit=20, search=None, material_category=None,
                    sort='CREATED_DESC', **filters):
         await require_permission(self.db, self.scope, 'RawMaterialBatch.Read' if batch else 'Receiving.Read')

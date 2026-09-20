@@ -1,5 +1,13 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-21 - Scan QR bahan saat mulai produksi
+
+- Ditambahkan `GET /api/v1/raw-material-batches/resolve?qr_code=...` untuk
+  menerjemahkan QR batch bahan menjadi identitas batch pada tenant aktif.
+- Modal `Mulai masak / pakai bahan` sekarang memiliki scanner kamera QR. Setelah
+  QR terbaca, frontend otomatis mengisi batch ID, mengambil versi terbaru, memilih
+  storage yang memiliki stok, dan mengisi quantity tersedia.
+
 ## 2026-09-21 - Upload foto inspeksi penerimaan bahan
 
 - Ditambahkan `POST /api/v1/uploads/receiving-photo` untuk upload multipart foto
