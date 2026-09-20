@@ -184,6 +184,12 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
 - [x] HTTP ingestion awal telemetry GPS/suhu: endpoint Telemetry.Ingest append-only
   mengisi gps_log dan temperature_log untuk tracking/dashboard. MQTT broker,
   API key device, deduplikasi payload dan WebSocket tetap belum selesai.
+- [x] Sediakan `GET /api/v1/mqtt/events` read-only untuk discovery pesan MQTT yang
+  sudah tersimpan di `mqtt_message_log`, dengan isolasi tenant, Device.Read,
+  filter topic/processed/waktu dan pagination. Endpoint ini belum mengaktifkan
+  consumer broker, live topic discovery, pembuatan Device atau binding otomatis.
+- [x] Sediakan `GET /api/v1/mqtt/topics` read-only untuk daftar topic unik,
+  jumlah event, waktu terakhir dan pagination sebagai langkah awal UI discovery.
 - [x] Monitor suhu storage dashboard: `GET /dashboard/storage-temperatures`
   menampilkan storage aktif, sampel suhu terakhir, batas min/max dan status
   OK/LOW/HIGH/UNSUPPORTED_UNIT/NO_DATA untuk kebutuhan dashboard. Grafik histori,

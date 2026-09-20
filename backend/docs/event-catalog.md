@@ -1,6 +1,6 @@
 ﻿# Event catalog FSOS
 
-Terakhir diperbarui: 2026-09-11. Status: **event receiving, stok, produksi, paket, holding dan pengiriman tersimpan internal; belum dipublikasikan ke transport**.
+Terakhir diperbarui: 2026-09-20. Status: **event receiving, stok, produksi, paket, holding dan pengiriman tersimpan internal; belum dipublikasikan ke transport**.
 
 Endpoint login/refresh/logout terhubung ke SessionService dan mengubah database,
 tanpa event bus/notifikasi. Log operasional mencatat action/outcome/request_id;
@@ -16,6 +16,12 @@ Tabel `event_log` dan bukti telemetry sudah tersedia. Event bus, publisher,
 transactional outbox, worker, MQTT ingestion, WebSocket, dan SSE belum tersedia.
 Insert database tidak otomatis menerbitkan event. Frontend belum memiliki channel
 untuk subscribe. Kedua endpoint sistem saat ini tidak menghasilkan event bisnis.
+
+`GET /api/v1/mqtt/events` dan `GET /api/v1/mqtt/topics` hanya membaca atau merangkum
+`mqtt_message_log` untuk discovery operator.
+Endpoint ini bukan producer event dan bukan bukti bahwa MQTT consumer/broker runtime
+sudah aktif. Ia tidak mengubah `processed`, tidak membuat Device atau binding, dan
+tidak menerbitkan `gps.updated`, `temperature.updated`, atau event publik lainnya.
 Repository kitchen juga belum menerbitkan event; create/update/soft delete hanya
 mengubah record di dalam transaksi milik application service.
 Endpoint alarm-rule create/update/ubah enabled dan holding-rule create/update

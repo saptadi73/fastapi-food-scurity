@@ -21,10 +21,10 @@ from app.modules.consumption.api.workflow import router as school_workflow_route
 from app.modules.dashboard.api import router as dashboard_router
 from app.modules.fleet.api.deliveries import router as deliveries_router
 from app.modules.master.api.alarm_rules import router as alarm_router
+from app.modules.master.api.device_bindings import router as device_bindings_router
+from app.modules.master.api.devices import router as devices_router
 from app.modules.master.api.drivers import router as drivers_router
 from app.modules.master.api.food_items import router as food_items_router
-from app.modules.master.api.devices import router as devices_router
-from app.modules.master.api.device_bindings import router as device_bindings_router
 from app.modules.master.api.holding_rules import router as holding_router
 from app.modules.master.api.kitchens import router as kitchens_router
 from app.modules.master.api.packaging_types import router as packaging_types_router
@@ -43,6 +43,7 @@ from app.modules.recall.api import router as recalls_router
 from app.modules.receiving.api.router import router as receiving_router
 from app.modules.telemetry.api.alarms import router as telemetry_alarm_router
 from app.modules.telemetry.api.ingestion import router as telemetry_ingestion_router
+from app.modules.telemetry.api.mqtt_events import router as mqtt_events_router
 from app.modules.telemetry.api.sessions import router as device_session_router
 from app.modules.traceability.api import router as traceability_router
 
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(alarm_router, prefix=settings.api_prefix)
     app.include_router(telemetry_alarm_router, prefix=settings.api_prefix)
     app.include_router(telemetry_ingestion_router, prefix=settings.api_prefix)
+    app.include_router(mqtt_events_router, prefix=settings.api_prefix)
     app.include_router(device_session_router, prefix=settings.api_prefix)
     app.include_router(kitchens_router, prefix=settings.api_prefix)
     app.include_router(storages_router, prefix=settings.api_prefix)
@@ -109,6 +111,7 @@ def create_app() -> FastAPI:
         f'{settings.api_prefix}/alarm-rules',
         f'{settings.api_prefix}/alarms',
         f'{settings.api_prefix}/telemetry',
+        f'{settings.api_prefix}/mqtt',
         f'{settings.api_prefix}/device-sessions',
         f'{settings.api_prefix}/kitchens',
         f'{settings.api_prefix}/storages',

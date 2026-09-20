@@ -1,5 +1,18 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Discovery event MQTT tersimpan
+
+- Menambahkan `GET /api/v1/mqtt/events` dengan permission `Device.Read` untuk
+  menampilkan pesan MQTT yang sudah tersimpan di `mqtt_message_log`, terisolasi
+  per tenant dan mendukung filter topic, processed, rentang waktu serta pagination.
+- Endpoint bersifat read-only: tidak terhubung ke broker, tidak membuat Device atau
+  binding, tidak menandai pesan processed, dan tidak menyediakan live discovery.
+- Payload UTF-8 JSON dikembalikan sebagai `payload_json`; teks non-JSON dibatasi
+  4096 karakter pada `payload_text`; payload biner tidak diekspos.
+- Menambahkan `GET /api/v1/mqtt/topics` untuk daftar topic unik, jumlah event,
+  waktu event terbaru, prefix filter, dan pagination. Keduanya bukan live broker
+  discovery; Device dan binding tetap dibuat melalui master API.
+
 ## 2026-09-17 - Routing jalan fleet Google Routes API
 
 - Estimasi pada create/depart delivery dan `GET /api/v1/deliveries/{identifier}/tracking` sekarang hanya memakai Google Routes API `computeRouteMatrix`, tanpa Mapbox, OSRM atau Haversine.
