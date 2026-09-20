@@ -96,7 +96,7 @@ class LocationService:
             if values['zone_id'] is not None:
                 zone = await self.db.scalar(select(StorageZone.zone_id).where(
                     StorageZone.zone_id == values['zone_id'], StorageZone.tenant_id == self.scope.tenant_id,
-                    StorageZone.deleted_at.is_(None), StorageZone.status == 'ACTIVE').with_for_update(read=True))
+                    StorageZone.deleted_at.is_(None)).with_for_update(read=True))
                 if zone is None:
                     raise LocationConflictError('Active parent storage zone in this tenant required')
             return

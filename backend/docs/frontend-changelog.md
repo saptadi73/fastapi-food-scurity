@@ -1,5 +1,11 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Perbaikan update Device dengan zona
+
+- `PUT /api/v1/devices/{identifier}` tidak lagi mengakses kolom `status` yang
+  tidak tersedia pada `StorageZone`; Device dengan zona penempatan dapat diedit
+  kembali selama zonanya belum dihapus dan masih satu tenant.
+
 ## 2026-09-20 - Pemisahan identitas Device dan binding MQTT
 
 - Form Master Device tidak lagi meminta MQTT topic, selector event/sensor, atau
