@@ -88,4 +88,4 @@ async def provision_runtime_role(connection):
         await connection.execute(text(f'GRANT UPDATE (version) ON public.{table} TO fsos_runtime'))
     await connection.execute(text('REVOKE ALL ON FUNCTION public.fsos_create_telemetry_partitions(date, integer) FROM PUBLIC, fsos_runtime'))
     await connection.execute(text('GRANT EXECUTE ON FUNCTION public.fsos_capture_rule_revision() TO fsos_runtime'))
-    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260915_0032'}
+    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260920_0034'}
