@@ -37,6 +37,7 @@ Urutan implementasi berdasarkan dependensi alur operasional:
    ingestion telemetry, evaluasi rule/alarm, notifikasi operasional dan ringkasan
    dashboard untuk alur di atas. Konfigurasi rule dan API bukti yang sudah tersedia
    tidak menggantikan implementasi engine.
+   Tracking delivery memiliki fallback estimasi jarak saat provider routing eksternal tidak tersedia.
 
 Traceability, registry/relationship/movement dan pencatatan event bisnis dikerjakan
 bersama transaksi yang menghasilkannya. Traversal backward/forward, timeline,

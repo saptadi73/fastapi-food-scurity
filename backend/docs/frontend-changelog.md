@@ -1,5 +1,12 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-21 - Fallback jarak tracking dan binding GPS idempoten
+
+- Tracking delivery tetap mengisi jarak/durasi estimasi berbasis garis lurus jika
+  Google Maps tidak dikonfigurasi atau gagal; koordinat tetap wajib.
+- Binding MQTT GPS tidak lagi gagal saat device sudah terikat ke armada yang sama.
+  Jika device memiliki binding armada lain, binding aktif diperbarui.
+
 ## 2026-09-21 - Scan QR bahan saat mulai produksi
 
 - Ditambahkan `GET /api/v1/raw-material-batches/resolve?qr_code=...` untuk

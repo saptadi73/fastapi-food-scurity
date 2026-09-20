@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from math import asin, cos, radians, sin
 from uuid import uuid4
 
 import httpx
@@ -81,9 +82,19 @@ class DeliveryService(PackageService):
         try:
             return await self.google_routes(coordinates, anchor)
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
-            pass
-        return {'estimated_distance_km': None, 'estimated_duration_minutes': None,
-                'estimated_arrival_time': None}
+            # Fallback estimate keeps tracking useful without a Google Maps key.
+            earth_radius_km = 6371.0088
+            distance_km = 0.0
+            for start, end in zip(coordinates, coordinates[1:]):
+                lat1, lon1, lat2, lon2 = map(radians, (*start, *end))
+                delta_lat, delta_lon = lat2 - lat1, lon2 - lon1
+                haversine = sin(delta_lat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(delta_lon / 2) ** 2
+                distance_km += 2 * earth_radius_km * asin(min(1.0, haversine ** 0.5))
+            speed = float(average_speed_kmph or 30)
+            minutes = max(1, int((distance_km / speed) * 60 + 0.999999))
+            return {'estimated_distance_km': Decimal(str(distance_km)).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP),
+                    'estimated_duration_minutes': minutes,
+                    'estimated_arrival_time': anchor + timedelta(minutes=minutes)}
 
     async def parents(self, data, school_ids, active=True):
         # Driver before vehicle matches master vehicle update; then kitchen/schools.

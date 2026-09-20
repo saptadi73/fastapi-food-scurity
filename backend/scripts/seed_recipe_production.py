@@ -438,6 +438,7 @@ async def main():
             if args.continue_distribution:
                 result['distribution'] = await continue_distribution(
                     session, args.tenant_id, args.actor_id, args.food_code, args.planned_quantity)
+                result['status'] = 'COMPLETED'
         print(json.dumps(result, default=str, indent=2))
         return 0
     finally:

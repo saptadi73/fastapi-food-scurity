@@ -5450,8 +5450,10 @@ mengambil GPS terakhir dari `gps_log` berdasarkan vehicle manifest, suhu terakhi
 `temperature_log` device GPS kendaraan bila ada, lalu meminta jarak jalan dan durasi
 dari posisi kendaraan ke seluruh sekolah tujuan melalui Google Routes API. Backend
 memilih tujuan dengan durasi terlama. Jika Google gagal, timeout, key/quota tidak
-valid atau Routes API tidak aktif, remaining distance/duration dapat null. Jika belum ada GPS
-atau koordinat tujuan tidak lengkap, `latest_gps` dan remaining field dapat null.
+valid atau Routes API tidak aktif, backend memakai estimasi garis lurus berdasarkan
+koordinat dan kecepatan rata-rata. Jika belum ada GPS atau koordinat tujuan tidak
+lengkap, `latest_gps` dan remaining field dapat null; estimasi garis lurus bukan
+rute jalan aktual.
 Response field: delivery_id, vehicle, status, destination_count, latest_gps nullable
 (gps_log_id, recorded_at, latitude, longitude, speed, heading), latest_temperature
 nullable (temperature_log_id, device_uuid, recorded_at, temperature, unit),
