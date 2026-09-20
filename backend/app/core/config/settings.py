@@ -10,7 +10,11 @@ BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=BACKEND_DIR / ".env", env_file_encoding="utf-8", extra="ignore"
+        # Production deployments commonly keep .env at repository root, while
+        # local backend-only deployments keep it beside this application.
+        env_file=(BACKEND_DIR.parent / ".env", BACKEND_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     app_name: str = "Food Safety Operating System"
