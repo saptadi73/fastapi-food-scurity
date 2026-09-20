@@ -1,5 +1,12 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-20 - Perbaikan validasi parent Storage Zone
+
+- Validasi `PUT /api/v1/storage-zones/{identifier}` sekarang mengambil
+  `Storage.kitchen_id` untuk memeriksa dapur induk. Sebelumnya query mengambil
+  `Storage.storage_id` lalu membandingkannya dengan `Kitchen.kitchen_id`,
+  sehingga parent yang valid selalu dianggap tidak aktif.
+
 ## 2026-09-20 - Perbaikan update Device dengan zona
 
 - `PUT /api/v1/devices/{identifier}` tidak lagi mengakses kolom `status` yang

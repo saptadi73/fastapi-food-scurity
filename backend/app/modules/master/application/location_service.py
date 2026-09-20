@@ -104,7 +104,7 @@ class LocationService:
         if self.kind in ('storage', 'school'):
             kitchen_id = values['kitchen_id']
         else:
-            kitchen_id = await self.db.scalar(select(Storage.storage_id).where(
+            kitchen_id = await self.db.scalar(select(Storage.kitchen_id).where(
                 Storage.storage_id == values['storage_id'], Storage.tenant_id == self.scope.tenant_id,
                 Storage.deleted_at.is_(None)))
         kitchen = await self.db.scalar(select(Kitchen.kitchen_id).where(
