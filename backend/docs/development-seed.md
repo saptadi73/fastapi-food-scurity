@@ -5,6 +5,20 @@ Status 2026-09-15: seed minimal `FSOS_DEV` sudah tersedia dan seed demo frontend
 Seed adalah fixture development, bukan bootstrap admin production atau data bisnis
 nyata. Script hanya berjalan jika ENVIRONMENT tepat `development`.
 
+## Baseline frontend tanpa transaksi
+
+Untuk menyiapkan login dan master frontend tanpa receiving, stok transaksi, MO,
+package, delivery, telemetry sample atau insiden, gunakan:
+
+```powershell
+.\venv\Scripts\python.exe backend\scripts\seed_demo_ready.py --masters-only --username frontend_admin
+```
+
+Mode ini cocok untuk menguji workflow dari awal. Login memakai tenant `FSOS_DEMO`,
+username dari `--username`, dan password development `DemoFrontend123!`. Mode ini
+tetap hanya boleh dijalankan pada environment development/testing dan bukan database
+production.
+
 ## Data yang dibuat
 
 | Jenis | Isi |

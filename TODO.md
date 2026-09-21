@@ -552,6 +552,8 @@ dashboard/ringkasan bisnis.**
 - [ ] Master data dan authentication.
 - [ ] Device/digital twin: calibration, firmware lifecycle, heartbeat dan telemetry ingestion (docs/12).
 - [ ] Telemetry: ingestion MQTT async, validasi payload, deduplikasi, event storage.
+  Consumer live dan transisi processed atomik sudah aktif; deduplikasi/replay serta
+  observability kegagalan per pesan masih TODO.
 - [ ] Storage dan receiving: pemantauan kondisi dan penerimaan bahan.
 - [ ] Production, packaging, QR, dan asset movement.
 - [ ] Rule engine: konfigurasi, prioritas, versi, simulasi, dan execution log (docs/09).

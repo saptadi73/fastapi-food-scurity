@@ -3,6 +3,7 @@
 This script is additive and idempotent. It never deletes or resets existing data.
 Do not run it against production.
 """
+import argparse
 import asyncio
 import json
 import sys
@@ -117,7 +118,7 @@ async def sync(session, asset_type: str, entity_id: UUID) -> dict:
     return await sync_source(session, ActorScope(TENANT, ACTOR), asset_type, entity_id)
 
 
-async def seed(session) -> dict:
+async def seed(session, *, masters_only: bool = False, username: str = 'frontend-admin') -> dict:
     await session.execute(text('SELECT pg_advisory_xact_lock(20260915, 32)'))
     await session.execute(text("SELECT public.fsos_create_telemetry_partitions('2026-09-01'::date, 3)"))
     created = 0
@@ -132,7 +133,7 @@ async def seed(session) -> dict:
     password_hash = await hash_password_async(PASSWORD)
     created += await ensure(session, User, 'user_id', ACTOR, {
         'tenant_id': TENANT,
-        'username': 'frontend-admin',
+        'username': username,
         'fullname': 'Frontend Demo Admin',
         'email': 'frontend-admin@example.invalid',
         'password_hash': password_hash,
@@ -234,6 +235,24 @@ async def seed(session) -> dict:
     ]
     for model, pk_name, pk, values in masters:
         created += await ensure(session, model, pk_name, pk, values)
+
+    if masters_only:
+        for asset_type, entity_id in (
+            ('KITCHEN', kitchen), ('STORAGE', cold), ('STORAGE', dry),
+            ('DEVICE', temp_device), ('DEVICE', gps_device), ('DEVICE', vehicle_temp_device),
+            ('SUPPLIER', supplier), ('RAW_MATERIAL', material_rice),
+            ('RAW_MATERIAL', material_chicken), ('SCHOOL', school), ('VEHICLE', vehicle),
+        ):
+            await sync(session, asset_type, entity_id)
+        return {
+            'tenant_id': str(TENANT),
+            'username': username,
+            'password': PASSWORD,
+            'created': int(created),
+            'created_grants': int(grant_count),
+            'mode': 'masters-only',
+            'transactions_created': 0,
+        }
 
     receiving = did('receiving:001')
     batch_rice = did('raw-batch:rice:001')
@@ -400,7 +419,7 @@ async def seed(session) -> dict:
 
     return {
         'tenant_id': str(TENANT),
-        'username': 'frontend-admin',
+        'username': username,
         'password': PASSWORD,
         'created': int(created),
         'created_grants': int(grant_count),
@@ -417,12 +436,18 @@ async def seed(session) -> dict:
 
 async def main():
     try:
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument('--masters-only', action='store_true',
+                            help='Create login, grants and operational masters without transactions')
+        parser.add_argument('--username', default='frontend-admin',
+                            help='Development login username; default frontend-admin')
+        args = parser.parse_args()
         settings = get_settings()
         if settings.environment not in {'development', 'testing'}:
             raise ValueError('Demo seed requires ENVIRONMENT=development or testing')
         factory = async_sessionmaker(get_admin_engine())
         async with factory() as session, session.begin():
-            result = await seed(session)
+            result = await seed(session, masters_only=args.masters_only, username=args.username)
         print(json.dumps(result, default=str))
         return 0
     except Exception as exc:  # noqa: BLE001 - keep secrets/URLs out of logs

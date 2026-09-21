@@ -46,8 +46,8 @@ UPDATES = {
 
 async def provision_runtime_role(connection):
     await connection.execute(text('SELECT pg_advisory_xact_lock(20260911, 17)'))
-    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260920_0034')")):
-        raise ValueError('Runtime grant profile requires migration 0034; review it when schema changes')
+    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260921_0035')")):
+        raise ValueError('Runtime grant profile requires migration 0035; review it when schema changes')
     existing = (await connection.execute(text("""
         SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
                shobj_description(oid, 'pg_authid') AS marker FROM pg_roles WHERE rolname='fsos_runtime'
@@ -88,4 +88,4 @@ async def provision_runtime_role(connection):
         await connection.execute(text(f'GRANT UPDATE (version) ON public.{table} TO fsos_runtime'))
     await connection.execute(text('REVOKE ALL ON FUNCTION public.fsos_create_telemetry_partitions(date, integer) FROM PUBLIC, fsos_runtime'))
     await connection.execute(text('GRANT EXECUTE ON FUNCTION public.fsos_capture_rule_revision() TO fsos_runtime'))
-    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260920_0034'}
+    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260921_0035'}

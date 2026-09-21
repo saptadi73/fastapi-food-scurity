@@ -30,6 +30,9 @@ Pembacaan suhu makanan melalui HTTP harus menyertakan target batch atau package
 yang memiliki binding aktif. Data suhu tetap append-only pada `temperature_log`;
 MQTT consumer live sekarang tersedia secara opt-in melalui konfigurasi worker;
 consumer menyimpan `mqtt_message_log` lalu menulis `gps_log`/`temperature_log`.
+Setelah penulisan telemetry berhasil, consumer mengubah `processed` satu arah dari
+false ke true. Trigger database menolak perubahan payload/identitas, transisi balik,
+DELETE dan TRUNCATE; kegagalan telemetry me-rollback pesan dan log turunannya.
 Deduplicasi berbasis message identifier broker belum aktif dan event transport
 publik tetap belum tersedia.
 Repository kitchen juga belum menerbitkan event; create/update/soft delete hanya

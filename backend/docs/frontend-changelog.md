@@ -116,6 +116,21 @@
   waktu event terbaru, prefix filter, dan pagination. Keduanya bukan live broker
   discovery; Device dan binding tetap dibuat melalui master API.
 
+## 2026-09-21 - Perbaikan transaksi consumer MQTT
+
+- Migrasi `20260921_0035` mengizinkan transisi terkontrol `mqtt_message_log.processed` dari false ke true setelah temperature/GPS log berhasil ditulis. Payload, topic, tenant, identitas, transisi balik, DELETE dan TRUNCATE tetap ditolak.
+- Memperbaiki rollback pesan untuk device yang sudah cocok topic/event/sensor. Endpoint dan payload frontend tidak berubah; setelah migrasi, event baru dapat tampil di Monitor Suhu dan tracking.
+
+## 2026-09-21 - Seed baseline frontend tanpa transaksi
+
+- `backend/scripts/seed_demo_ready.py --masters-only --username frontend_admin` menyiapkan tenant/login/permission dan master operasional `FSOS_DEMO` tanpa receiving, production batch, package, delivery, telemetry sample, complaint atau recall.
+- Mode ini memungkinkan frontend menguji workflow dari awal tanpa pilihan MO kedaluwarsa. Tidak ada perubahan endpoint atau kontrak HTTP.
+
+## 2026-09-21 - Pembersihan pilihan production batch stale
+
+- Halaman frontend `Paket & QR` sekarang menghapus pilihan production batch dari dropdown ketika endpoint allocation mengembalikan `404`, membersihkan query `batch` yang tidak valid, dan memilih batch `COMPLETED` berikutnya bila tersedia.
+- Error selain `404` tetap ditampilkan dan tidak menghapus pilihan karena record mungkin masih ada tetapi gagal dimuat akibat permission, konflik data, atau gangguan server. Tidak ada perubahan endpoint maupun kontrak backend.
+
 ## 2026-09-17 - Routing jalan fleet Google Routes API
 
 - Estimasi pada create/depart delivery dan `GET /api/v1/deliveries/{identifier}/tracking` sekarang hanya memakai Google Routes API `computeRouteMatrix`, tanpa Mapbox, OSRM atau Haversine.

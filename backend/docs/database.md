@@ -118,10 +118,12 @@ Tahap ketiga belas menambahkan telemetry sensor berpartisi (docs/08):
 - `mqtt_message_log` menyimpan UUID internal pesan, tenant, topic, QoS 0..2,
   payload byte asli, received_at, dan snapshot processed. mqtt_message_id pada
   sensor merujuk UUID internal ini, bukan packet identifier MQTT yang bisa dipakai ulang.
-- Seluruh bukti sensor/pesan append-only dengan trigger UPDATE/DELETE/TRUNCATE.
+- Seluruh bukti sensor append-only dengan trigger UPDATE/DELETE/TRUNCATE.
   Trigger row diwariskan ke partisi; trigger TRUNCATE dipasang juga di tiap child.
-  processed adalah snapshot saat pencatatan, bukan flag antrean yang boleh diubah;
-  status retry/worker memerlukan tabel terpisah pada tahap ingestion.
+  Bukti pesan MQTT tetap menolak DELETE/TRUNCATE dan perubahan payload/identitas;
+  hanya `processed` yang boleh berubah satu arah dari false ke true bersama kolom
+  audit update setelah telemetry berhasil ditulis. Retry/replay tetap memerlukan
+  mekanisme terpisah.
 - Belum ada koneksi Mosquitto, parser ingestion, retention/archive, atau jadwal
   pembuatan partisi production. Maintenance development sudah dijadwalkan melalui
   [task Windows dan rolling check/ensure](telemetry-maintenance.md); fsos kini
