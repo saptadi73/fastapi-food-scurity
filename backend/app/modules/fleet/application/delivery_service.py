@@ -313,7 +313,7 @@ class DeliveryService(PackageService):
         if action == 'depart':
             await self.available_resources(current, excluding=identifier)
         now = datetime.now(UTC)
-        eta = payload.estimated_arrival_time
+        eta = payload.estimated_arrival_time if action == 'depart' else None
         if action == 'depart' and eta is None:
             eta = (await self.estimate_route(parents['kitchen_id'], parents['schools'],
                                              anchor=now))['estimated_arrival_time']

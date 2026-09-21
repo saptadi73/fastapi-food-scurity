@@ -299,7 +299,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | POST | `/api/v1/telemetry/gps` | Ingest GPS armada HTTP | vehicle_uuid, lat/lon, speed opsional | 201 |
 | POST | `/api/v1/telemetry/temperatures` | Ingest suhu device/storage HTTP | device_uuid, storage_uuid opsional, temperature/unit | 201 |
 | POST | `/api/v1/deliveries/{identifier}/depart` | Berangkat | expected_version/estimated_arrival_time | 200 |
-| POST | `/api/v1/deliveries/{identifier}/complete` | Konfirmasi perjalanan selesai | expected_version | 200 |
+| POST | `/api/v1/deliveries/{identifier}/complete` | Konfirmasi perjalanan selesai; ETA tidak dikirim ulang | expected_version | 200 |
 | POST | `/api/v1/deliveries/{identifier}/cancel` | Batalkan CREATED | expected_version | 200 |
 | POST | `/api/v1/receivings` | Buat penerimaan + item/batch | Header + items | 201 |
 | GET | `/api/v1/receivings` | Daftar header penerimaan | Tidak ada; filter/pagination | 200 |

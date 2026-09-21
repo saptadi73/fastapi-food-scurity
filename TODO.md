@@ -72,6 +72,10 @@ Perbaikan storage 2026-09-22: frontend memilih storage tujuan pada penerimaan,
 langsung menjalankan putaway setelah batch diterima, dan mengisi storage/version
 secara otomatis serta read-only saat mulai produksi.
 
+Perbaikan delivery 2026-09-22: transisi complete tidak lagi mengakses field ETA
+khusus departure, sehingga delivery `IN_TRANSIT` dapat selesai dan paket menjadi
+`DELIVERED` sesuai kontrak.
+
 Ketentuan pelaksanaan:
 
 - Selesaikan alur modul secara utuh: operasi API, aturan/transisi bisnis, transaksi,

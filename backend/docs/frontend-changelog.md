@@ -1,5 +1,13 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-22 - Perbaikan penyelesaian delivery
+
+- `POST /api/v1/deliveries/{identifier}/complete` tidak lagi gagal karena service
+  mencoba membaca `estimated_arrival_time` dari payload complete. Field ETA tetap
+  hanya milik payload depart; complete tetap hanya membutuhkan `expected_version`.
+- Tidak ada perubahan request/response frontend. Perbaikan mengaktifkan kembali
+  transisi `IN_TRANSIT` menjadi `COMPLETED` dan paket menjadi `DELIVERED`.
+
 ## 2026-09-22 - QR batch receiving dipersistenkan dan normalisasi scan
 
 - `POST /api/v1/receivings` membuat QR default
