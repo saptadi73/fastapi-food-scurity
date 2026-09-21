@@ -3892,6 +3892,15 @@ Catatan QR: jika `items[].qr_code` tidak dikirim, backend membuat QR stabil
 response. Frontend wajib mencetak `batch.qr_code` dari response, bukan membuat
 QR browser-only.
 
+Alur frontend operasional menerima bahan lalu segera menempatkannya: setelah
+`POST /receivings/{identifier}/complete` mengembalikan batch `ACCEPTED`, frontend
+memanggil `POST /raw-material-batches/{batch_id}/putaway` memakai version batch,
+storage tujuan yang dipilih saat penerimaan, dan seluruh quantity item. Karena itu
+form mulai produksi tidak meminta operator mengetik storage; storage dan version
+diambil dari `GET /raw-material-batches/{identifier}/stock`. Kedua request tetap
+transaksi API terpisah: bila putaway gagal, penerimaan tetap `COMPLETED` dan UI
+menampilkan kegagalan agar operator dapat menyelesaikan penempatan.
+
 ### Upload foto inspeksi penerimaan
 
 Foto tidak lagi diisi sebagai path bebas pada frontend. Upload dilakukan terlebih

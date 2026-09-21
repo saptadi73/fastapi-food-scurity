@@ -68,6 +68,10 @@ default), resolver batch dan paket menormalisasi whitespace hasil kamera, label
 menggunakan QR dari response API, serta scanner bahan/storage dan sumber produksi
 memakai resolver QR tenant-scoped secara langsung.
 
+Perbaikan storage 2026-09-22: frontend memilih storage tujuan pada penerimaan,
+langsung menjalankan putaway setelah batch diterima, dan mengisi storage/version
+secara otomatis serta read-only saat mulai produksi.
+
 Ketentuan pelaksanaan:
 
 - Selesaikan alur modul secara utuh: operasi API, aturan/transisi bisnis, transaksi,

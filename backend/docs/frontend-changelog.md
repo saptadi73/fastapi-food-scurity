@@ -15,6 +15,11 @@
 - Scanner pengeluaran bahan dan scanner sumber produksi sekarang selalu memakai
   `GET /api/v1/raw-material-batches/resolve`; pencarian daftar dan shortcut UUID
   tidak lagi dipakai sebagai pengganti validasi QR tenant-scoped.
+- Form penerimaan sekarang meminta storage tujuan dan, setelah receiving selesai,
+  otomatis menjalankan putaway seluruh quantity. Pada mulai produksi, storage dan
+  version menjadi read-only serta diisi dari saldo batch; operator tidak mengetik
+  UUID storage ulang. Receiving dan putaway tetap dua transaksi API sehingga
+  kegagalan putaway tidak membatalkan receiving yang sudah completed.
 
 ## 2026-09-21 - Fallback jarak tracking dan binding GPS idempoten
 
