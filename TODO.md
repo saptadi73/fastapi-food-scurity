@@ -64,8 +64,9 @@ pemasok dan nama bahan baku pada tabel. UUID tetap dipakai untuk request dan
 identitas sistem, bukan sebagai label yang harus dihafalkan pengguna.
 
 Perbaikan scan 2026-09-22: QR batch receiving dipersistenkan backend (custom atau
-default), resolver batch dan paket menormalisasi whitespace hasil kamera, dan label
-menggunakan QR dari response API.
+default), resolver batch dan paket menormalisasi whitespace hasil kamera, label
+menggunakan QR dari response API, serta scanner bahan/storage dan sumber produksi
+memakai resolver QR tenant-scoped secara langsung.
 
 Ketentuan pelaksanaan:
 

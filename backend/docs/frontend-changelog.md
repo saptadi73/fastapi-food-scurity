@@ -9,6 +9,12 @@
 - Resolver batch memangkas whitespace hasil kamera sebelum lookup.
 - Resolver paket juga memangkas whitespace sebelum memvalidasi
   `fsos:package:<UUID>`; permission, tenant isolation, dan status error tetap.
+- Frontend penerimaan tidak lagi membuat `QR-<kode batch>` saat input QR kosong.
+  Nilai `null` dikirim agar backend menerbitkan identitas kanonik, lalu label selalu
+  memakai `data.items[].batch.qr_code` dari response/list API.
+- Scanner pengeluaran bahan dan scanner sumber produksi sekarang selalu memakai
+  `GET /api/v1/raw-material-batches/resolve`; pencarian daftar dan shortcut UUID
+  tidak lagi dipakai sebagai pengganti validasi QR tenant-scoped.
 
 ## 2026-09-21 - Fallback jarak tracking dan binding GPS idempoten
 

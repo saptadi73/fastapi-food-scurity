@@ -307,6 +307,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | POST | `/api/v1/receivings/{identifier}/complete` | Selesaikan inspeksi | expected_version + seluruh keputusan item | 200 |
 | POST | `/api/v1/receivings/{identifier}/cancel` | Batalkan CREATED | expected_version | 200 |
 | GET | `/api/v1/raw-material-batches` | Daftar batch bahan | Tidak ada; filter/pagination | 200 |
+| GET | `/api/v1/raw-material-batches/resolve` | Resolve QR batch bahan | Tidak ada; `qr_code` query wajib | 200 |
 | GET | `/api/v1/raw-material-batches/{identifier}` | Detail batch bahan | Tidak ada | 200 |
 
 ### GET /api/v1/health
@@ -3879,8 +3880,9 @@ menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibat
 | GET `/raw-material-batches/{identifier}` | Detail batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchData |
 
 Resolver QR mencocokkan QR yang tersimpan pada tenant sesi setelah trim whitespace
-dan mengembalikan
-data batch. Frontend kemudian mengambil `/raw-material-batches/{identifier}/stock`
+dan mengembalikan data batch. Frontend harus memakai resolver ini untuk hasil scan,
+bukan pencarian daftar berdasarkan `batch_code`. Frontend kemudian mengambil
+`/raw-material-batches/{identifier}/stock`
 untuk mengisi versi batch, storage dengan stok tersedia, dan quantity secara otomatis.
 QR yang tidak ditemukan atau milik tenant lain mengembalikan 404. Frontend wajib
 mencetak nilai `batch.qr_code` dari response API, bukan membuat QR browser-only.
@@ -3964,7 +3966,7 @@ menyertakan items.
 | items[].condition | string | Tidak / ya / null | 1..100 karakter; kondisi visual/manual bahan saat diterima, misalnya `GOOD`, `DAMAGED`, atau catatan singkat |
 | items[].photo | string | Tidak / ya / null | 1..1024 karakter; gunakan `data.reference` dari `POST /uploads/receiving-photo` |
 | items[].expired_date | date YYYY-MM-DD | Tidak / ya / null | Batch kedaluwarsa boleh dicatat agar bisa ditolak |
-| items[].qr_code | string | Tidak / ya / null | Trim, 1..255; unik per tenant dan dalam request jika bukan null |
+| items[].qr_code | string | Tidak / ya / null | Trim, 1..255; unik per tenant dan dalam request jika bukan null. Null/omitted membuat backend menerbitkan `fsos:raw-material-batch:<UUID>` |
 
 Field ekstra ditolak pada seluruh object payload. String harus UTF-8 valid, tanpa
 NUL. Bool tidak diterima sebagai angka. `uom` diambil dari master bahan dan disimpan
@@ -4143,7 +4145,7 @@ CANCELLED, accepted null, version ketiganya 2. Semua field lain tetap.
           "batch_code": "BATCH-EXAMPLE-001",
           "expired_date": null,
           "status": "CREATED",
-          "qr_code": null
+          "qr_code": "fsos:raw-material-batch:66666666-6666-4666-8666-666666666666"
         }
       }
     ]
