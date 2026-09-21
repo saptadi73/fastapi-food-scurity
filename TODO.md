@@ -63,6 +63,10 @@ Catatan frontend/master 2026-09-20: relasi pemasok-bahan kini menampilkan nama
 pemasok dan nama bahan baku pada tabel. UUID tetap dipakai untuk request dan
 identitas sistem, bukan sebagai label yang harus dihafalkan pengguna.
 
+Perbaikan scan 2026-09-22: QR batch receiving dipersistenkan backend (custom atau
+default), resolver batch dan paket menormalisasi whitespace hasil kamera, dan label
+menggunakan QR dari response API.
+
 Ketentuan pelaksanaan:
 
 - Selesaikan alur modul secara utuh: operasi API, aturan/transisi bisnis, transaksi,

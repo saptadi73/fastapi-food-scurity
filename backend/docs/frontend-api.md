@@ -3878,10 +3878,17 @@ menggunakan kode batch/QR baru. Kode lama tetap dicadangkan, termasuk yang dibat
 | GET `/raw-material-batches/resolve?qr_code=...` | Resolve QR batch untuk scanner, `RawMaterialBatch.Read` | Query `qr_code` wajib, 1..255 | 200, BatchData |
 | GET `/raw-material-batches/{identifier}` | Detail batch, `RawMaterialBatch.Read` | Tidak ada | 200, BatchData |
 
-Resolver QR hanya mencocokkan QR yang tersimpan pada tenant sesi dan mengembalikan
+Resolver QR mencocokkan QR yang tersimpan pada tenant sesi setelah trim whitespace
+dan mengembalikan
 data batch. Frontend kemudian mengambil `/raw-material-batches/{identifier}/stock`
 untuk mengisi versi batch, storage dengan stok tersedia, dan quantity secara otomatis.
-QR yang tidak ditemukan atau milik tenant lain mengembalikan 404.
+QR yang tidak ditemukan atau milik tenant lain mengembalikan 404. Frontend wajib
+mencetak nilai `batch.qr_code` dari response API, bukan membuat QR browser-only.
+
+Catatan QR: jika `items[].qr_code` tidak dikirim, backend membuat QR stabil
+`fsos:raw-material-batch:<raw_material_batch_id>` dan mengembalikannya pada
+response. Frontend wajib mencetak `batch.qr_code` dari response, bukan membuat
+QR browser-only.
 
 ### Upload foto inspeksi penerimaan
 

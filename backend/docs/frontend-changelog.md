@@ -1,5 +1,15 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-22 - QR batch receiving dipersistenkan dan normalisasi scan
+
+- `POST /api/v1/receivings` membuat QR default
+  `fsos:raw-material-batch:<raw_material_batch_id>` jika `items[].qr_code` tidak
+  dikirim. Nilai dikembalikan pada `data.items[].batch.qr_code` dan dipakai saat
+  mencetak label.
+- Resolver batch memangkas whitespace hasil kamera sebelum lookup.
+- Resolver paket juga memangkas whitespace sebelum memvalidasi
+  `fsos:package:<UUID>`; permission, tenant isolation, dan status error tetap.
+
 ## 2026-09-21 - Fallback jarak tracking dan binding GPS idempoten
 
 - Tracking delivery tetap mengisi jarak/durasi estimasi berbasis garis lurus jika

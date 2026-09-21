@@ -59,6 +59,7 @@ class PackageService(ReceivingService):
 
     async def resolve(self, payload):
         await require_permission(self.db, self.scope, 'Package.Read')
+        payload = payload.strip()
         try:
             if not payload.startswith('fsos:package:'):
                 raise ValueError()

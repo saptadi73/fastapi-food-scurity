@@ -67,6 +67,7 @@ class ReceivingService:
 
     async def resolve_batch_qr(self, qr_code):
         await require_permission(self.db, self.scope, 'RawMaterialBatch.Read')
+        qr_code = qr_code.strip()
         row = (await self.db.execute(select(RawMaterialBatch.__table__).where(
             *self.visible(RawMaterialBatch), RawMaterialBatch.qr_code == qr_code
         ))).mappings().one_or_none()
@@ -144,9 +145,13 @@ class ReceivingService:
         await sync_source(self.db, self.scope, 'RECEIVING', identifier)
         for item in payload.items:
             batch_id = uuid4()
+            # QR must be a server-persisted identity. When the UI does not
+            # provide a custom value, issue one before returning the receipt.
+            qr_code = item.qr_code or f'fsos:raw-material-batch:{batch_id}'
             await self.db.execute(insert(RawMaterialBatch.__table__).values(
                 raw_material_batch_id=batch_id, receiving_id=identifier, supplier_id=payload.supplier_id,
-                **item.model_dump(exclude={'quantity', 'temperature', 'condition', 'photo'}),
+                **item.model_dump(exclude={'quantity', 'temperature', 'condition', 'photo', 'qr_code'}),
+                qr_code=qr_code,
                 status='CREATED', **self.audit))
             await self.db.execute(insert(ReceivingItem.__table__).values(
                 receiving_item_id=uuid4(), receiving_id=identifier, raw_material_batch_id=batch_id,

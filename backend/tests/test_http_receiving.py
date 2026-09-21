@@ -74,7 +74,7 @@ async def test_receiving_business_flow():
                     headers = {'Authorization': f"Bearer {pair['access_token']}"}
                     body = {'supplier_id': str(seed_id('supplier')), 'kitchen_id': str(seed_id('kitchen')),
                             'received_at': '2026-01-01T08:00:00+07:00', 'items': [
-                                {'raw_material_id': str(seed_id('material')), 'batch_code': 'RECEIPT-OK', 'quantity': '2.500000', 'temperature': '3.20'},
+                                {'raw_material_id': str(seed_id('material')), 'batch_code': 'RECEIPT-OK', 'quantity': '2.500000', 'temperature': '3.20', 'qr_code': 'QR-RB-RECEIPT-OK'},
                                 {'raw_material_id': str(seed_id('material')), 'batch_code': 'RECEIPT-REJECT', 'quantity': '1', 'expired_date': '2020-01-01'}]}
                     for bad in ({**body, 'supplier_id': str(foreign)}, {**body, 'kitchen_id': str(uuid4())}):
                         assert (await client.post(url, headers=headers, json=bad)).status_code == 409
@@ -111,6 +111,10 @@ async def test_receiving_business_flow():
                     assert (await client.post(f'{url}/{rid}/cancel', headers=headers, json={'expected_version': 2})).status_code == 409
                     accepted = next(i for i in done['items'] if i['accepted'])
                     bid = accepted['raw_material_batch_id']
+                    assert accepted['batch']['qr_code'] == 'QR-RB-RECEIPT-OK'
+                    resolved = await client.get('/api/v1/raw-material-batches/resolve', headers=headers,
+                                                params={'qr_code': ' QR-RB-RECEIPT-OK\n'})
+                    assert resolved.status_code == 200 and resolved.json()['data']['raw_material_batch_id'] == bid
                     assert (await client.get(f'/api/v1/raw-material-batches/{bid}', headers=headers)).json()['data'] == accepted['batch']
                     batches = (await client.get('/api/v1/raw-material-batches', headers=headers, params={'receiving_id': rid, 'limit': 1})).json()['data']
                     assert len(batches['items']) == 1 and batches['next_offset'] == 1
@@ -199,7 +203,7 @@ async def test_receiving_business_flow():
 def test_receiving_openapi():
     schema = create_app().openapi()
     paths = {p: ops for p, ops in schema['paths'].items() if p.startswith(('/api/v1/receivings', '/api/v1/raw-material-batches'))}
-    assert sum(len(ops) for ops in paths.values()) == 11
+    assert sum(len(ops) for ops in paths.values()) == 14
     for ops in paths.values():
         for operation in ops.values():
             assert '422' not in operation['responses']

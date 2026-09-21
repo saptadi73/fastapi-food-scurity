@@ -115,7 +115,7 @@ async def list_batches(request: Request, service: ServiceDep, offset: Offset = 0
 
 
 @router.get('/raw-material-batches/resolve', response_model=BatchEnvelope,
-    description='RawMaterialBatch.Read. Resolve exact QR batch pada tenant sesi menjadi RawMaterialBatchData. Query qr_code wajib; missing/foreign/deleted returns 404.')
+    description='RawMaterialBatch.Read. Resolve persisted QR batch pada tenant sesi menjadi RawMaterialBatchData; surrounding whitespace is ignored. Query qr_code wajib; missing/foreign/deleted returns 404.')
 async def resolve_batch_qr(request: Request, qr_code: Annotated[str, Query(min_length=1, max_length=255)], service: ServiceDep):
     return envelope(request, data=await service.resolve_batch_qr(qr_code.strip()))
 

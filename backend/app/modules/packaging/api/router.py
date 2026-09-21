@@ -69,7 +69,7 @@ async def listing(request: Request, service: ServiceDep, offset: Offset = 0, lim
 
 
 @router.get('/packages/resolve', response_model=PackageEnvelope,
-    description='Package.Read. No body; qr_payload query required, fsos:package:<UUID>. Identity is not authorization. Foreign/missing package 404; malformed payload 409.')
+    description='Package.Read. No body; qr_payload query required, surrounding whitespace ignored, fsos:package:<UUID>. Identity is not authorization. Foreign/missing package 404; malformed payload 409.')
 async def resolve(request: Request, service: ServiceDep, qr_payload: Annotated[str, Query(min_length=1, max_length=100)]):
     return envelope(request, data=await service.resolve(qr_payload))
 

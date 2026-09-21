@@ -311,7 +311,7 @@ async def test_packaging_business_flow():
 def test_packaging_openapi():
     schema = create_app().openapi()
     paths = {p: ops for p, ops in schema['paths'].items() if p.startswith(('/api/v1/packages', '/api/v1/packaging-types')) or p.endswith('/packaging')}
-    assert sum(len(ops) for ops in paths.values()) == 13
+    assert sum(len(ops) for ops in paths.values()) == 14
     for ops in paths.values():
         for operation in ops.values():
             assert '422' not in operation['responses']

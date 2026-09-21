@@ -362,6 +362,11 @@ outbox, broker acknowledgment, replay worker atau endpoint pembacaan event.
 Kegagalan penulisan event menggagalkan keseluruhan transaksi bisnis. Database
 snapshot ini belum dapat diasumsikan sebagai kontrak publik transport masa depan.
 
+Sejak 2026-09-22, `receiving.created` membawa QR batch yang selalu non-null:
+nilai custom dari request dipertahankan, sedangkan nilai yang tidak dikirim dibuat
+server dengan format `fsos:raw-material-batch:<raw_material_batch_id>`. Ini tidak
+membuat event baru dan tidak mengubah ordering, retry, deduplikasi, atau channel.
+
 Contoh payload aktif receiving.created (UUID fiktif); receiving.completed/cancelled
 menggunakan struktur sama dengan snapshot final dan actor penyelesaian:
 
