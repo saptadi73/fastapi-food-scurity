@@ -30,6 +30,7 @@ class User(AuditMixin, Base):
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenant.tenant_id", ondelete="RESTRICT"))
     username: Mapped[str] = mapped_column(String(100))
     fullname: Mapped[str] = mapped_column(String(200))
+    job_title: Mapped[str | None] = mapped_column(String(150))
     email: Mapped[str] = mapped_column(String(254))
     # Belum memiliki password saat provisioning; hashing dilakukan service autentikasi.
     password_hash: Mapped[str | None] = mapped_column(String(255), deferred=True)
@@ -38,6 +39,30 @@ class User(AuditMixin, Base):
 
 Index("uq_user_tenant_username", User.tenant_id, func.lower(func.btrim(User.username)), unique=True)
 Index("uq_user_tenant_email", User.tenant_id, func.lower(func.btrim(User.email)), unique=True)
+
+
+class UserLocationAssignment(AuditMixin, Base):
+    __tablename__ = "user_location_assignment"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "user_id"], ["app_user.tenant_id", "app_user.user_id"],
+                             name="fk_user_location_tenant_user", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "kitchen_id"], ["kitchen.tenant_id", "kitchen.kitchen_id"],
+                             name="fk_user_location_tenant_kitchen", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["tenant_id", "school_id"], ["school.tenant_id", "school.school_id"],
+                             name="fk_user_location_tenant_school", ondelete="RESTRICT"),
+        CheckConstraint("location_type IN ('KITCHEN','SCHOOL')", name="ck_user_location_type"),
+        CheckConstraint("(location_type = 'KITCHEN' AND kitchen_id IS NOT NULL AND school_id IS NULL) OR "
+                        "(location_type = 'SCHOOL' AND school_id IS NOT NULL AND kitchen_id IS NULL)",
+                        name="ck_user_location_target"),
+        CheckConstraint("version >= 1", name="ck_user_location_version"),
+        Index("ix_user_location_tenant_user", "tenant_id", "user_id"),
+    )
+    assignment_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID]
+    user_id: Mapped[UUID]
+    location_type: Mapped[str] = mapped_column(String(20))
+    kitchen_id: Mapped[UUID | None]
+    school_id: Mapped[UUID | None]
 
 
 class Role(AuditMixin, Base):

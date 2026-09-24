@@ -6447,3 +6447,44 @@ request, bukan agregat materialized, cache, event stream, alarm, atau indikator 
 
 
 
+
+## Administrasi identitas operasional (tahap 1, 2026-09-24)
+
+Semua endpoint berikut memakai Bearer access token dan tenant dari token. Password tidak pernah dikembalikan atau dimasukkan ke event/log.
+
+### `GET /api/v1/users/roles`
+Permission `User.Read`. Tanpa body. Mengembalikan array `role_id`, `role_code`, `role_name`. Error `401` untuk sesi tidak valid dan `403` jika permission tidak diberikan.
+
+### `GET /api/v1/users`
+Permission `User.Read`. Query `status` opsional (`ACTIVE|INACTIVE|LOCKED`), `offset` default 0, `limit` default 20/maksimum 100. Page berisi profil, role, assignment kitchen/school, `total`, dan `next_offset`; hash password tidak ada.
+
+### `POST /api/v1/users`
+Permission `User.Write` dan `Role.Assign`. Payload:
+```json
+{"username":"operator.school01","fullname":"Operator Sekolah 01","email":"operator.school01@example.invalid","job_title":"Petugas Penerimaan","password":"temporary-passphrase-2026","role_ids":["11111111-1111-1111-1111-111111111111"],"location_assignments":[{"location_type":"SCHOOL","kitchen_id":null,"school_id":"22222222-2222-2222-2222-222222222222"}]}
+```
+Username hanya huruf/angka/titik/underscore/hyphen; password 12-72 byte; role minimal satu dan unik; assignment unik serta target sesuai tipe. Lokasi harus ACTIVE dan satu tenant. Sukses `201` tanpa password. `409` untuk username/email duplikat, role asing/tidak ada, atau lokasi tidak aktif/asing. Efek samping `user.registered` v1.
+### `GET /api/v1/users/{identifier}`
+Permission `User.Read`; tanpa body. Mengembalikan satu profil tenant beserta role dan assignment aktif. UUID tidak valid, user asing, atau user yang tidak ditemukan menghasilkan `404`.
+
+### `PUT /api/v1/users/{identifier}`
+Permission `User.Write` dan `Role.Assign`. Full replacement untuk `fullname`, `email`, `job_title`, `status`, `role_ids`, dan `location_assignments`; `password` nullable dan hanya dikirim bila diganti. `expected_version` wajib untuk optimistic locking. Role minimal satu. Admin tidak dapat mengubah status akunnya sendiri menjadi `INACTIVE`/`LOCKED`. Sukses `200` menaikkan version dan menghasilkan `user.updated`; stale version, email duplikat, role/lokasi tidak valid, atau self-deactivation menghasilkan `409`. Password/hash tidak pernah ada pada respons/event.
+
+```json
+{"expected_version":1,"fullname":"Operator Sekolah 01","email":"operator.school01@example.invalid","job_title":"Petugas Penerimaan","status":"ACTIVE","password":null,"role_ids":["11111111-1111-1111-1111-111111111111"],"location_assignments":[{"location_type":"SCHOOL","school_id":"22222222-2222-2222-2222-222222222222","kitchen_id":null}]}
+```
+## Tanda tangan digital receiving dan complaint (2026-09-24)
+
+Migration `0037` wajib diterapkan. Signature adalah evidence immutable terpisah; transaksi receiving/complaint tidak ditimpa. Penanda tangan harus ACTIVE, mempunyai assignment SCHOOL aktif yang sama dengan target, dan permission sesuai target.
+
+### `POST /api/v1/signatures/targets/{entity_type}/{entity_id}`
+Multipart form: `purpose` string 1..100 dan `file` PNG/WebP maksimum 2 MiB. `entity_type` hanya `SCHOOL_RECEIVING` atau `COMPLAINT`. Permission masing-masing `SchoolReceiving.Sign` atau `Complaint.Sign`. MIME diverifikasi dengan magic bytes. Sukses `201` menyimpan `signed_at` server, snapshot `user_id/fullname/job_title/roles`, UUID file internal, ukuran dan SHA-256. Kombinasi target+purpose hanya sekali. Error: `400` path/form, `401`, `403`, `404` target, `409` assignment/format/duplikat, `413` ukuran. Efek samping `signature.captured` tanpa image.
+
+### `GET /api/v1/signatures/targets/{entity_type}/{entity_id}`
+Permission `Signature.Verify`; tanpa body. Mengembalikan metadata signature terbaru untuk target atau `404`. `storage_reference` sengaja tidak dikembalikan; preview melalui endpoint terotorisasi.
+
+### `GET /api/v1/signatures/evidence/{signature_id}/image`
+Permission `Signature.Verify`. Mengirim byte PNG/WebP dari path yang direkonstruksi memakai tenant dan UUID, bukan path input pengguna. `404` bila metadata/file tidak ada.
+
+### `POST /api/v1/signatures/evidence/{signature_id}/verify`
+Permission `Signature.Verify`; tanpa body. Menghitung ulang hash dan mengembalikan `verification_status` (`VERIFIED`, `MISMATCH`, `MISSING`) serta `calculated_sha256_hex`. Evidence tidak dimutasi. Efek samping audit `signature.verified`.

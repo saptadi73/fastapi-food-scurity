@@ -18,6 +18,7 @@ from app.core.database.session import close_database, get_engine
 from app.core.responses.envelope import Envelope, envelope
 from app.modules.authentication.api.rate_limit import AuthLimitMiddleware, AuthRateLimiter
 from app.modules.authentication.api.router import router as auth_router
+from app.modules.authentication.api.users import router as users_router
 from app.modules.complaint.api import router as complaints_router
 from app.modules.consumption.api.workflow import router as school_workflow_router
 from app.modules.dashboard.api import router as dashboard_router
@@ -42,6 +43,7 @@ from app.modules.notification.api import router as notifications_router
 from app.modules.packaging.api.router import router as packages_router
 from app.modules.production.api.router import router as production_router
 from app.modules.recall.api import router as recalls_router
+from app.modules.signature.api import router as signatures_router
 from app.modules.receiving.api.router import router as receiving_router
 from app.modules.telemetry.api.alarms import router as telemetry_alarm_router
 from app.modules.telemetry.api.ingestion import router as telemetry_ingestion_router
@@ -90,6 +92,7 @@ def create_app() -> FastAPI:
     )
     app.state.auth_limiter = AuthRateLimiter()
     app.include_router(auth_router, prefix=settings.api_prefix)
+    app.include_router(users_router, prefix=settings.api_prefix)
     app.include_router(holding_router, prefix=settings.api_prefix)
     app.include_router(alarm_router, prefix=settings.api_prefix)
     app.include_router(telemetry_alarm_router, prefix=settings.api_prefix)
@@ -115,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(deliveries_router, prefix=settings.api_prefix)
     app.include_router(complaints_router, prefix=settings.api_prefix)
     app.include_router(recalls_router, prefix=settings.api_prefix)
+    app.include_router(signatures_router, prefix=settings.api_prefix)
     app.include_router(notifications_router, prefix=settings.api_prefix)
     app.include_router(traceability_router, prefix=settings.api_prefix)
     app.include_router(packages_router, prefix=settings.api_prefix)

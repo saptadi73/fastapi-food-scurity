@@ -790,3 +790,30 @@ GET tidak membuat event. Snapshot event tidak berubah ketika timer paket bergera
 Effective_status paket terminal CONSUMED/REJECTED/DISCARDED kini tetap terminal,
 sedangkan timer_status dan remaining di GET tetap live.
 
+
+## `user.registered` v1
+- Status: aktif setelah migration/API tahap identitas 1.
+- Trigger/producer: sukses `POST /api/v1/users`; authentication user service.
+- Consumer/transport: audit internal melalui `event_log`; belum ada broker.
+- Tenant/auth: tenant access token; `User.Write` dan `Role.Assign`.
+- Entity/order: `USER`/`user_id`; commit transaksi menjadi batas ordering.
+- Payload: `schema_version`, `actor_id`, `user_id`, `role_ids`, `location_assignment_ids`; tanpa password, hash, email, atau image.
+- Deduplikasi/retry/replay: satu event dalam transaksi create; duplikat username/email ditolak; tidak ada replay publik.
+## `user.updated` v1
+- Status: aktif.
+- Trigger/producer: sukses `PUT /api/v1/users/{identifier}`; authentication user service.
+- Consumer/transport: audit internal `event_log`; belum ada broker.
+- Tenant/auth: tenant access token; `User.Write` dan `Role.Assign`.
+- Payload: `schema_version`, `actor_id`, `user_id`, `status`, `version`, `role_ids`, `location_assignment_ids`, dan boolean `password_changed`. Password/hash dan data signature tidak disimpan.
+- Ordering/deduplikasi: optimistic locking `expected_version`; stale request ditolak `409` dan tidak menghasilkan event.
+## `signature.captured` v1
+- Status: aktif; producer endpoint capture signature, tersimpan internal pada `event_log`.
+- Tenant/auth: access token, permission sign sesuai entity dan assignment sekolah aktif.
+- Entity/order: target `SCHOOL_RECEIVING` atau `COMPLAINT`; unique target+purpose mencegah duplikat.
+- Payload: `schema_version`, `actor_id`, `signature_id`, `purpose`, `sha256_hex`; tanpa image, storage path, email, atau secret.
+- Retry/replay: retry target+purpose yang sama ditolak `409`; evidence tidak dapat update/delete.
+
+## `signature.verified` v1
+- Status: aktif; trigger `POST /signatures/evidence/{signature_id}/verify`, permission `Signature.Verify`.
+- Payload: `schema_version`, `actor_id`, `signature_id`, `verification_status`; verifikasi tidak mengubah evidence.
+- Ordering/replay: setiap verifikasi menghasilkan audit event baru; consumer harus memperlakukan event sebagai pemeriksaan, bukan perubahan status evidence.

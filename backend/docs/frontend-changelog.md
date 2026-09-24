@@ -953,3 +953,16 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 
 
 
+
+## 2026-09-24 - Fondasi identitas operasional tahap 1
+- Menambahkan `GET /users/roles`, `GET /users`, dan `POST /users` untuk registrasi user tenant, role, jabatan, serta assignment kitchen/school.
+- `password` write-only; permission yang diperlukan `User.Read`, `User.Write`, dan `Role.Assign`. Migration `0036` memberi grant awal hanya kepada role admin yang dikenal.
+- Signature receiving/incident belum aktif pada tahap ini; frontend tidak boleh menampilkan status signed sebelum kontrak evidence tahap berikutnya tersedia.
+## 2026-09-24 - Administrasi user tahap 2 backend
+- Menambahkan `GET /users/{identifier}` dan `PUT /users/{identifier}`.
+- Update memakai `expected_version`, full replacement role/assignment, password opsional write-only, dan menolak self-deactivation.
+- Router user kini memakai transaction boundary dependency autentikasi yang sama sehingga tidak membuat nested transaction.
+## 2026-09-24 - Signature evidence tahap backend
+- Menambahkan capture/read/image/verify signature untuk school receiving dan complaint.
+- Frontend wajib mengirim `multipart/form-data`, tidak menyimpan path file, dan memakai endpoint image terotorisasi untuk preview.
+- Capture memerlukan assignment sekolah aktif dan permission sign spesifik; metadata/bytes immutable. Signature pad UI belum aktif pada perubahan ini.

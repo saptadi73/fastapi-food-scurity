@@ -581,6 +581,50 @@ dashboard/ringkasan bisnis.**
   Endpoint Swagger `POST /deliveries/route-estimate` menguji koordinat eksplisit
   memakai key Google Routes backend tanpa fallback.
 - [x] School receiving, konsumsi dan complaint beserta laporan insiden.
+- [ ] **Identitas operasional dan tanda tangan digital.** Implementasikan sebagai
+  prioritas P3 berikutnya sebelum penerimaan/incident dianggap final secara formal:
+  - registrasi dan administrasi user tenant oleh `TENANT_ADMIN`, termasuk status,
+    nama lengkap, jabatan, serta assignment ke kitchen dan/atau school;
+  - role/permission minimum `User.Read`, `User.Write`, `Role.Assign`,
+    `SchoolReceiving.Sign`, `Complaint.Sign`, `Incident.Investigate`,
+    `Incident.Approve`, dan `Signature.Verify` dengan scope tenant/lokasi;
+  - signature evidence untuk school receiving dan complaint/incident: `signed_by`,
+    `signed_at` server-side, snapshot nama/jabatan/role, reference file aman,
+    SHA-256, purpose, version dan status verifikasi;
+  - upload PNG/WebP signature melalui endpoint tenant-scoped dengan validasi ukuran,
+    MIME/content, authorization dan storage reference; jangan menerima path bebas;
+  - signature transaksi final immutable; koreksi memakai amendment/revision dengan
+    alasan dan audit trail, bukan overwrite atau soft replacement bukti lama;
+  - investigator dan approver incident dipisahkan dari reporter bila kebijakan
+    four-eyes aktif; approval akhir menyimpan signature evidence tersendiri;
+  - frontend menyediakan administrasi user/role/location assignment, signature pad
+    mobile, preview/konfirmasi, status signed/verified, serta tampilan signature pada
+    detail penerimaan, complaint dan laporan kejadian;
+  - traceability/event catalog memuat aksi sign/amend/approve tanpa menyimpan image
+    atau secret di payload event; dokumentasi frontend, OpenAPI dan changelog wajib;
+  - tes permission/scope tenant-lokasi, hash integrity, replay/duplicate submission,
+    immutability, amendment, upload berbahaya, dan workflow penerimaan/incident.
+  Tahap 1 (2026-09-24) selesai: migration profil jabatan/assignment lokasi,
+  `GET /users/roles`, `GET /users`, dan `POST /users` menyediakan registrasi
+  tenant-scoped, role assignment, password write-only, validasi lokasi aktif, serta
+  event `user.registered`. Update/deaktivasi user dan seluruh evidence signature
+  tetap terbuka untuk tahap berikutnya.
+  Tahap 2 backend (2026-09-24) selesai: `GET /users/{id}` dan `PUT /users/{id}`
+  menyediakan perubahan profil/status/password, role, serta assignment lokasi dengan
+  optimistic locking dan larangan self-deactivation. UI administrasi user dan
+  signature evidence masih terbuka.
+  Tahap 3 frontend (2026-09-24) selesai: `/config/users` menyediakan daftar,
+  registrasi/edit profil, status, password write-only, role jamak, serta assignment
+  dapur/sekolah. Signature pad dan evidence transaksi tetap terbuka.
+  Tahap 4 backend (2026-09-24) selesai: evidence signature immutable untuk
+  `SCHOOL_RECEIVING` dan `COMPLAINT`, capture PNG/WebP maksimum 2 MiB, snapshot
+  identitas/role, assignment sekolah, SHA-256, preview dan verify endpoint, serta
+  event capture/verify. Signature pad frontend dan amendment/approval incident
+  masih terbuka.
+  Tahap 5 frontend (2026-09-24) selesai: signature pad berbasis Pointer Events,
+  konfirmasi immutable, capture receipt otomatis setelah penerimaan berhasil,
+  aksi signature complaint, metadata signer/hash, serta verifikasi evidence.
+  Amendment dan investigator/approval incident terpisah masih terbuka.
 - [x] Food recall, eksekusi/penutupan, withdrawal dan pelacakan paket terdampak.
 - [ ] Notification melalui email/WhatsApp; outbox dashboard internal sudah aktif.
 - [ ] Integrasi ERP MBG via REST API.
