@@ -562,20 +562,22 @@ dashboard/ringkasan bisnis.**
 
 ## P3 â€” Modul bisnis (docs/05, 09, 12â€“14, 17)
 
-- [ ] Master data dan authentication.
+- [x] Master data dan authentication.
 - [ ] Device/digital twin: calibration, firmware lifecycle, heartbeat dan telemetry ingestion (docs/12).
 - [ ] Telemetry: ingestion MQTT async, validasi payload, deduplikasi, event storage.
   Consumer live dan transisi processed atomik sudah aktif; deduplikasi/replay serta
   observability kegagalan per pesan masih TODO.
-- [ ] Storage dan receiving: pemantauan kondisi dan penerimaan bahan.
-- [ ] Production, packaging, QR, dan asset movement.
+- [x] Storage dan receiving: pemantauan kondisi, penerimaan bahan, QR batch,
+  putaway storage/zone, saldo serta pengeluaran stok.
+- [x] Production, packaging, QR, holding package, dan asset movement.
 - [ ] Rule engine: konfigurasi, prioritas, versi, simulasi, dan execution log (docs/09).
-- [ ] Holding time engine: start/update/finish/expired dan notifikasi (docs/14).
-- [ ] Traceability graph: backward/forward traversal, timeline, passport,
+- [x] Holding time engine: start/update/finish/expired, status kelayakan dan
+  pencatatan event. Pengiriman kanal notifikasi eksternal tetap dicatat terpisah.
+- [x] Traceability graph: backward/forward traversal, timeline, passport,
   root cause, dan impact analysis (docs/13).
-- [ ] Fleet: GPS, perjalanan, geofence, dan riwayat pengiriman.
-- [ ] School receiving dan complaint.
-- [ ] Food recall dan pelacakan paket terdampak.
+- [x] Fleet: GPS, perjalanan, geofence tujuan dan riwayat pengiriman.
+- [x] School receiving, konsumsi dan complaint beserta laporan insiden.
+- [x] Food recall, eksekusi/penutupan, withdrawal dan pelacakan paket terdampak.
 - [ ] Notification melalui email/WhatsApp; outbox dashboard internal sudah aktif.
 - [ ] Integrasi ERP MBG via REST API.
 - [x] Integrasikan Google Routes API sebagai satu-satunya routing fleet untuk
@@ -584,9 +586,14 @@ dashboard/ringkasan bisnis.**
 - [ ] Setiap modul memiliki API, application, domain, infrastructure, schemas,
   dan tes repository/service/rule/API sesuai docs/17.
 
+Audit status P3 2026-09-24: checklist di atas diselaraskan dengan route, service,
+event, traceability dan layar frontend yang aktif. Item parsial tetap terbuka; keberadaan
+schema/tabel saja tidak dianggap penyelesaian.
+
 ## P4 â€” Dashboard dan realtime (docs/15, 16)
 
-- [ ] REST dashboard analytics; home/storage/fleet/holding/recall/notification counter sudah aktif.
+- [x] REST dashboard analytics: home, storage, storage temperature, fleet,
+  holding, recall dan notification counter sudah aktif.
 - [ ] WebSocket dashboard/device/fleet/storage/holding/alarm dengan autentikasi.
 - [ ] Redis cache dan distribusi event antarworker.
 - [ ] Frontend Vue 3 serta integrasi peta dan alarm.

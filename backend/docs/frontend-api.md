@@ -296,6 +296,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/deliveries/packages/by-destination` | Ringkasan kemasan per tujuan | Tanpa body; filter/pagination | 200 |
 | GET | `/api/v1/deliveries/{identifier}` | Detail manifest/perjalanan | Tanpa body | 200 |
 | GET | `/api/v1/deliveries/{identifier}/tracking` | Tracking GPS/suhu terakhir dan sisa jarak/waktu | Tanpa body | 200 |
+| GET | `/api/v1/deliveries/{identifier}/history` | Riwayat GPS dan geofence tujuan | radius_meters/limit | 200 |
 | POST | `/api/v1/telemetry/gps` | Ingest GPS armada HTTP | vehicle_uuid, lat/lon, speed opsional | 201 |
 | POST | `/api/v1/telemetry/temperatures` | Ingest suhu device/storage HTTP | device_uuid, storage_uuid opsional, temperature/unit | 201 |
 | POST | `/api/v1/deliveries/{identifier}/depart` | Berangkat | expected_version/estimated_arrival_time | 200 |
@@ -5365,6 +5366,7 @@ Cache-Control no-store, Pragma no-cache dan X-Request-ID.
 | GET `/deliveries/packages/by-destination` | Ringkasan kemasan per tujuan sekolah | Delivery.Read | Tanpa body; offset/limit/school_id/status | 200 DestinationSummaryPage |
 | GET `/deliveries/{identifier}` | Detail manifest dan paket terkini | Delivery.Read | UUID path; tanpa body/query | 200 DeliveryDetail |
 | GET `/deliveries/{identifier}/tracking` | Tracking GPS/suhu terakhir dan sisa jarak/waktu | Delivery.Read | UUID path; tanpa body/query | 200 TrackingData |
+| GET `/deliveries/{identifier}/history` | Riwayat GPS perjalanan dan evaluasi geofence | Delivery.Read | UUID path; radius_meters/limit | 200 DeliveryHistoryData |
 | POST `/deliveries/{identifier}/depart` | Berangkat + loading | Delivery.Depart | UUID path; DepartureInput; tanpa query | 200 DeliveryDetail |
 | POST `/deliveries/{identifier}/complete` | Konfirmasi seluruh tujuan selesai | Delivery.Complete | UUID path; expected_version; tanpa query | 200 DeliveryDetail |
 | POST `/deliveries/{identifier}/cancel` | Batalkan sebelum berangkat | Delivery.Cancel | UUID path; expected_version; tanpa query | 200 DeliveryDetail |
@@ -5462,6 +5464,28 @@ integer, `package_count` integer, `total_quantity` decimal string, dan `uom` str
 nullable. `uom=null` berarti group berisi paket dengan output UOM berbeda atau UOM
 legacy tidak lengkap. `total_quantity` menjumlahkan package.quantity yang diketahui;
 jumlah kemasan gunakan `package_count`.
+
+Riwayat perjalanan memakai `GET /deliveries/{identifier}/history`, bearer session dan
+permission `Delivery.Read`. Tidak ada request body. Query `radius_meters` berupa integer
+10..5000, default 200; `limit` integer 1..1000, default 500. UUID delivery asing,
+terhapus, atau tidak ditemukan menghasilkan 404; query invalid menghasilkan 400;
+auth/permission mengikuti envelope standar 401/403.
+
+Response `DeliveryHistoryData` berisi `delivery_id`, `vehicle`, `status`,
+`window_started_at`, `window_ended_at`, `geofence_radius_meters`, `points`,
+`geofence_events`, dan `truncated`. Jendela dimulai dari `departure_time`, atau
+`created_at` untuk manifest yang belum berangkat, dan berakhir pada `arrival_time`
+atau waktu request. `points` diurutkan kronologis dan memuat snapshot GPS,
+`nearest_school_id`, `distance_to_nearest_meters`, serta `inside_geofence`.
+`geofence_events` memuat `event_type` (`ENTER`/`EXIT`), sekolah, GPS log, waktu, dan
+jarak. Sekolah tanpa koordinat tidak dievaluasi. `truncated=true` berarti hanya
+`limit` titik terbaru yang dikembalikan. Endpoint tidak menulis state, movement,
+event log, atau notification; transisi geofence diturunkan deterministik dari log.
+
+```http
+GET /api/v1/deliveries/11111111-1111-4111-8111-111111111111/history?radius_meters=200&limit=500
+Authorization: Bearer <access_token>
+```
 
 Tracking delivery memakai Delivery.Read dan read-only. `GET /deliveries/{identifier}/tracking`
 mengambil GPS terakhir dari `gps_log` berdasarkan vehicle manifest, suhu terakhir dari

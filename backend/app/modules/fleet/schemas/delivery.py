@@ -166,3 +166,43 @@ class DeliveryTrackingData(BaseModel):
 
 class DeliveryTrackingEnvelope(Envelope):
     data: DeliveryTrackingData
+
+
+class DeliveryHistoryPoint(DeliveryGpsSnapshot):
+    nearest_school_id: UUID | None
+    distance_to_nearest_meters: Decimal | None
+    inside_geofence: bool
+
+
+class DeliveryGeofenceEvent(BaseModel):
+    event_type: str
+    school_id: UUID
+    gps_log_id: UUID
+    recorded_at: datetime
+    distance_meters: Decimal
+
+    @field_validator('recorded_at')
+    @classmethod
+    def event_utc(cls, value):
+        return value.astimezone(UTC)
+
+
+class DeliveryHistoryData(BaseModel):
+    delivery_id: UUID
+    vehicle: UUID
+    status: str
+    window_started_at: datetime
+    window_ended_at: datetime
+    geofence_radius_meters: int
+    points: list[DeliveryHistoryPoint]
+    geofence_events: list[DeliveryGeofenceEvent]
+    truncated: bool
+
+    @field_validator('window_started_at', 'window_ended_at')
+    @classmethod
+    def history_utc(cls, value):
+        return value.astimezone(UTC)
+
+
+class DeliveryHistoryEnvelope(Envelope):
+    data: DeliveryHistoryData

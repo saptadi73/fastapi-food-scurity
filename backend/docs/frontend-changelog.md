@@ -1,5 +1,15 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-09-24 - Riwayat perjalanan dan geofence fleet
+
+- Ditambahkan `GET /api/v1/deliveries/{identifier}/history` dengan permission
+  `Delivery.Read`: titik GPS kronologis, tujuan terdekat, jarak, status geofence,
+  serta transisi `ENTER`/`EXIT` per sekolah.
+- Query `radius_meters` menerima 10..5000 (default 200) dan `limit` 1..1000
+  (default 500). Hasil read-only dari GPS log dan tidak menerbitkan event.
+- Frontend tracking dapat membuka delivery `IN_TRANSIT` maupun `COMPLETED` dan
+  menampilkan ringkasan serta tabel riwayat geofence.
+
 ## 2026-09-22 - Perbaikan penyelesaian delivery
 
 - `POST /api/v1/deliveries/{identifier}/complete` tidak lagi gagal karena service

@@ -26,6 +26,14 @@ class DeliveryConflictError(Exception):
 
 class DeliveryService(PackageService):
     @staticmethod
+    def distance_meters(start, end):
+        lat1, lon1, lat2, lon2 = map(radians, (float(start['latitude']), float(start['longitude']),
+            float(end['latitude']), float(end['longitude'])))
+        delta_lat, delta_lon = lat2 - lat1, lon2 - lon1
+        value = sin(delta_lat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(delta_lon / 2) ** 2
+        return 2 * 6371008.8 * asin(min(1.0, value ** 0.5))
+
+    @staticmethod
     def coordinates(origin, destinations):
         if origin['latitude'] is None or origin['longitude'] is None:
             return None
@@ -178,6 +186,40 @@ class DeliveryService(PackageService):
                     ('temperature_log_id', 'device_uuid', 'recorded_at', 'temperature', 'unit')},
                 'remaining_distance_km': remaining_distance, 'remaining_duration_minutes': remaining_minutes,
                 'estimated_arrival_time': eta, 'calculated_at': now}
+
+    async def history(self, identifier, *, radius_meters=200, limit=500):
+        await require_permission(self.db, self.scope, 'Delivery.Read')
+        delivery = await self.row(Delivery, 'delivery_id', identifier)
+        manifest = await self.manifest(identifier)
+        schools = [await self.row(School, 'school_id', school_id)
+                   for school_id in sorted({item['school_id'] for item in manifest})]
+        located = [school for school in schools if school['latitude'] is not None and school['longitude'] is not None]
+        started = delivery['departure_time'] or delivery['created_at']
+        ended = delivery['arrival_time'] or datetime.now(UTC)
+        rows = (await self.db.execute(select(GPSLog.__table__).where(*self.visible(GPSLog),
+            GPSLog.vehicle_uuid == delivery['vehicle'], GPSLog.recorded_at >= started,
+            GPSLog.recorded_at <= ended).order_by(GPSLog.recorded_at.desc(), GPSLog.gps_log_id.desc())
+            .limit(limit + 1))).mappings().all()
+        truncated, rows = len(rows) > limit, list(reversed(rows[:limit]))
+        states = {school['school_id']: False for school in located}
+        points, events = [], []
+        for row in rows:
+            distances = [(school, self.distance_meters(row, school)) for school in located]
+            nearest = min(distances, key=lambda item: item[1]) if distances else None
+            for school, distance in distances:
+                inside = distance <= radius_meters
+                if inside != states[school['school_id']]:
+                    events.append({'event_type': 'ENTER' if inside else 'EXIT', 'school_id': school['school_id'],
+                        'gps_log_id': row['gps_log_id'], 'recorded_at': row['recorded_at'],
+                        'distance_meters': Decimal(str(distance)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)})
+                    states[school['school_id']] = inside
+            points.append({k: row[k] for k in ('gps_log_id', 'recorded_at', 'latitude', 'longitude', 'speed', 'heading')} | {
+                'nearest_school_id': None if nearest is None else nearest[0]['school_id'],
+                'distance_to_nearest_meters': None if nearest is None else Decimal(str(nearest[1])).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP),
+                'inside_geofence': False if nearest is None else nearest[1] <= radius_meters})
+        return {'delivery_id': identifier, 'vehicle': delivery['vehicle'], 'status': delivery['status'],
+                'window_started_at': started, 'window_ended_at': ended, 'geofence_radius_meters': radius_meters,
+                'points': points, 'geofence_events': events, 'truncated': truncated}
 
     async def list(self, *, offset=0, limit=20, kitchen_id=None, vehicle=None, driver=None, status=None):
         await require_permission(self.db, self.scope, 'Delivery.Read')

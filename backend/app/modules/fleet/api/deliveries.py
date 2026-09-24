@@ -13,6 +13,7 @@ from app.modules.fleet.application.delivery_service import DeliveryConflictError
 from app.modules.fleet.schemas.delivery import (
     DeliveryAction,
     DeliveryEnvelope,
+    DeliveryHistoryEnvelope,
     DeliveryInput,
     DeliveryPackageDestinationPageEnvelope,
     DeliveryPackageVehiclePageEnvelope,
@@ -91,6 +92,14 @@ async def packages_by_destination(request: Request, service: ServiceDep, offset:
     description='Delivery.Read. UUID delivery; latest GPS for vehicle, latest temperature from assigned GPS device if any, estimated remaining distance/time to farthest destination. Read-only; no telemetry ingestion or realtime subscription.')
 async def tracking(request: Request, identifier: UUID, service: ServiceDep):
     return envelope(request, data=await service.tracking(identifier))
+
+
+@router.get('/{identifier}/history', response_model=DeliveryHistoryEnvelope,
+    description='Delivery.Read. Chronological GPS history in delivery window with nearest destination distance and derived ENTER/EXIT geofence events. radius_meters 10..5000 default 200; limit 1..1000 default 500. Read-only.')
+async def history(request: Request, identifier: UUID, service: ServiceDep,
+    radius_meters: Annotated[int, Query(ge=10, le=5000)] = 200,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500):
+    return envelope(request, data=await service.history(identifier, radius_meters=radius_meters, limit=limit))
 
 
 @router.get('/{identifier}', response_model=DeliveryEnvelope,
