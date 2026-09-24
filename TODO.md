@@ -621,10 +621,6 @@ dashboard/ringkasan bisnis.**
   identitas/role, assignment sekolah, SHA-256, preview dan verify endpoint, serta
   event capture/verify. Signature pad frontend dan amendment/approval incident
   masih terbuka.
-  Tahap 5 frontend (2026-09-24) selesai: signature pad berbasis Pointer Events,
-  konfirmasi immutable, capture receipt otomatis setelah penerimaan berhasil,
-  aksi signature complaint, metadata signer/hash, serta verifikasi evidence.
-  Amendment dan investigator/approval incident terpisah masih terbuka.
 - [x] Food recall, eksekusi/penutupan, withdrawal dan pelacakan paket terdampak.
 - [ ] Notification melalui email/WhatsApp; outbox dashboard internal sudah aktif.
 - [ ] Integrasi ERP MBG via REST API.
@@ -686,17 +682,3 @@ schema/tabel saja tidak dianggap penyelesaian.
 - User mengonfirmasi Redis/Mosquitto ditunda ke tahap integrasi/deployment.
 - SDK OpenAI ditunda sampai modul AI dikerjakan; saat ini konfigurasi API key
   tersedia dan integrasi HTTP dapat memakai httpx.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
