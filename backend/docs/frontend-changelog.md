@@ -9,6 +9,9 @@
   (default 500). Hasil read-only dari GPS log dan tidak menerbitkan event.
 - Frontend tracking dapat membuka delivery `IN_TRANSIT` maupun `COMPLETED` dan
   menampilkan ringkasan serta tabel riwayat geofence.
+- Ditambahkan skrip read-only `backend/scripts/test_google_routes_fleet.py` untuk
+  membandingkan estimasi awal/remaining backend dengan Google Route Matrix dan
+  memverifikasi ulang perhitungan geofence dari setiap titik GPS.
 
 ## 2026-09-22 - Perbaikan penyelesaian delivery
 
