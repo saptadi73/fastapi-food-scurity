@@ -12,6 +12,12 @@
 - Ditambahkan skrip read-only `backend/scripts/test_google_routes_fleet.py` untuk
   membandingkan estimasi awal/remaining backend dengan Google Route Matrix dan
   memverifikasi ulang perhitungan geofence dari setiap titik GPS.
+- Server production dapat memakai `backend/scripts/test_google_routes_direct.py`
+  tanpa access token; skrip membaca konfigurasi database backend dan hanya
+  memerlukan delivery ID serta `GOOGLE_MAP_API_KEY`.
+- Ditambahkan `POST /api/v1/deliveries/route-estimate` untuk pengujian langsung
+  dari Swagger. Payload berisi koordinat origin/destination; response selalu berasal
+  dari Google Routes production atau 503, tanpa fallback dan tanpa mengekspos key.
 
 ## 2026-09-22 - Perbaikan penyelesaian delivery
 

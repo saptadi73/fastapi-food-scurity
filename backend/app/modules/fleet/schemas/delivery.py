@@ -206,3 +206,31 @@ class DeliveryHistoryData(BaseModel):
 
 class DeliveryHistoryEnvelope(Envelope):
     data: DeliveryHistoryData
+
+
+class RouteEstimateInput(BaseModel):
+    origin_latitude: Decimal = Field(ge=-90, le=90, max_digits=9, decimal_places=6)
+    origin_longitude: Decimal = Field(ge=-180, le=180, max_digits=9, decimal_places=6)
+    destination_latitude: Decimal = Field(ge=-90, le=90, max_digits=9, decimal_places=6)
+    destination_longitude: Decimal = Field(ge=-180, le=180, max_digits=9, decimal_places=6)
+
+
+class RouteEstimateData(BaseModel):
+    provider: str
+    origin_latitude: Decimal
+    origin_longitude: Decimal
+    destination_latitude: Decimal
+    destination_longitude: Decimal
+    distance_km: Decimal
+    duration_minutes: int
+    estimated_arrival_time: datetime
+    calculated_at: datetime
+
+    @field_validator('estimated_arrival_time', 'calculated_at')
+    @classmethod
+    def estimate_utc(cls, value):
+        return value.astimezone(UTC)
+
+
+class RouteEstimateEnvelope(Envelope):
+    data: RouteEstimateData

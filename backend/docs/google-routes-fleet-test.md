@@ -25,3 +25,20 @@ Exit code `0` berarti semua pemeriksaan lulus, `1` berarti ada mismatch, dan `2`
 berarti konfigurasi/request gagal. Backend memilih tujuan dengan durasi terlama dari
 matrix origin-ke-masing-tujuan. Ini bukan rute multi-stop teroptimasi; perbedaan
 dengan garis Directions frontend dapat berasal dari perbedaan model tersebut.
+
+## Mode langsung di server tanpa access token
+
+Gunakan mode ini bila shell server sudah memiliki `DATABASE_URL` dan hanya tersedia
+Google Routes API key. Skrip membaca database secara read-only dan tidak memanggil
+endpoint autentikasi:
+
+```bash
+cd /var/www/fastapi_app/fastapi-food-security
+source env/bin/activate
+export GOOGLE_MAP_API_KEY='<server-key>'
+python backend/scripts/test_google_routes_direct.py --delivery-id '<uuid-delivery>'
+```
+
+Konfigurasi database dibaca dari environment/backend settings yang sama dengan
+aplikasi. Output menampilkan estimasi tersimpan, hasil Google terbaru per tujuan,
+selisih initial, GPS terakhir, dan remaining route Google. API key tidak dicetak.

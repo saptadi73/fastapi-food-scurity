@@ -24,6 +24,10 @@ class DeliveryConflictError(Exception):
     pass
 
 
+class RoutingProviderError(Exception):
+    pass
+
+
 class DeliveryService(PackageService):
     @staticmethod
     def distance_meters(start, end):
@@ -220,6 +224,25 @@ class DeliveryService(PackageService):
         return {'delivery_id': identifier, 'vehicle': delivery['vehicle'], 'status': delivery['status'],
                 'window_started_at': started, 'window_ended_at': ended, 'geofence_radius_meters': radius_meters,
                 'points': points, 'geofence_events': events, 'truncated': truncated}
+
+    async def route_estimate(self, payload):
+        await require_permission(self.db, self.scope, 'Delivery.Read')
+        calculated_at = datetime.now(UTC)
+        origin = (float(payload.origin_latitude), float(payload.origin_longitude))
+        destination = (float(payload.destination_latitude), float(payload.destination_longitude))
+        try:
+            result = await self.google_routes([origin, destination], calculated_at)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            raise RoutingProviderError('Google Routes API unavailable or returned no usable route') from exc
+        return {'provider': 'GOOGLE_ROUTES',
+                'origin_latitude': payload.origin_latitude,
+                'origin_longitude': payload.origin_longitude,
+                'destination_latitude': payload.destination_latitude,
+                'destination_longitude': payload.destination_longitude,
+                'distance_km': result['estimated_distance_km'],
+                'duration_minutes': result['estimated_duration_minutes'],
+                'estimated_arrival_time': result['estimated_arrival_time'],
+                'calculated_at': calculated_at}
 
     async def list(self, *, offset=0, limit=20, kitchen_id=None, vehicle=None, driver=None, status=None):
         await require_permission(self.db, self.scope, 'Delivery.Read')

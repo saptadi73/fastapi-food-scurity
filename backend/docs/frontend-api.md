@@ -294,6 +294,7 @@ kontrak akan ditambahkan bersamaan dengan implementasinya.
 | GET | `/api/v1/deliveries` | Daftar pengiriman | Tanpa body; filter/pagination | 200 |
 | GET | `/api/v1/deliveries/packages/by-vehicle` | Ringkasan kemasan per armada | Tanpa body; filter/pagination | 200 |
 | GET | `/api/v1/deliveries/packages/by-destination` | Ringkasan kemasan per tujuan | Tanpa body; filter/pagination | 200 |
+| POST | `/api/v1/deliveries/route-estimate` | Uji Google Routes dari koordinat eksplisit | origin/destination latitude/longitude | 200 |
 | GET | `/api/v1/deliveries/{identifier}` | Detail manifest/perjalanan | Tanpa body | 200 |
 | GET | `/api/v1/deliveries/{identifier}/tracking` | Tracking GPS/suhu terakhir dan sisa jarak/waktu | Tanpa body | 200 |
 | GET | `/api/v1/deliveries/{identifier}/history` | Riwayat GPS dan geofence tujuan | radius_meters/limit | 200 |
@@ -5364,6 +5365,7 @@ Cache-Control no-store, Pragma no-cache dan X-Request-ID.
 | GET `/deliveries` | Daftar header perjalanan | Delivery.Read | Tanpa body; offset/limit/kitchen_id/vehicle/driver/status | 200 DeliveryPage |
 | GET `/deliveries/packages/by-vehicle` | Ringkasan kemasan per armada | Delivery.Read | Tanpa body; offset/limit/vehicle/status | 200 VehicleSummaryPage |
 | GET `/deliveries/packages/by-destination` | Ringkasan kemasan per tujuan sekolah | Delivery.Read | Tanpa body; offset/limit/school_id/status | 200 DestinationSummaryPage |
+| POST `/deliveries/route-estimate` | Estimasi Google Routes eksplisit | Delivery.Read | RouteEstimateInput; tanpa query | 200 RouteEstimateData |
 | GET `/deliveries/{identifier}` | Detail manifest dan paket terkini | Delivery.Read | UUID path; tanpa body/query | 200 DeliveryDetail |
 | GET `/deliveries/{identifier}/tracking` | Tracking GPS/suhu terakhir dan sisa jarak/waktu | Delivery.Read | UUID path; tanpa body/query | 200 TrackingData |
 | GET `/deliveries/{identifier}/history` | Riwayat GPS perjalanan dan evaluasi geofence | Delivery.Read | UUID path; radius_meters/limit | 200 DeliveryHistoryData |
@@ -5397,6 +5399,34 @@ assignment default; jika null, driver aktif pilihan diperbolehkan. Vehicle/drive
 hanya boleh digunakan satu delivery CREATED atau IN_TRANSIT sekaligus. Paket hanya
 boleh berada pada satu manifest non-CANCELLED, termasuk yang COMPLETED. Check dilakukan
 di bawah row lock driver, vehicle, kitchen, sekolah, dan paket berurutan.
+
+### POST /api/v1/deliveries/route-estimate
+
+Endpoint diagnostik authenticated dengan permission `Delivery.Read`. Tidak ada query
+parameter. JSON body wajib berisi `origin_latitude` dan `destination_latitude`
+decimal -90..90 serta `origin_longitude` dan `destination_longitude` decimal
+-180..180; presisi maksimal 6 desimal. Field ekstra, null, bool, NaN dan infinity
+ditolak dengan 400. Endpoint memakai `GOOGLE_MAP_API_KEY` backend production,
+tidak menerima key dari frontend dan tidak melakukan fallback garis lurus.
+
+```http
+POST /api/v1/deliveries/route-estimate
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"origin_latitude":"-6.349357","origin_longitude":"106.807640","destination_latitude":"-6.391421","destination_longitude":"106.865672"}
+```
+
+Response data sukses:
+
+```json
+{"provider":"GOOGLE_ROUTES","origin_latitude":"-6.349357","origin_longitude":"106.807640","destination_latitude":"-6.391421","destination_longitude":"106.865672","distance_km":"8.420","duration_minutes":25,"estimated_arrival_time":"2026-09-24T08:25:00Z","calculated_at":"2026-09-24T08:00:00Z"}
+```
+
+Status 401 berarti bearer invalid/expired, 403 berarti `Delivery.Read` tidak dimiliki,
+dan 503 berarti key belum dikonfigurasi, timeout/quota/provider error, atau Google
+tidak mengembalikan route yang dapat digunakan. Endpoint read-only: tidak membuat
+delivery, GPS log, movement, event, notification, atau perubahan database.
 
 Create menghitung estimasi jarak jalan dan durasi dari koordinat kitchen asal ke
 sekolah tujuan memakai Google Routes API `computeRouteMatrix`; API key tetap hanya

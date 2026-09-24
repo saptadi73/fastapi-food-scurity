@@ -578,6 +578,8 @@ dashboard/ringkasan bisnis.**
 - [x] Fleet: GPS, perjalanan, geofence tujuan dan riwayat pengiriman.
   Diagnostik Google Routes versus tracking backend tersedia melalui
   `backend/scripts/test_google_routes_fleet.py` dengan tolerance dan exit code CI.
+  Endpoint Swagger `POST /deliveries/route-estimate` menguji koordinat eksplisit
+  memakai key Google Routes backend tanpa fallback.
 - [x] School receiving, konsumsi dan complaint beserta laporan insiden.
 - [x] Food recall, eksekusi/penutupan, withdrawal dan pelacakan paket terdampak.
 - [ ] Notification melalui email/WhatsApp; outbox dashboard internal sudah aktif.

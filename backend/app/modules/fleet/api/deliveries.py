@@ -9,7 +9,11 @@ from app.core.responses.envelope import Envelope, envelope
 from app.modules.authentication.api.router import DatabaseDep, current_account
 from app.modules.authentication.application.account_service import AuthenticatedAccount
 from app.modules.authentication.infrastructure.authorization import PermissionDeniedError
-from app.modules.fleet.application.delivery_service import DeliveryConflictError, DeliveryService
+from app.modules.fleet.application.delivery_service import (
+    DeliveryConflictError,
+    DeliveryService,
+    RoutingProviderError,
+)
 from app.modules.fleet.schemas.delivery import (
     DeliveryAction,
     DeliveryEnvelope,
@@ -20,6 +24,8 @@ from app.modules.fleet.schemas.delivery import (
     DeliveryPageEnvelope,
     DeliveryTrackingEnvelope,
     DepartureInput,
+    RouteEstimateEnvelope,
+    RouteEstimateInput,
 )
 
 router = APIRouter(prefix='/deliveries', tags=['Delivery'], responses={
@@ -45,6 +51,8 @@ async def service_dependency(db: DatabaseDep,
         raise HTTPException(409, 'Delivery or package changed; reload before retrying') from None
     except DeliveryConflictError as exc:
         raise HTTPException(409, str(exc)) from None
+    except RoutingProviderError as exc:
+        raise HTTPException(503, str(exc)) from None
     except IntegrityError as exc:
         if getattr(exc.orig, 'sqlstate', None) == '23505':
             raise HTTPException(409, 'Delivery manifest conflict') from None
@@ -86,6 +94,12 @@ async def packages_by_destination(request: Request, service: ServiceDep, offset:
     school_id: UUID | None = None, status: Literal['CREATED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED'] | None = None):
     return envelope(request, data=await service.package_summary(
         group_by='school_id', offset=offset, limit=limit, school_id=school_id, status=status))
+
+
+@router.post('/route-estimate', response_model=RouteEstimateEnvelope,
+    description='Delivery.Read. Diagnostic road route from explicit origin GPS to explicit destination through production Google Routes API key. No fallback, persistence, delivery mutation, telemetry ingestion or key exposure. Returns 503 when Google is unavailable.')
+async def route_estimate(request: Request, payload: RouteEstimateInput, service: ServiceDep):
+    return envelope(request, data=await service.route_estimate(payload))
 
 
 @router.get('/{identifier}/tracking', response_model=DeliveryTrackingEnvelope,
