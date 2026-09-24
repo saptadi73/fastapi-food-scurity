@@ -1,4 +1,4 @@
-﻿# Panduan integrasi frontend FSOS
+# Panduan integrasi frontend FSOS
 
 Terakhir diperbarui: 2026-09-15. Versi aplikasi: 0.1.0.
 Status: **165 operasi HTTP aktif**, termasuk CRUD empat belas master, autentikasi,
@@ -6488,3 +6488,13 @@ Permission `Signature.Verify`. Mengirim byte PNG/WebP dari path yang direkonstru
 
 ### `POST /api/v1/signatures/evidence/{signature_id}/verify`
 Permission `Signature.Verify`; tanpa body. Menghitung ulang hash dan mengembalikan `verification_status` (`VERIFIED`, `MISMATCH`, `MISSING`) serta `calculated_sha256_hex`. Evidence tidak dimutasi. Efek samping audit `signature.verified`.
+## Pengambilan food probe on-demand (2026-09-24)
+
+`POST /api/v1/food-temperature-measurements` memakai bearer dan permission `FoodTemperature.Read`. Payload JSON: `device_id` UUID, `context_type` salah satu `RECEIVING|PRODUCTION_COMPLETE|PACKAGING|SCHOOL_RECEIVING`, `context_id` UUID nullable, dan `maximum_age_seconds` 5..300 (default 60). Device wajib ACTIVE, bertipe tepat `FOOD_TEMPERATURE`, dan `zone_id=null`. Backend hanya memilih sampel Celsius terbaru tanpa `storage_uuid`; sampel boleh terkait production/holding agar probe yang sedang aktif tetap dapat dipilih, tetapi tidak masuk dashboard storage.
+
+Respons berisi `device_id`, `device_uuid`, `device_name`, `temperature_log_id`, decimal-string `temperature`, `unit`, `recorded_at`, `age_seconds`, konteks, dan `valid=true`. `409` berarti device tidak sesuai, belum memiliki sampel raw, sampel kedaluwarsa, atau waktu sampel terlalu jauh di masa depan. Endpoint tidak memutasi transaksi; frontend mengisi field suhu lalu operator mengonfirmasi form. Efek samping event `food_temperature.sample_selected`.
+
+Contoh:
+```json
+{"device_id":"11111111-1111-1111-1111-111111111111","context_type":"PRODUCTION_COMPLETE","context_id":"22222222-2222-2222-2222-222222222222","maximum_age_seconds":60}
+```

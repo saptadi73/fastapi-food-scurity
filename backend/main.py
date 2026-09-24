@@ -47,6 +47,7 @@ from app.modules.signature.api import router as signatures_router
 from app.modules.receiving.api.router import router as receiving_router
 from app.modules.telemetry.api.alarms import router as telemetry_alarm_router
 from app.modules.telemetry.api.ingestion import router as telemetry_ingestion_router
+from app.modules.telemetry.api.food_measurements import router as food_measurements_router
 from app.modules.telemetry.api.mqtt_events import router as mqtt_events_router
 from app.modules.telemetry.api.sessions import router as device_session_router
 from app.modules.telemetry.application.mqtt_consumer import MQTTConsumer
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(alarm_router, prefix=settings.api_prefix)
     app.include_router(telemetry_alarm_router, prefix=settings.api_prefix)
     app.include_router(telemetry_ingestion_router, prefix=settings.api_prefix)
+    app.include_router(food_measurements_router, prefix=settings.api_prefix)
     app.include_router(mqtt_events_router, prefix=settings.api_prefix)
     app.include_router(device_session_router, prefix=settings.api_prefix)
     app.include_router(kitchens_router, prefix=settings.api_prefix)

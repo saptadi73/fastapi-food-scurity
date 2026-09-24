@@ -966,3 +966,7 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - Menambahkan capture/read/image/verify signature untuk school receiving dan complaint.
 - Frontend wajib mengirim `multipart/form-data`, tidak menyimpan path file, dan memakai endpoint image terotorisasi untuk preview.
 - Capture memerlukan assignment sekolah aktif dan permission sign spesifik; metadata/bytes immutable. Signature pad UI belum aktif pada perubahan ini.
+## 2026-09-24 - Food probe on-demand
+- Menambahkan `POST /food-temperature-measurements` dan permission `FoodTemperature.Read` melalui migration `0038`.
+- Probe harus `FOOD_TEMPERATURE` tanpa zone; sampel raw tidak tampil sebagai storage monitoring.
+- Frontend dapat mengisi suhu manual dari sampel segar, tetapi penyimpanan transaksi tetap memerlukan konfirmasi operator.

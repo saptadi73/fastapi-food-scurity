@@ -817,3 +817,8 @@ sedangkan timer_status dan remaining di GET tetap live.
 - Status: aktif; trigger `POST /signatures/evidence/{signature_id}/verify`, permission `Signature.Verify`.
 - Payload: `schema_version`, `actor_id`, `signature_id`, `verification_status`; verifikasi tidak mengubah evidence.
 - Ordering/replay: setiap verifikasi menghasilkan audit event baru; consumer harus memperlakukan event sebagai pemeriksaan, bukan perubahan status evidence.
+## `food_temperature.sample_selected` v1
+- Status: aktif; producer endpoint snapshot food probe, transport internal `event_log`.
+- Tenant/auth: access token dan `FoodTemperature.Read`; device ACTIVE tenant yang sama, tanpa zone/storage.
+- Payload: `schema_version`, `actor_id`, `context_type`, nullable `context_id`, `device_id`, `temperature_log_id`, `temperature`, `unit`, `recorded_at`, `age_seconds`.
+- Ordering/deduplikasi/replay: setiap klik operator menghasilkan event baru; event menunjuk log telemetry immutable yang sama bila dipilih ulang. Tidak ada mutasi transaksi atau dashboard push.

@@ -639,6 +639,11 @@ schema/tabel saja tidak dianggap penyelesaian.
 - [x] REST dashboard analytics: home, storage, storage temperature, fleet,
   holding, recall dan notification counter sudah aktif.
 - [ ] WebSocket dashboard/device/fleet/storage/holding/alarm dengan autentikasi.
+- [x] Food probe on-demand: device `FOOD_TEMPERATURE` tanpa zone/storage dipilih
+  operator untuk mengisi pengukuran manual receiving, production, packaging, dan
+  school receiving; freshness serta event sumber telemetry divalidasi backend.
+  Frontend menyediakan picker reusable pada keempat form, menampilkan usia dan ID
+  log sumber, serta tetap meminta konfirmasi operator sebelum transaksi disimpan.
 - [ ] Redis cache dan distribusi event antarworker.
 - [ ] Frontend Vue 3 serta integrasi peta dan alarm.
   Live tracking delivery sudah menampilkan marker armada/dapur/sekolah, rute Google,
