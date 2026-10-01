@@ -9,8 +9,9 @@ untouched, so `demo_live_flow.py` and `seed_exhibition_incident.py` can be run
 again immediately after.
 
 This is destructive and only intended for the dedicated exhibition demo tenant
-between rehearsals. It refuses to run outside development/testing and requires
-an explicit --confirm flag. It never touches other tenants.
+between rehearsals. It requires an explicit --confirm flag and only permits the
+dedicated FSOS_EXPO tenant, so it can be used without changing ENVIRONMENT.
+It never touches other tenants.
 """
 import argparse
 import asyncio
@@ -24,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.core.config.settings import get_settings
 from app.core.database.session import close_database, get_admin_engine
 from app.core.events.orm import EventLog
 from app.modules.complaint.infrastructure.orm import Complaint
@@ -71,12 +71,10 @@ async def main():
                         help='Required acknowledgement that this hard-deletes transactional rows')
     args = parser.parse_args()
     try:
-        settings = get_settings()
-        if settings.environment not in {'development', 'testing'}:
-            raise ValueError('Demo cleanup requires ENVIRONMENT=development or testing')
         if args.tenant_code != DEFAULT_TENANT_CODE:
-            print(json.dumps({'warning': f'Resetting non-default tenant code {args.tenant_code}; '
-                              'double check this is a disposable demo tenant.'}))
+            raise ValueError(
+                f'demo_cleanup.py only permits the dedicated demo tenant {DEFAULT_TENANT_CODE}; '
+                'refusing to reset another tenant')
         factory = async_sessionmaker(get_admin_engine())
         async with factory() as session, session.begin():
             tenant_id = await session.scalar(select(Tenant.tenant_id).where(

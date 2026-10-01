@@ -2,7 +2,10 @@
 
 Skrip ini dibuat khusus untuk demo pameran (exhibition) dan latihan berulang,
 terpisah dari seed development (`FSOS_DEV`) dan seed frontend (`FSOS_DEMO`).
-Semua skrip hanya berjalan pada `ENVIRONMENT=development` atau `testing`.
+Seed dan flow demo tetap ditujukan untuk environment development/testing.
+`demo_cleanup.py` adalah pengecualian terkontrol: tidak memerlukan perubahan
+`ENVIRONMENT`, hanya mengizinkan tenant disposable `FSOS_EXPO`, dan tetap wajib
+menggunakan `--confirm`.
 
 ## Dua tenant terpisah (disarankan)
 
@@ -152,13 +155,13 @@ bentrok kode unik, atau reset dulu (lihat di bawah).
 .\venv\Scripts\python.exe backend\scripts\demo_cleanup.py --tenant-code FSOS_EXPO --confirm
 ```
 
-Menghapus HANYA data transaksi tenant yang disebutkan (default `FSOS_EXPO`:
+Menghapus HANYA data transaksi tenant `FSOS_EXPO`:
 receiving, batch, stok, produksi, kemasan, pengiriman, penerimaan sekolah,
 konsumsi, komplain, recall/withdrawal, serta registry/movement/event terkait).
 Master (dapur, storage, pemasok, bahan, sekolah, armada, menu, resep, login)
-tidak disentuh. **Jangan** jalankan dengan `--tenant-code FSOS_EXPO_INCIDENT`
-kecuali memang ingin membuat ulang skenario insiden dari nol — skrip akan
-memunculkan warning karena bukan tenant default. Setelah reset tenant live,
+tidak disentuh. Skrip menolak `--tenant-code` selain `FSOS_EXPO`, termasuk
+`FSOS_EXPO_INCIDENT`, agar tenant lain tidak terhapus secara tidak sengaja.
+Setelah reset tenant live,
 langsung lanjut `demo_live_flow.py --tenant FSOS_EXPO` untuk sesi berikutnya;
 tenant insiden tidak perlu disentuh sama sekali antar sesi.
 
