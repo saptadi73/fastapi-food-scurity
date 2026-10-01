@@ -52,6 +52,26 @@ Output JSON seed juga mencetak `roles` dan `role_passwords` sebagai pengingat.
 .\venv\Scripts\python.exe backend\scripts\seed_exhibition_incident.py --tenant-code FSOS_EXPO_INCIDENT
 ```
 
+Di Linux/server, jika `backend/.env` memakai `ENVIRONMENT=production`, gunakan
+`ENVIRONMENT=development` hanya pada command seed berikut; file `.env` tidak perlu
+diubah. Master dan incident harus memakai `--tenant-code` yang sama:
+
+```bash
+ENVIRONMENT=development python backend/scripts/seed_exhibition_masters.py \
+  --tenant-code FSOS_EXPO
+
+ENVIRONMENT=development python backend/scripts/seed_exhibition_masters.py \
+  --tenant-code FSOS_EXPO_INCIDENT
+ENVIRONMENT=development python backend/scripts/seed_exhibition_incident.py \
+  --tenant-code FSOS_EXPO_INCIDENT
+```
+
+Jangan langsung menjalankan `seed_exhibition_incident.py` pada tenant yang belum
+di-seed master. Script incident membutuhkan kitchen, school, menu, packaging
+type, dan master lain dari tenant yang sama. Jika muncul `Kitchen not found; run
+seed_exhibition_masters.py first (matching --tenant-code)`, jalankan command
+master untuk tenant tersebut terlebih dahulu; jangan mengganti ke tenant lain.
+
 **Selalu jalankan `alembic upgrade head` dulu dan periksa hasilnya** (lihat
 troubleshooting di bawah) — seed exhibition memakai tabel `UserLocationAssignment`
 dan `SignatureEvidence` yang baru ada sejak migrasi `20260924_0036`/`0037`.
@@ -239,6 +259,7 @@ dll) untuk variasi antar sesi demo.
 | `alembic current` menunjukkan revisi lebih lama dari `alembic heads` | Migrasi belum diterapkan ke database (mis. `20260924_0036/0037/0038` belum jalan) | `cd backend; python -m alembic upgrade head`, lalu cek ulang `alembic current` sampai sama dengan `heads` |
 | `ModuleNotFoundError: No module named 'pythonjsonlogger'` saat start uvicorn | Dependency di `requirements/base.txt`/`dev.txt` belum ter-install di venv | `pip install -r backend\requirements\dev.txt` (atau minimal `pip install python-json-logger`) |
 | `Could not import module "app.main"` saat start uvicorn dengan `--app-dir backend` | Salah nama module; entrypoint adalah `backend/main.py`, bukan `backend/app/main.py` | Pakai `main:app`, bukan `app.main:app` |
+| `seed_exhibition_incident.py` gagal `Kitchen not found` | Master tenant incident belum dibuat, atau `--tenant-code` berbeda antara dua script | Jalankan `ENVIRONMENT=development python backend/scripts/seed_exhibition_masters.py --tenant-code FSOS_EXPO_INCIDENT`, lalu ulangi seed incident dengan tenant code yang sama |
 | `demo_cleanup.py` menolak karena environment bukan development | Versi skrip lama masih memakai guard `ENVIRONMENT` | Tarik versi terbaru; jangan mengubah `ENVIRONMENT` di `.env` server hanya untuk reset demo |
 | `provision_runtime_role.py` keluar `{"error_type": "ValueError", ...}` | Head database berbeda dari `PROFILE_REVISION` profil grant | `alembic upgrade head`, lalu jalankan ulang; `detail` menampilkan revisi yang diharapkan dan aktual |
 
