@@ -16,6 +16,9 @@ async def main():
             result = await provision_runtime_role(connection)
         print(json.dumps(result))
         return 0
+    except ValueError as exc:
+        print(json.dumps({'error_type': 'ValueError', 'detail': str(exc)}))
+        return 1
     except Exception as exc:  # noqa: BLE001 - do not expose credentials
         print(json.dumps({'error_type': type(exc).__name__, 'action': 'Check admin connection, migration head and role conflicts.'}))
         return 1

@@ -391,6 +391,8 @@ dashboard/ringkasan bisnis.**
 - [x] Uji runtime role pada database terpisah: service kitchen/registry/aturan berjalan;
   DDL, TEMP, hard delete, perubahan grant, disable trigger dan maintenance ditolak.
   Seluruh 53 tes lulus; Ruff dan Alembic check bersih.
+- [x] Perbarui profil fsos_runtime ke head 0039: grant administrasi user, lokasi
+  user dan signature_evidence; error head mismatch menampilkan revisi.
 - [x] Buat ORM dan migrasi master data: tenant, kitchen, storage/zone, device,
   vehicle/driver, school, supplier, material, food item, recipe, packaging,
   alarm/holding rule, user/role/permission (docs/06).

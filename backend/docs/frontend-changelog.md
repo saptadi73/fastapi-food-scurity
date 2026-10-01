@@ -1,5 +1,15 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-10-02 - Profil grant fsos_runtime untuk head 0039
+
+- `provision_runtime_role.py` kini mensyaratkan head `20261001_0039` (sebelumnya
+  0035 sehingga gagal `ValueError` pada database terkini) dan menampilkan revisi
+  yang diharapkan/aktual pada error.
+- Grant baru: INSERT/UPDATE kolom terbatas `app_user`, `user_role`,
+  `user_location_assignment`; INSERT `signature_evidence`. Tanpa ini endpoint
+  administrasi user dan signature gagal dengan permission denied di database.
+- Tidak ada perubahan endpoint, payload atau event.
+
 ## 2026-09-30 - Alamat sekolah dan identitas penanda tangan pada laporan insiden
 
 - `GET /api/v1/complaints/{identifier}/report` (dan `GET /api/v1/complaints/reports`)

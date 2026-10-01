@@ -6,8 +6,7 @@ diimplementasikan. DATABASE_URL lokal kini memakai login fsos_app dengan members
 fsos_runtime. Migrasi, seed dan maintenance memakai ADMIN_DATABASE_URL terpisah.
 Lihat [panduan koneksi](database-connections.md) untuk bootstrap dan pengelolaan secret.
 
-Profil terkini mensyaratkan head `20260915_0032`, diterapkan pada fsos pada
-2026-09-15. Sumber daftar hak adalah `app/core/database/runtime_role.py`. Angka
+Profil terkini mensyaratkan head `20261001_0039` (konstanta `PROFILE_REVISION`). Sumber daftar hak adalah `app/core/database/runtime_role.py`. Angka
 pemeriksaan pada bagian riwayat merujuk tahap tersebut, bukan total suite terkini.
 
 ## Hak yang diberikan
@@ -31,6 +30,9 @@ pemeriksaan pada bagian riwayat merujuk tahap tersebut, bukan total suite terkin
 | temperature_log, gps_log | INSERT untuk HTTP ingestion awal; SELECT yang sudah ada, tanpa UPDATE/DELETE |
 | asset_relationship, asset_movement, event_log | INSERT; SELECT yang sudah ada, tanpa UPDATE/DELETE |
 | auth_session, refresh_token | SELECT/INSERT; UPDATE hanya revoked_at atau used_at masing-masing |
+| app_user | INSERT; UPDATE fullname, email, job_title, status, password_hash dan audit/version (administrasi user) |
+| user_role, user_location_assignment | INSERT; UPDATE hanya soft delete/restore dan audit/version |
+| signature_evidence | INSERT; bukti immutable (trigger menolak UPDATE/DELETE) |
 | Tabel sumber registry, actor/tenant/RBAC, alarm_log, device_session | UPDATE(version) untuk kebutuhan SELECT FOR UPDATE/SHARE |
 | History revisi aturan | SELECT; INSERT hanya melalui fungsi trigger yang diperketat |
 
@@ -82,7 +84,8 @@ berlaku pada database target, sehingga login lain yang bergantung pada grant PUB
 tersebut memerlukan grant administratif eksplisit. Owner/superuser lokal tetap
 bisa menjalankan migrasi dan maintenance.
 
-Script mensyaratkan head tepat 0032 sebagai pagar peninjauan. Saat schema/service
+Script mensyaratkan head tepat sama dengan `PROFILE_REVISION` sebagai pagar peninjauan;
+jika berbeda, output berisi `detail` dengan revisi yang diharapkan dan revisi database. Saat schema/service
 berubah, tinjau serta perbarui profil dan tes sebelum provisioning ulang. Script
 tidak memberikan LOGIN, mengubah password, mengubah ownership objek, memberi
 membership kepada user existing, atau mengalihkan DATABASE_URL.

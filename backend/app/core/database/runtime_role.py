@@ -5,12 +5,14 @@ from app.core.database.session import Base
 from app.core.events import orm as event_orm  # noqa: F401
 from app.modules.authentication.infrastructure import orm as auth_orm  # noqa: F401
 from app.modules.notification.infrastructure import orm as notification_orm  # noqa: F401
+from app.modules.signature import infrastructure as signature_orm  # noqa: F401
 from app.modules.telemetry.infrastructure import orm as telemetry_orm  # noqa: F401
 from app.modules.traceability.infrastructure.registry import SOURCES
 
 ROLE = 'fsos_runtime'
 MARKER = 'FSOS managed runtime role v1'
-INSERT_TABLES = ('school_receiving', 'consumption', 'complaint', 'recall', 'recall_withdrawal', 'notification_outbox', 'delivery', 'delivery_item', 'package', 'packaging_type', 'holding_log', 'production_batch', 'production_item', 'food_item', 'recipe', 'stock_entry', 'stock_issue', 'temperature_log', 'gps_log', 'mqtt_message_log', 'receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'device', 'device_binding', 'food_sensor_binding', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token')
+PROFILE_REVISION = '20261001_0039'
+INSERT_TABLES = ('school_receiving', 'consumption', 'complaint', 'recall', 'recall_withdrawal', 'notification_outbox', 'delivery', 'delivery_item', 'package', 'packaging_type', 'holding_log', 'production_batch', 'production_item', 'food_item', 'recipe', 'stock_entry', 'stock_issue', 'temperature_log', 'gps_log', 'mqtt_message_log', 'receiving', 'receiving_item', 'raw_material_batch', 'asset_relationship', 'asset_movement', 'event_log', 'driver', 'vehicle', 'device', 'device_binding', 'food_sensor_binding', 'school', 'supplier', 'raw_material', 'supplier_material', 'storage', 'storage_zone', 'kitchen', 'digital_asset', 'alarm_rule', 'holding_rule', 'alarm_acknowledgment', 'device_session_end', 'auth_session', 'refresh_token', 'app_user', 'user_role', 'user_location_assignment', 'signature_evidence')
 UPDATES = {
     'delivery': 'status,departure_time,arrival_time,estimated_arrival_time,estimated_distance_km,estimated_duration_minutes,updated_at,updated_by,version',
     'package': 'status,remaining_minutes,holding_started_at,holding_finished_at,updated_at,updated_by,version',
@@ -31,6 +33,9 @@ UPDATES = {
     'device': 'device_uuid,zone_id,device_name,device_type,firmware,hardware,mqtt_topic,mqtt_event,mqtt_sensor,status,last_online,updated_at,updated_by,deleted_at,deleted_by,version',
     'school': 'school_code,school_name,latitude,longitude,address,student_count,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'auth_session': 'revoked_at',
+    'app_user': 'fullname,email,job_title,status,password_hash,updated_at,updated_by,version',
+    'user_role': 'deleted_at,deleted_by,updated_at,updated_by,version',
+    'user_location_assignment': 'deleted_at,deleted_by,updated_at,updated_by,version',
     'refresh_token': 'used_at',
     'kitchen': 'kitchen_code,kitchen_name,latitude,longitude,address,capacity,status,updated_at,updated_by,deleted_at,deleted_by,version',
     'supplier': 'deleted_at,deleted_by,supplier_code,supplier_name,phone,email,status,updated_at,updated_by,version',
@@ -46,8 +51,9 @@ UPDATES = {
 
 async def provision_runtime_role(connection):
     await connection.execute(text('SELECT pg_advisory_xact_lock(20260911, 17)'))
-    if not await connection.scalar(text("SELECT EXISTS (SELECT 1 FROM alembic_version WHERE version_num='20260921_0035')")):
-        raise ValueError('Runtime grant profile requires migration 0035; review it when schema changes')
+    head = await connection.scalar(text('SELECT version_num FROM alembic_version'))
+    if head != PROFILE_REVISION:
+        raise ValueError(f'Runtime grant profile requires migration {PROFILE_REVISION}, database is at {head}')
     existing = (await connection.execute(text("""
         SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
                shobj_description(oid, 'pg_authid') AS marker FROM pg_roles WHERE rolname='fsos_runtime'
@@ -88,4 +94,4 @@ async def provision_runtime_role(connection):
         await connection.execute(text(f'GRANT UPDATE (version) ON public.{table} TO fsos_runtime'))
     await connection.execute(text('REVOKE ALL ON FUNCTION public.fsos_create_telemetry_partitions(date, integer) FROM PUBLIC, fsos_runtime'))
     await connection.execute(text('GRANT EXECUTE ON FUNCTION public.fsos_capture_rule_revision() TO fsos_runtime'))
-    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': '20260921_0035'}
+    return {'role': ROLE, 'login': False, 'database': database, 'profile_revision': PROFILE_REVISION}
