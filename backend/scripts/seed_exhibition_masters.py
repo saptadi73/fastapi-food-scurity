@@ -231,7 +231,7 @@ async def seed(session, *, username: str, tenant_code: str) -> dict:
             'phone': '0811200001', 'status': 'ACTIVE', **audit()}),
         (Vehicle, 'vehicle_id', vehicle, {'vehicle_code': 'VH-EXPO-01', 'plate_number': 'B 1234 EXP',
             'vehicle_type': 'BOX', 'capacity': Decimal('500.00'), 'gps_device': None, 'driver_id': driver,
-            'latitude': Decimal('-6.200000'), 'longitude': Decimal('106.816666'), 'status': 'ACTIVE', **audit()}),
+            'status': 'ACTIVE', **audit()}),
         (PackagingType, 'package_type_id', pkg_lunchbox, {'code': 'PKG-EXPO-LB', 'name': 'Lunch Box 750ml',
             'material': 'Food grade PP', 'volume': Decimal('750.000'), **audit()}),
         (PackagingType, 'package_type_id', pkg_ricebox, {'code': 'PKG-EXPO-RB', 'name': 'Rice Box 500ml',
@@ -344,7 +344,7 @@ async def main():
         return 0
     except Exception as exc:  # noqa: BLE001 - keep secrets/URLs out of logs
         print(json.dumps({'error_type': type(exc).__name__, 'detail': str(exc),
-                          'action': 'Check ENVIRONMENT, ADMIN_DATABASE_URL and migration head.'}))
+                          'action': 'Check ADMIN_DATABASE_URL, schema/migration head and seed payload compatibility.'}))
         return 1
     finally:
         await close_database()
