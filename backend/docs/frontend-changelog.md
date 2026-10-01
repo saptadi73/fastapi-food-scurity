@@ -1006,6 +1006,12 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - Menyelaraskan test kontrak OpenAPI delivery dengan 11 operasi aktif setelah endpoint GPS, perjalanan, geofence, dan riwayat pengiriman ditambahkan.
 - Kontrak incident, upload foto, batch impact, signature, serta food probe tidak berubah dalam perbaikan ini.
 
+## 2026-10-02 - Reset demo exhibition melalui frontend
+
+- Menambahkan `POST /demo/reset` untuk mereset transaksi tenant `FSOS_EXPO` dari menu frontend tanpa menjalankan script backend.
+- Endpoint memerlukan bearer session aktif dengan role `ADMIN`, mengambil tenant dari sesi, menolak semua tenant selain `FSOS_EXPO`, dan mempertahankan master/user/login.
+- Tidak ada event atau channel realtime baru; frontend wajib menampilkan konfirmasi dan me-refresh data setelah respons 200.
+
 ## 2026-10-01 - Sinkronisasi seed exhibition incident
 
 - Seed `FSOS_EXPO_INCIDENT` kini menetapkan complaint `CONTAMINATION`/`HIGH`/`OPEN` secara eksplisit agar warning batch aktif dan konsisten.

@@ -6409,6 +6409,58 @@ Respons memakai envelope, X-Request-ID, Cache-Control no-store dan Pragma no-cac
 | GET /dashboard/recall | Ringkasan recall | Dashboard.Read | Tidak ada | 200 DashboardRecallData |
 | GET /dashboard/notifications | Ringkasan notification outbox | Dashboard.Read | Tidak ada | 200 DashboardNotificationData |
 
+## Kontrak reset demo exhibition
+
+Status **aktif**, khusus tenant demo `FSOS_EXPO`. Frontend dapat menampilkan menu
+reset hanya setelah login berhasil dan role `ADMIN` tersedia pada `GET /auth/me`.
+Endpoint tidak tersedia untuk `FSOS_EXPO_INCIDENT`, `FSOS_DEMO`, `FSOS_DEV`, atau
+tenant produksi lain.
+
+| Method/path | Tujuan | Auth/permission | Header/body | Sukses/error |
+|---|---|---|---|---|
+| POST /demo/reset | Menghapus transaksi demo agar alur live dapat diulang | Bearer access token; tenant sesi harus `FSOS_EXPO`; role `ADMIN` | `Authorization: Bearer <access_token>`; body tidak ada (`Content-Length: 0` boleh) | 200; 401 sesi invalid; 403 tenant/role tidak berhak; 503 database/auth tidak tersedia |
+
+Request tidak memiliki path/query parameter maupun payload. Backend mengambil
+tenant dari sesi, bukan dari body atau query, lalu menjalankan cleanup dalam satu
+transaksi menggunakan koneksi admin. Master data, tenant, user, role, assignment
+lokasi, dan login tidak dihapus. Data transaksi yang dihapus mencakup receiving,
+stok, produksi, package, delivery, school receiving, consumption, complaint,
+recall/withdrawal, registry/movement, serta event log terkait.
+
+Respons sukses memakai envelope standar. `data` berisi `tenant_code`, `tenant_id`,
+dan `removed` berupa object jumlah baris per tabel. Tidak ada event baru atau
+transport/realtime notification; frontend sebaiknya menampilkan dialog konfirmasi,
+menonaktifkan tombol selama request, lalu me-refresh dashboard dan daftar transaksi
+setelah 200. Jangan retry otomatis tanpa konfirmasi ulang karena operasi ini
+destruktif meskipun idempoten terhadap data yang sudah kosong.
+
+Contoh request:
+
+```http
+POST /api/v1/demo/reset HTTP/1.1
+Authorization: Bearer <access_token>
+Content-Length: 0
+```
+
+Contoh respons 200:
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Demo transactional data reset",
+  "data": {
+    "tenant_code": "FSOS_EXPO",
+    "tenant_id": "00000000-0000-0000-0000-000000000000",
+    "removed": {"consumption": 1, "package": 1, "receiving": 1, "event_log": 5}
+  },
+  "errors": [],
+  "meta": {"request_id": "req-demo-reset", "correlation_id": "corr-demo-reset", "timestamp": "2026-10-02T00:00:00Z", "execution_time_ms": 12.3}
+}
+```
+
+Contoh 403: `{"success":false,"code":403,"message":"Demo reset requires the ADMIN role on FSOS_EXPO"}`.
+
 `DashboardHomeData`:
 
 | Field | Tipe | Makna |

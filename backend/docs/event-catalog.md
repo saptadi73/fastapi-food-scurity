@@ -5,6 +5,8 @@ Terakhir diperbarui: 2026-09-20. Status: **event receiving, stok, produksi, pake
 Endpoint login/refresh/logout terhubung ke SessionService dan mengubah database,
 tanpa event bus/notifikasi. Log operasional mencatat action/outcome/request_id;
 ini bukan audit persisten atau event untuk subscription frontend. REUSED adalah status internal, bukan event frontend.
+`POST /api/v1/demo/reset` juga tidak menerbitkan event baru; endpoint hanya
+menghapus transaksi dan event log terkait secara atomik untuk tenant `FSOS_EXPO`.
 Autentikasi akun, resolusi identitas, primitive password dan access JWT belum
 menerbitkan event login/logout; belum ada audit keamanan persisten atau transport baru. GET /auth/me tidak mengubah data atau menerbitkan event.
 

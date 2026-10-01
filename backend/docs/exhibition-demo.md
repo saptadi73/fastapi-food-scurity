@@ -23,6 +23,21 @@ Kalau Anda tetap ingin satu tenant saja (lebih simpel, cukup untuk latihan
 sendiri), lewati saja `--tenant-code` dan biarkan default `FSOS_EXPO` dipakai
 keduanya — skrip tetap idempotent dan aman dijalankan bersamaan di satu tenant.
 
+## Login demo
+
+Dibuat oleh `seed_exhibition_masters.py` untuk setiap tenant yang di-seed
+(`FSOS_EXPO` maupun `FSOS_EXPO_INCIDENT`). Isi kode tenant sesuai tenant yang dipakai.
+
+| Tenant | Role | Username | Password |
+| --- | --- | --- | --- |
+| `FSOS_EXPO` / `FSOS_EXPO_INCIDENT` | `ADMIN` | `expo-admin` | `ExpoDemo123!` |
+| `FSOS_EXPO` / `FSOS_EXPO_INCIDENT` | `GURU` | `guru-sd-expo-01` | `GuruExpo123!` |
+| `FSOS_EXPO` / `FSOS_EXPO_INCIDENT` | `OPERATOR_SEKOLAH` | `operator-sd-expo-01` | `OperatorExpo123!` |
+
+Username admin mengikuti `--username` bila seed dijalankan dengan flag tersebut.
+Kredensial ini khusus demo; jangan dipakai pada tenant atau server production.
+Output JSON seed juga mencetak `roles` dan `role_passwords` sebagai pengingat.
+
 ## Urutan sebelum hari-H
 
 ```powershell
@@ -151,19 +166,61 @@ bentrok kode unik, atau reset dulu (lihat di bawah).
 
 ## Reset antar sesi demo
 
+Jika reset dilakukan dari frontend, login sebagai `ADMIN` pada tenant `FSOS_EXPO`
+lalu panggil `POST /api/v1/demo/reset` dari menu reset demo. Endpoint mengambil
+tenant dari bearer session dan menolak tenant selain `FSOS_EXPO`; tidak perlu
+masuk server atau menjalankan script. Frontend sebaiknya meminta konfirmasi
+destruktif dan me-refresh dashboard setelah respons `200`.
+
+Reset tidak lagi memerlukan perubahan `ENVIRONMENT` di `backend/.env`; server
+dengan `ENVIRONMENT=production` (atau nilai lain) tetap bisa menjalankan reset
+langsung tanpa mengedit `.env` dan tanpa restart API. Pengaman yang berlaku:
+
+- `--confirm` wajib; tanpa flag ini argparse langsung menolak dan tidak ada koneksi DB.
+- Hanya tenant `FSOS_EXPO` yang diterima (default `--tenant-code`). Tenant lain,
+  termasuk `FSOS_EXPO_INCIDENT`, `FSOS_DEV` dan `FSOS_DEMO`, ditolak sebelum
+  koneksi database dibuka.
+- Seluruh penghapusan berjalan dalam satu transaksi memakai `ADMIN_DATABASE_URL`;
+  bila satu langkah gagal, tidak ada data yang terhapus sebagian.
+
+Windows (root proyek):
+
 ```powershell
-.\venv\Scripts\python.exe backend\scripts\demo_cleanup.py --tenant-code FSOS_EXPO --confirm
+.\venv\Scripts\python.exe backend\scripts\demo_cleanup.py --confirm
 ```
+
+Linux/server (root proyek, venv aktif):
+
+```bash
+python backend/scripts/demo_cleanup.py --confirm
+```
+
+`--tenant-code FSOS_EXPO` boleh ditulis eksplisit, hasilnya sama. Contoh output
+sukses (exit code 0, dipersingkat; output asli memuat semua tabel transaksi):
+
+```json
+{
+  "tenant_code": "FSOS_EXPO",
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "removed": {"consumption": 1, "school_receiving": 1, "delivery": 1, "package": 1, "receiving": 2, "digital_asset": 7, "event_log": 20}
+}
+```
+
+Output gagal (exit code 1) berbentuk `{"error_type": ..., "detail": ...}`, mis.
+`demo_cleanup.py only permits the dedicated demo tenant FSOS_EXPO; refusing to
+reset another tenant` atau `Tenant FSOS_EXPO not found; nothing to reset`
+(jalankan `seed_exhibition_masters.py --tenant-code FSOS_EXPO` dulu).
 
 Menghapus HANYA data transaksi tenant `FSOS_EXPO`:
 receiving, batch, stok, produksi, kemasan, pengiriman, penerimaan sekolah,
 konsumsi, komplain, recall/withdrawal, serta registry/movement/event terkait).
-Master (dapur, storage, pemasok, bahan, sekolah, armada, menu, resep, login)
-tidak disentuh. Skrip menolak `--tenant-code` selain `FSOS_EXPO`, termasuk
-`FSOS_EXPO_INCIDENT`, agar tenant lain tidak terhapus secara tidak sengaja.
+Master (dapur, storage, pemasok, bahan, sekolah, armada, menu, resep, login,
+assignment lokasi user) tidak disentuh, sehingga seed master tidak perlu diulang.
 Setelah reset tenant live,
 langsung lanjut `demo_live_flow.py --tenant FSOS_EXPO` untuk sesi berikutnya;
-tenant insiden tidak perlu disentuh sama sekali antar sesi.
+tenant insiden tidak perlu disentuh sama sekali antar sesi. Untuk membuat ulang
+skenario insiden, jalankan ulang `seed_exhibition_incident.py --tenant-code
+FSOS_EXPO_INCIDENT` (idempotent) — bukan `demo_cleanup.py`.
 
 ## Menu/bahan yang dipakai skrip live
 
@@ -182,6 +239,8 @@ dll) untuk variasi antar sesi demo.
 | `alembic current` menunjukkan revisi lebih lama dari `alembic heads` | Migrasi belum diterapkan ke database (mis. `20260924_0036/0037/0038` belum jalan) | `cd backend; python -m alembic upgrade head`, lalu cek ulang `alembic current` sampai sama dengan `heads` |
 | `ModuleNotFoundError: No module named 'pythonjsonlogger'` saat start uvicorn | Dependency di `requirements/base.txt`/`dev.txt` belum ter-install di venv | `pip install -r backend\requirements\dev.txt` (atau minimal `pip install python-json-logger`) |
 | `Could not import module "app.main"` saat start uvicorn dengan `--app-dir backend` | Salah nama module; entrypoint adalah `backend/main.py`, bukan `backend/app/main.py` | Pakai `main:app`, bukan `app.main:app` |
+| `demo_cleanup.py` menolak karena environment bukan development | Versi skrip lama masih memakai guard `ENVIRONMENT` | Tarik versi terbaru; jangan mengubah `ENVIRONMENT` di `.env` server hanya untuk reset demo |
+| `provision_runtime_role.py` keluar `{"error_type": "ValueError", ...}` | Head database berbeda dari `PROFILE_REVISION` profil grant | `alembic upgrade head`, lalu jalankan ulang; `detail` menampilkan revisi yang diharapkan dan aktual |
 
 Sebelum hari-H, jalankan urutan berikut sekali untuk memastikan lingkungan
 siap tanpa kejutan di atas panggung:

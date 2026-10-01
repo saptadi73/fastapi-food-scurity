@@ -276,6 +276,10 @@ Matriks terverifikasi ada di [cakupan frontend](backend/docs/frontend-api.md#cak
   sample, complaint report, recall withdrawal dan notification outbox untuk
   implementasi frontend/integration test development. Data demo dilarang untuk
   production.
+- [x] Reset demo exhibition dari frontend: `POST /demo/reset` hanya untuk sesi
+  role `ADMIN` pada tenant `FSOS_EXPO`, menghapus transaksi demo dalam satu
+  transaksi admin dan mempertahankan master/user/login; tidak tersedia untuk
+  tenant lain dan tidak menerbitkan event baru.
 - [x] Wrapper migration eksplisit: `backend/scripts/migrate_with_status.py`
   membungkus Alembic upgrade agar operator melihat output JSON before/after,
   returncode dan status.
@@ -690,6 +694,8 @@ schema/tabel saja tidak dianggap penyelesaian.
   sekolah, recall/withdrawal, dan petunjuk batch-impact siap untuk demo.
 - Rerun seed exhibition incident merekonsiliasi complaint demo lama tanpa
   cleanup tenant dan tanpa menimpa evidence foto/signature.
+- Runbook reset demo diperbarui: `demo_cleanup.py --confirm` berjalan tanpa
+  mengubah `ENVIRONMENT`, hanya untuk tenant `FSOS_EXPO`, dengan contoh Linux/Windows.
 
 - Dokumen sumber masih berstatus Draft. Checklist ini tidak menyatakan seluruh
   FSOS sudah siap produksi setelah instalasi FastAPI.

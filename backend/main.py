@@ -22,6 +22,7 @@ from app.modules.authentication.api.users import router as users_router
 from app.modules.complaint.api import router as complaints_router
 from app.modules.consumption.api.workflow import router as school_workflow_router
 from app.modules.dashboard.api import router as dashboard_router
+from app.modules.demo.api import router as demo_router
 from app.modules.fleet.api.deliveries import router as deliveries_router
 from app.modules.master.api.alarm_rules import router as alarm_router
 from app.modules.master.api.device_bindings import router as device_bindings_router
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(devices_router, prefix=settings.api_prefix)
     app.include_router(device_bindings_router, prefix=settings.api_prefix)
     app.include_router(dashboard_router, prefix=settings.api_prefix)
+    app.include_router(demo_router, prefix=settings.api_prefix)
     app.include_router(vehicles_router, prefix=settings.api_prefix)
     app.include_router(food_items_router, prefix=settings.api_prefix)
     app.include_router(recipes_router, prefix=settings.api_prefix)
