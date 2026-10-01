@@ -68,7 +68,10 @@ async def ensure(session, model, pk_name: str, pk: UUID, values: dict) -> bool:
     existing = await session.scalar(select(table.c[pk_name]).where(table.c[pk_name] == pk))
     if existing is not None:
         return False
-    await session.execute(insert(table).values(**{pk_name: pk}, **values))
+    # Tenant-scoped rows may already contain the primary key in audit().
+    # Merge before passing kwargs so SQLAlchemy never receives a duplicate key.
+    payload = {**values, pk_name: pk}
+    await session.execute(insert(table).values(**payload))
     return True
 
 
