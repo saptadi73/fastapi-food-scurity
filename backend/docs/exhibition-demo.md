@@ -80,11 +80,32 @@ signature) saat kemasan diterima di sekolah — endpoint
 punya `UserLocationAssignment` aktif ke sekolah tujuan.
 
 `seed_exhibition_incident.py` membangun DI ATAS master yang sama satu skenario
-insiden yang SUDAH SELESAI (bukan untuk dijalankan live): satu batch produksi,
-empat kemasan ke empat sekolah, satu komplain, satu recall yang sudah
-dieksekusi, dan satu bukti penarikan fisik. Gunakan ini untuk demo
+insiden siap investigasi (bukan untuk dijalankan live): satu batch produksi,
+empat kemasan ke empat sekolah, satu complaint `CONTAMINATION` berseverity
+`HIGH` dan status `OPEN`, satu recall yang sudah dieksekusi, serta satu bukti
+penarikan fisik. Status `OPEN` sengaja dipertahankan agar scan kemasan lain dari
+batch `MO-INCIDENT-001` memunculkan warning. Gunakan ini untuk demo
 traceability/forward-impact secara instan tanpa menjalankan seluruh alur di
 depan audiens.
+
+Setelah seed, scan `PKG-INCIDENT-001` untuk complaint asal dan
+`PKG-INCIDENT-002` sampai `PKG-INCIDENT-004` untuk menunjukkan alert lintas
+kemasan pada batch yang sama. Buka `GET /complaints/{complaint_id}/batch-impact`
+untuk melihat seluruh kemasan, delivery, sekolah tujuan, penerimaan, dan status
+konsumsi. Output JSON seed sekarang mencetak `complaint_id`, metadata incident,
+kode kemasan, serta `demo_endpoints` agar presenter tidak perlu mencari UUID.
+
+Seed tidak membuat foto atau tanda tangan palsu. Untuk mendemokan evidence,
+unggah foto nyata lewat `POST /uploads/complaint-photo`, buat complaint melalui
+alur UI, lalu capture tanda tangan melalui
+`POST /signatures/targets/complaint/{complaint_id}`. Complaint seed tetap dapat
+dipakai untuk demo warning dan batch-impact tanpa evidence tersebut.
+
+Jika seed pernah dijalankan sebelum metadata incident tersedia, jalankan ulang
+perintah yang sama. Skrip akan merekonsiliasi complaint deterministik miliknya
+ke `CONTAMINATION`/`HIGH`/`OPEN` tanpa menghapus transaksi dan tanpa menimpa
+referensi foto atau signature yang sudah ada. Output `reconciled: 1` berarti
+record lama diperbarui; eksekusi berikutnya menghasilkan `reconciled: 0`.
 
 ## Saat demo live (alur utama, dijalankan di depan audiens)
 

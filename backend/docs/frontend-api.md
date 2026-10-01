@@ -6509,3 +6509,12 @@ Contoh:
 ```json
 {"device_id":"11111111-1111-1111-1111-111111111111","context_type":"PRODUCTION_COMPLETE","context_id":"22222222-2222-2222-2222-222222222222","maximum_age_seconds":60}
 ```
+## Batch incident, alert scan dan impact report (2026-10-01)
+
+Migration `0039` menambah `category`, `severity`, dan `status` pada complaint. `POST /api/v1/complaints` menerima category `DAMAGE|CONTAMINATION|PARASITE|ANIMAL|ILLNESS|EXPIRED|TEMPERATURE|OTHER`, severity `LOW|MEDIUM|HIGH|CRITICAL`, description, package identifier, school dan reference foto. Status awal selalu `OPEN`; incident tidak harus berasal dari expiry.
+
+`POST /api/v1/uploads/complaint-photo` membutuhkan `Complaint.Write`, multipart `file`, JPEG/PNG/WebP, dan batas `UPLOAD_MAX_BYTES`. Respons `201` menghasilkan reference tenant-scoped untuk payload complaint; path bebas tidak dibuat oleh frontend.
+
+`GET /api/v1/complaints/package/{package_id}/alerts` membutuhkan `Complaint.Read`. Backend mencari complaint berstatus `OPEN` atau `INVESTIGATING` dari semua package dengan `production_batch_id` sama. Respons: `package_id`, `production_batch_id`, `has_active_incident`, nullable `highest_severity`, dan `alerts[]` berisi complaint sumber, kategori, severity, status, deskripsi dan waktu. Endpoint read-only tanpa body/event dan dipanggil ketika scan serta sebelum penerimaan sekolah.
+
+`GET /api/v1/complaints/{identifier}/batch-impact` membutuhkan `Complaint.Read`. Respons memuat complaint, production batch, source package, counter package/delivery/receipt/consumption, serta `packages[]`: kode/status/jumlah, delivery/status/waktu, school tujuan, receiving/keputusan/kondisi, dan consumption/discard. Record asing/hilang `404`; tanpa mutasi/event. Gunakan report ini untuk penelusuran dan tindakan pencegahan/recall, bukan sebagai bukti bahwa setiap package pasti rusak.

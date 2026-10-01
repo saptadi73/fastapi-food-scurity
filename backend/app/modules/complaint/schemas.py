@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
@@ -13,6 +13,8 @@ class ComplaintInput(LocationInput):
     package_code: str | None = Field(default=None, min_length=1, max_length=100)
     school_id: UUID
     description: str = Field(min_length=1, max_length=4000)
+    category: Literal['DAMAGE', 'CONTAMINATION', 'PARASITE', 'ANIMAL', 'ILLNESS', 'EXPIRED', 'TEMPERATURE', 'OTHER'] = 'OTHER'
+    severity: Literal['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] = 'MEDIUM'
     photo: str | None = Field(default=None, min_length=1, max_length=1024)
 
     @model_validator(mode='after')
@@ -27,6 +29,9 @@ class ComplaintData(AuditData):
     package_id: UUID
     school_id: UUID
     description: str
+    category: str
+    severity: str
+    status: str
     photo: str | None
     reported_at: datetime
 
@@ -80,3 +85,11 @@ class ComplaintReportPage(Page):
 
 class ComplaintReportPageEnvelope(Envelope):
     data: ComplaintReportPage
+
+
+class BatchIncidentImpactEnvelope(Envelope):
+    data: dict[str, Any]
+
+
+class PackageIncidentAlertEnvelope(Envelope):
+    data: dict[str, Any]

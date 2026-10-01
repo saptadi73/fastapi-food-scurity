@@ -984,3 +984,26 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - Menambahkan `POST /food-temperature-measurements` dan permission `FoodTemperature.Read` melalui migration `0038`.
 - Probe harus `FOOD_TEMPERATURE` tanpa zone; sampel raw tidak tampil sebagai storage monitoring.
 - Frontend dapat mengisi suhu manual dari sampel segar, tetapi penyimpanan transaksi tetap memerlukan konfirmasi operator.
+## 2026-10-01 - Batch incident lintas kemasan
+
++- Complaint memiliki category, severity dan status melalui migration `0039`; incident tidak dibatasi expiry.
++- Menambahkan upload foto complaint, alert aktif berdasarkan production batch, dan report dampak batch lengkap sampai tujuan/receipt/consumption.
++- Frontend scan menampilkan warning sebelum penerimaan atau konsumsi, menyediakan form incident dan signature; dashboard Keluhan menampilkan tabel dampak.
+
+## 2026-10-01 - Verifikasi integrasi incident dan fleet
+
+- Memperbaiki import tipe kolom `String` pada ORM complaint agar aplikasi dan test dapat dikoleksi.
+- Menyelaraskan test kontrak OpenAPI delivery dengan 11 operasi aktif setelah endpoint GPS, perjalanan, geofence, dan riwayat pengiriman ditambahkan.
+- Kontrak incident, upload foto, batch impact, signature, serta food probe tidak berubah dalam perbaikan ini.
+
+## 2026-10-01 - Sinkronisasi seed exhibition incident
+
+- Seed `FSOS_EXPO_INCIDENT` kini menetapkan complaint `CONTAMINATION`/`HIGH`/`OPEN` secara eksplisit agar warning batch aktif dan konsisten.
+- Output seed menyertakan metadata incident serta petunjuk endpoint alert, batch-impact, upload foto, dan signature untuk kebutuhan demo frontend.
+- Seed tidak lagi mengklaim path foto contoh sebagai evidence nyata; foto dan signature tetap harus dicapture melalui endpoint terotorisasi.
+
+## 2026-10-01 - Rekonsiliasi seed incident lama
+
+- Menjalankan ulang `seed_exhibition_incident.py` kini memperbarui metadata complaint deterministik lama agar warning batch aktif tanpa cleanup tenant.
+- Rekonsiliasi hanya menyentuh category, severity, status, dan audit update; evidence foto, signature, serta transaksi lain dipertahankan.
+- Output seed menambahkan penghitung `reconciled`; perubahan ini tidak mengubah kontrak endpoint frontend.

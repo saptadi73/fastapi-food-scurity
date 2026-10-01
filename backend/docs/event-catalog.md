@@ -822,3 +822,6 @@ sedangkan timer_status dan remaining di GET tetap live.
 - Tenant/auth: access token dan `FoodTemperature.Read`; device ACTIVE tenant yang sama, tanpa zone/storage.
 - Payload: `schema_version`, `actor_id`, `context_type`, nullable `context_id`, `device_id`, `temperature_log_id`, `temperature`, `unit`, `recorded_at`, `age_seconds`.
 - Ordering/deduplikasi/replay: setiap klik operator menghasilkan event baru; event menunjuk log telemetry immutable yang sama bila dipilih ulang. Tidak ada mutasi transaksi atau dashboard push.
+## Perubahan `complaint.recorded` v1 (2026-10-01)
+
+Payload snapshot `complaint` kini turut memuat `category`, `severity`, dan `status=OPEN`. Trigger, producer, tenant/auth, transport, ordering dan deduplikasi tetap sama. Foto hanya berupa reference; byte gambar tidak masuk event. Endpoint alert dan batch-impact bersifat read-only dan tidak menerbitkan event baru.

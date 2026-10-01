@@ -12,7 +12,8 @@ an incident/recall/traceability scenario already exists to click through:
   - One receiving of rice + chicken (same masters as the live flow), one
     production batch, four packages distributed to the four registered demo
     schools.
-  - School 1: received GOOD, then a complaint is filed (bad smell).
+  - School 1: received GOOD, then an OPEN/HIGH contamination complaint is
+    filed (bad smell). This activates same-production-batch package warnings.
   - School 2: received GOOD, no complaint (still shows up in the recall impact).
   - School 3: received GOOD and fully consumed (terminal; stays untouched by
     the recall so trainers can show the contrast).
@@ -92,6 +93,7 @@ async def seed(session, *, tenant_code: str) -> dict:
         return await sync_source(session, ActorScope(TENANT, ACTOR), asset_type, entity_id)
 
     created = 0
+    reconciled = 0
     kitchen = did('kitchen:pusat')
     cold, dry = did('storage:cold'), did('storage:dry')
     zone_cold, zone_dry = did('zone:cold-a'), did('zone:dry-a')
@@ -218,11 +220,25 @@ async def seed(session, *, tenant_code: str) -> dict:
     # School 4: delivery completed, school has not filed a receiving yet.
 
     complaint_id = did(f'{incident}:complaint')
-    created += await ensure(session, Complaint, 'complaint_id', complaint_id, {
+    complaint_created = await ensure(session, Complaint, 'complaint_id', complaint_id, {
         'package_id': packages[1], 'school_id': schools[0],
+        'category': 'CONTAMINATION', 'severity': 'HIGH', 'status': 'OPEN',
         'description': 'Bau tidak sedap terdeteksi pada sampel sebelum dibagikan ke siswa.',
-        'photo': 'example/complaints/pkg-incident-001.jpg', 'reported_at': arrival + timedelta(minutes=30),
+        'photo': None, 'reported_at': arrival + timedelta(minutes=30),
         **audit()})
+    created += complaint_created
+    if not complaint_created:
+        complaint_row = (await session.execute(select(Complaint.__table__).where(
+            Complaint.tenant_id == TENANT,
+            Complaint.complaint_id == complaint_id,
+        ))).mappings().one()
+        desired_incident = {'category': 'CONTAMINATION', 'severity': 'HIGH', 'status': 'OPEN'}
+        if any(complaint_row[field] != value for field, value in desired_incident.items()):
+            await session.execute(update(Complaint.__table__).where(
+                Complaint.tenant_id == TENANT,
+                Complaint.complaint_id == complaint_id,
+            ).values(**desired_incident, updated_at=datetime.now(UTC), updated_by=ACTOR))
+            reconciled += 1
 
     recall_id = did(f'{incident}:recall')
     created += await ensure(session, Recall, 'recall_id', recall_id, {
@@ -277,11 +293,19 @@ async def seed(session, *, tenant_code: str) -> dict:
         'relationship_type': 'RECALLED', **audit()})
 
     return {
-        'tenant_id': str(TENANT), 'tenant_code': tenant_code, 'created': int(created),
+        'tenant_id': str(TENANT), 'tenant_code': tenant_code,
+        'created': int(created), 'reconciled': int(reconciled),
         'production_batch_code': 'MO-INCIDENT-001',
         'complaint_id': str(complaint_id), 'recall_id': str(recall_id),
+        'incident': {'category': 'CONTAMINATION', 'severity': 'HIGH', 'status': 'OPEN'},
         'packages': {f'school_{i}': f'PKG-INCIDENT-{i:03d}' for i in range(1, 5)},
         'note': 'School 1/2/4 packages RECALLED, school 3 stays CONSUMED (terminal) after recall execute.',
+        'demo_endpoints': {
+            'package_alert': '/api/v1/complaints/package/{package_id}/alerts',
+            'batch_impact': f'/api/v1/complaints/{complaint_id}/batch-impact',
+            'complaint_photo': '/api/v1/uploads/complaint-photo',
+            'complaint_signature': f'/api/v1/signatures/targets/complaint/{complaint_id}',
+        },
         'traceability_hint': 'Open traceability passport/impact on the production batch or raw material batch '
                              'asset_uuid (from GET /production-batches/{id} or /raw-material-batches/{id}) to see '
                              'the fan-out across all four schools.',

@@ -24,6 +24,62 @@ class ComplaintConflictError(Exception):
 
 
 class ComplaintService(ReceivingService):
+    async def package_alerts(self, package_id):
+        await require_permission(self.db, self.scope, 'Complaint.Read')
+        package = await self.row(Package, 'package_id', package_id)
+        complaint_package = Package.__table__.alias('complaint_package')
+        rows = (await self.db.execute(select(
+            Complaint.complaint_id, Complaint.category, Complaint.severity, Complaint.status,
+            Complaint.description, Complaint.reported_at, Complaint.package_id.label('source_package_id'),
+        ).join(complaint_package,
+            (complaint_package.c.tenant_id == Complaint.tenant_id)
+            & (complaint_package.c.package_id == Complaint.package_id)).where(
+            Complaint.tenant_id == self.scope.tenant_id, Complaint.deleted_at.is_(None),
+            Complaint.status.in_(['OPEN', 'INVESTIGATING']),
+            complaint_package.c.production_batch_id == package['production_batch_id'],
+        ).order_by(Complaint.reported_at.desc()))).mappings().all()
+        return {'package_id': package_id, 'production_batch_id': package['production_batch_id'],
+                'has_active_incident': bool(rows), 'highest_severity': self.highest_severity(rows),
+                'alerts': [dict(row) for row in rows]}
+
+    @staticmethod
+    def highest_severity(rows):
+        weights = {'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
+        return max((row['severity'] for row in rows), key=lambda value: weights.get(value, 0), default=None)
+
+    async def batch_impact(self, identifier):
+        await require_permission(self.db, self.scope, 'Complaint.Read')
+        complaint = await self.row(Complaint, 'complaint_id', identifier)
+        source = await self.row(Package, 'package_id', complaint['package_id'])
+        rows = (await self.db.execute(select(
+            Package.package_id, Package.package_code, Package.status.label('package_status'), Package.quantity,
+            Delivery.delivery_id, Delivery.status.label('delivery_status'), Delivery.departure_time,
+            Delivery.arrival_time, DeliveryItem.school_id, School.school_code, School.school_name,
+            SchoolReceiving.school_receiving_id, SchoolReceiving.received_time,
+            SchoolReceiving.accepted, SchoolReceiving.condition,
+            Consumption.consumption_id, Consumption.consumed_at, Consumption.consumed_quantity,
+            Consumption.discarded_quantity,
+        ).select_from(Package).outerjoin(DeliveryItem,
+            (DeliveryItem.tenant_id == Package.tenant_id) & (DeliveryItem.package_id == Package.package_id)
+        ).outerjoin(Delivery,
+            (Delivery.tenant_id == DeliveryItem.tenant_id) & (Delivery.delivery_id == DeliveryItem.delivery_id)
+        ).outerjoin(School,
+            (School.tenant_id == DeliveryItem.tenant_id) & (School.school_id == DeliveryItem.school_id)
+        ).outerjoin(SchoolReceiving,
+            (SchoolReceiving.tenant_id == Package.tenant_id) & (SchoolReceiving.package == Package.package_id)
+        ).outerjoin(Consumption,
+            (Consumption.tenant_id == Package.tenant_id) & (Consumption.package_id == Package.package_id)
+        ).where(Package.tenant_id == self.scope.tenant_id, Package.deleted_at.is_(None),
+                Package.production_batch_id == source['production_batch_id'])
+        .order_by(Package.package_number, Package.package_id))).mappings().all()
+        packages = [dict(row) for row in rows]
+        return {'complaint': dict(complaint), 'production_batch_id': source['production_batch_id'],
+                'source_package_id': source['package_id'], 'affected_package_count': len(packages),
+                'delivered_count': sum(row['delivery_id'] is not None for row in packages),
+                'received_count': sum(row['school_receiving_id'] is not None for row in packages),
+                'consumed_count': sum(row['consumption_id'] is not None for row in packages),
+                'packages': packages}
+
     async def get(self, identifier):
         await require_permission(self.db, self.scope, 'Complaint.Read')
         return await self.row(Complaint, 'complaint_id', identifier)
@@ -205,6 +261,9 @@ class ComplaintService(ReceivingService):
             package_id=package['package_id'],
             school_id=payload.school_id,
             description=payload.description,
+            category=payload.category,
+            severity=payload.severity,
+            status='OPEN',
             photo=payload.photo,
             **self.audit,
         ))

@@ -587,6 +587,11 @@ dashboard/ringkasan bisnis.**
   Endpoint Swagger `POST /deliveries/route-estimate` menguji koordinat eksplisit
   memakai key Google Routes backend tanpa fallback.
 - [x] School receiving, konsumsi dan complaint beserta laporan insiden.
+  Batch incident 2026-10-01: complaint dapat dikategorikan sebagai kerusakan,
+  kontaminasi, parasit, hewan/serangga, sakit, expired, suhu atau lainnya; scan dan
+  school receiving menampilkan alert dari seluruh production batch. Report dampak
+  merinci semua kemasan, delivery, sekolah tujuan, penerimaan dan konsumsi, dengan
+  upload foto serta signature pelapor dari frontend.
 - [ ] **Identitas operasional dan tanda tangan digital.** Implementasikan sebagai
   prioritas P3 berikutnya sebelum penerimaan/incident dianggap final secara formal:
   - registrasi dan administrasi user tenant oleh `TENANT_ADMIN`, termasuk status,
@@ -675,6 +680,14 @@ schema/tabel saja tidak dianggap penyelesaian.
   mengembalikan 200 pada server Uvicorn lokal sementara (sudah dihentikan).
 - Tes mengeluarkan 2 deprecation warning dari dependensi Starlette/httpx/AnyIO.
   Tidak menggagalkan tes; evaluasi migrasi test client saat memperbarui dependensi.
+- Verifikasi 2026-10-01: build frontend lulus; suite backend setelah implementasi
+  incident/fleet mencakup 120 test lulus dan 31 skip. Dua warning deprecation
+  Starlette/httpx/AnyIO tetap non-blocking.
+- Seed exhibition incident diselaraskan dengan complaint batch warning:
+  category `CONTAMINATION`, severity `HIGH`, status `OPEN`, empat kemasan lintas
+  sekolah, recall/withdrawal, dan petunjuk batch-impact siap untuk demo.
+- Rerun seed exhibition incident merekonsiliasi complaint demo lama tanpa
+  cleanup tenant dan tanpa menimpa evidence foto/signature.
 
 - Dokumen sumber masih berstatus Draft. Checklist ini tidak menyatakan seluruh
   FSOS sudah siap produksi setelah instalasi FastAPI.

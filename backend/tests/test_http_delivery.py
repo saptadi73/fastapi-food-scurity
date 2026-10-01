@@ -448,7 +448,7 @@ async def test_delivery_business_flow(school_case):
 
 def test_delivery_openapi():
     paths = {p: ops for p, ops in create_app().openapi()['paths'].items() if p.startswith('/api/v1/deliveries')}
-    assert sum(len(ops) for ops in paths.values()) == 6
+    assert sum(len(ops) for ops in paths.values()) == 11
     for ops in paths.values():
         for operation in ops.values():
             assert '422' not in operation['responses']

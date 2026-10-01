@@ -75,3 +75,31 @@ async def get_receiving_photo(file_id: UUID, upload: ScopeDep):
     media_type = next(kind for kind, suffix in ALLOWED_TYPES.items()
                       if suffix == matches[0].suffix.lower())
     return FileResponse(matches[0], media_type=media_type)
+
+
+@router.post('/complaint-photo', status_code=201, response_model=UploadEnvelope,
+    description='Complaint.Write. Upload JPEG/PNG/WebP incident evidence; returns tenant-scoped reference for POST /complaints.')
+async def upload_complaint_photo(request: Request, upload: ScopeDep, file: UploadFile = File(...)):
+    db, scope = upload
+    try:
+        await require_permission(db, scope, 'Complaint.Write')
+    except PermissionDeniedError:
+        raise HTTPException(403, 'Required permission is not granted') from None
+    content_type = (file.content_type or '').lower()
+    extension = ALLOWED_TYPES.get(content_type)
+    if extension is None:
+        raise HTTPException(400, 'Foto harus berformat JPEG, PNG, atau WebP')
+    settings = get_settings()
+    content = await file.read(settings.upload_max_bytes + 1)
+    if not content:
+        raise HTTPException(400, 'File foto tidak boleh kosong')
+    if len(content) > settings.upload_max_bytes:
+        raise HTTPException(413, 'Ukuran foto melebihi batas upload')
+    file_id = uuid4()
+    directory = settings.upload_dir / str(scope.tenant_id) / 'complaints'
+    directory.mkdir(parents=True, exist_ok=True)
+    stored_name = f'{file_id}{extension}'
+    (directory / stored_name).write_bytes(content)
+    return envelope(request, code=201, data=UploadData(
+        file_id=file_id, reference=f'complaint-photo/{scope.tenant_id}/{stored_name}',
+        content_type=content_type, size_bytes=len(content)))

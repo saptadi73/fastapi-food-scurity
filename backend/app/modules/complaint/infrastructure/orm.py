@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Index,
+    String,
     Text,
     UniqueConstraint,
 )
@@ -35,5 +36,8 @@ class Complaint(AuditMixin, Base):
     package_id: Mapped[UUID]
     school_id: Mapped[UUID]
     description: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(40), default='OTHER', server_default='OTHER')
+    severity: Mapped[str] = mapped_column(String(20), default='MEDIUM', server_default='MEDIUM')
+    status: Mapped[str] = mapped_column(String(20), default='OPEN', server_default='OPEN')
     photo: Mapped[str | None] = mapped_column(Text)
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

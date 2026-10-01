@@ -16,6 +16,8 @@ from app.modules.complaint.schemas import (
     ComplaintPageEnvelope,
     ComplaintReportEnvelope,
     ComplaintReportPageEnvelope,
+    BatchIncidentImpactEnvelope,
+    PackageIncidentAlertEnvelope,
 )
 
 router = APIRouter(prefix='/complaints', tags=['Complaint'], responses={
@@ -72,6 +74,18 @@ async def list_complaint_reports(request: Request, service: ServiceDep, offset: 
     return envelope(request, data=await service.reports(
         offset=offset, limit=limit, package_id=package_id, school_id=school_id,
     ))
+
+
+@router.get('/package/{package_id}/alerts', response_model=PackageIncidentAlertEnvelope,
+    description='Complaint.Read. Active incident alerts from any package in the same production batch; intended for scan and school receiving warning.')
+async def package_incident_alerts(request: Request, package_id: UUID, service: ServiceDep):
+    return envelope(request, data=await service.package_alerts(package_id))
+
+
+@router.get('/{identifier}/batch-impact', response_model=BatchIncidentImpactEnvelope,
+    description='Complaint.Read. Batch-wide impacted packages with delivery destination, receipt and consumption state.')
+async def complaint_batch_impact(request: Request, identifier: UUID, service: ServiceDep):
+    return envelope(request, data=await service.batch_impact(identifier))
 
 
 @router.get('/{identifier}', response_model=ComplaintEnvelope,
