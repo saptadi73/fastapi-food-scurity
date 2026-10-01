@@ -6089,8 +6089,19 @@ Respons `ComplaintReportData` memuat semua field `ComplaintData` ditambah
 `package`, `production_batch`, `current_location`, `delivery_manifest`,
 `school_receivings`, `consumption`, `raw_materials` dan `traceability`.
 `current_location` bernilai `SCHOOL` bila receipt sekolah sudah ada, termasuk
-status RECEIVED/REJECTED dan waktu deteksi; bila belum diterima sekolah tetapi
-manifest ada, bernilai `DELIVERY` dengan delivery/vehicle/status. `raw_materials`
+`school_name`, `school_address`, status RECEIVED/REJECTED, waktu deteksi dan
+`received_by` (identitas penanda tangan, lihat di bawah); bila belum diterima
+sekolah tetapi manifest ada, bernilai `DELIVERY` dengan delivery/vehicle/status.
+`delivery_manifest[].school_name`/`school_address` dan
+`school_receivings[].school_name`/`school_address` selalu ikut ditampilkan agar
+investigasi tahu lokasi penerimaan tanpa perlu memanggil endpoint School
+terpisah. Setiap `school_receivings[]` juga memuat `received_by`: `null` bila
+belum ada digital signature untuk receipt tersebut, atau objek berisi
+`signature_id`, `signed_by` (user_id penanda tangan), `signed_at` dan
+`signer_snapshot` (`fullname`, `job_title`, `roles` milik penanda tangan saat
+ditandatangani) bila `POST /signatures/targets/school_receiving/{id}` sudah
+dipanggil untuk receipt tersebut — inilah cara mengetahui siapa yang menerima
+paket, bukan hanya boolean `accepted`. `raw_materials`
 memuat production_item, batch_code bahan, expired_date, status batch bahan,
 received_at, suhu/condition/foto receiving, serta `manual_issues` dari pengeluaran
 bahan manual/scan. `traceability` memuat asset UUID package/complaint dan 100

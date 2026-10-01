@@ -33,6 +33,12 @@ Urutan implementasi berdasarkan dependensi alur operasional:
    kondisi/selisih serta pencatatan konsumsi dan status akhir paket.
 7. [ ] **Keluhan, investigasi dan recall.** Complaint, penelusuran batch/paket terdampak,
    pembuatan/pelaksanaan/penyelesaian recall dan tindak lanjut sesuai desain.
+   Catatan 2026-09-30: laporan insiden (`GET /complaints/{id}/report`) kini
+   menyertakan alamat sekolah (`school_address`/`school_name`) dan identitas
+   penanda tangan penerimaan (`received_by` dari digital signature) sehingga
+   "diterima oleh siapa dan dimana" terlihat, bukan hanya status boolean.
+   Belum ada role registrasi baku ADMIN/GURU/SISWA di skema; role tetap bebas
+   per-tenant, hanya dicontohkan lewat seed exhibition (ADMIN/GURU/OPERATOR_SEKOLAH).
 8. [ ] **Lengkapi modul pendukung bisnis utama.** Pemantauan device/storage/fleet,
    ingestion telemetry, evaluasi rule/alarm, notifikasi operasional dan ringkasan
    dashboard untuk alur di atas. Konfigurasi rule dan API bukti yang sudah tersedia

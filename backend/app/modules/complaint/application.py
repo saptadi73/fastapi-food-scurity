@@ -14,6 +14,7 @@ from app.modules.master.infrastructure.orm import School
 from app.modules.production.infrastructure.orm import Package, ProductionBatch, ProductionItem
 from app.modules.receiving.application.service import ReceivingService
 from app.modules.receiving.infrastructure.orm import RawMaterialBatch, Receiving, ReceivingItem, StockIssue
+from app.modules.signature.infrastructure import SignatureEvidence
 from app.modules.traceability.infrastructure.orm import AssetMovement, AssetRelationship, DigitalAsset
 from app.modules.traceability.infrastructure.registry import sync_source
 
@@ -56,6 +57,7 @@ class ComplaintService(ReceivingService):
             Delivery.__table__.c.arrival_time,
             Delivery.__table__.c.estimated_arrival_time,
             School.__table__.c.school_name,
+            School.__table__.c.address.label('school_address'),
         ).join(Delivery, (Delivery.tenant_id == DeliveryItem.tenant_id)
             & (Delivery.delivery_id == DeliveryItem.delivery_id))
             .join(School, (School.tenant_id == DeliveryItem.tenant_id)
@@ -66,11 +68,28 @@ class ComplaintService(ReceivingService):
         receipts = (await self.db.execute(select(
             SchoolReceiving.__table__,
             Delivery.__table__.c.status.label('delivery_status'),
+            School.__table__.c.school_name,
+            School.__table__.c.address.label('school_address'),
         ).join(Delivery, (Delivery.tenant_id == SchoolReceiving.tenant_id)
             & (Delivery.delivery_id == SchoolReceiving.delivery_id))
-            .where(*self.visible(SchoolReceiving), *self.visible(Delivery),
+            .join(School, (School.tenant_id == SchoolReceiving.tenant_id)
+                  & (School.school_id == SchoolReceiving.school))
+            .where(*self.visible(SchoolReceiving), *self.visible(Delivery), *self.visible(School),
                    SchoolReceiving.package == package['package_id'])
             .order_by(SchoolReceiving.received_time.desc()))).mappings().all()
+        receipt_rows = []
+        for row in receipts:
+            signature = (await self.db.execute(select(
+                SignatureEvidence.signature_id, SignatureEvidence.signed_by,
+                SignatureEvidence.signed_at, SignatureEvidence.signer_snapshot,
+            ).where(SignatureEvidence.tenant_id == self.scope.tenant_id,
+                    SignatureEvidence.entity_type == 'SCHOOL_RECEIVING',
+                    SignatureEvidence.entity_id == row['school_receiving_id'],
+                    SignatureEvidence.deleted_at.is_(None),
+            ).order_by(SignatureEvidence.signed_at.desc()).limit(1))).mappings().one_or_none()
+            receipt_rows.append({**dict(row), 'received_by': None if signature is None else {
+                'signature_id': signature['signature_id'], 'signed_by': signature['signed_by'],
+                'signed_at': signature['signed_at'], 'signer_snapshot': signature['signer_snapshot']}})
         consumption = (await self.db.execute(select(Consumption.__table__).where(
             *self.visible(Consumption), Consumption.package_id == package['package_id'],
         ))).mappings().one_or_none()
@@ -118,15 +137,17 @@ class ComplaintService(ReceivingService):
                 AssetMovement.asset_uuid == package_asset['asset_uuid'],
             ).order_by(AssetMovement.movement_time.desc()).limit(100))).mappings().all()]
         location = None
-        if receipts:
-            location = {'type': 'SCHOOL', 'school_id': receipts[0]['school'], 'detected_at': receipts[0]['received_time'],
+        if receipt_rows:
+            location = {'type': 'SCHOOL', 'school_id': receipts[0]['school'], 'school_name': receipts[0]['school_name'],
+                        'school_address': receipts[0]['school_address'], 'detected_at': receipts[0]['received_time'],
+                        'received_by': receipt_rows[0]['received_by'],
                         'status': 'RECEIVED' if receipts[0]['accepted'] else 'REJECTED'}
         elif manifest:
             location = {'type': 'DELIVERY', 'delivery_id': manifest[0]['delivery_id'],
                         'vehicle_id': manifest[0]['vehicle_id'], 'status': manifest[0]['delivery_status']}
         return {**complaint, 'package': dict(package), 'production_batch': None if production is None else dict(production),
                 'current_location': location, 'delivery_manifest': [dict(row) for row in manifest],
-                'school_receivings': [dict(row) for row in receipts],
+                'school_receivings': receipt_rows,
                 'consumption': None if consumption is None else dict(consumption),
                 'raw_materials': materials,
                 'traceability': {
