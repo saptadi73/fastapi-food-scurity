@@ -702,6 +702,8 @@ schema/tabel saja tidak dianggap penyelesaian.
   consumption, status recall, tindakan wajib, dan akses laporan complaint.
 - Aksi reset demo frontend dibatasi `tenant_code=FSOS_EXPO` + role `ADMIN`;
   tenant `FSOS_EXPO_INCIDENT` tidak menampilkan cleanup dan tetap dilindungi backend.
+- Manual pengguna DOCX end-to-end dan panduan lengkap tenant `FSOS_EXPO` serta
+  `FSOS_EXPO_INCIDENT` tersedia untuk onboarding, operasional, dan exhibition.
 - Runbook reset demo diperbarui: `demo_cleanup.py --confirm` berjalan tanpa
   mengubah `ENVIRONMENT`, hanya untuk tenant `FSOS_EXPO`, dengan contoh Linux/Windows.
 - Reset demo (`demo_cleanup.py`/`POST /demo/reset`) diperbaiki: holding/sensor/suhu/

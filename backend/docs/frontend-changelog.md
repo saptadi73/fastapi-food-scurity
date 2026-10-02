@@ -1061,3 +1061,10 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - `GET /auth/me` menambahkan `tenant_code` agar frontend dapat membedakan tenant live `FSOS_EXPO` dan skenario tetap `FSOS_EXPO_INCIDENT`.
 - Tombol reset hanya ditampilkan untuk role `ADMIN` pada `FSOS_EXPO`; backend tetap menolak request reset dari tenant lain.
 - Perubahan response bersifat additive dan tidak mengubah token, login payload, permission, atau event.
+
+## 2026-10-02 - Manual pengguna dan panduan demo DOCX
+
+- Menambahkan `backend/docs/FSOS-Manual-Pengguna-dan-Panduan-Demo.docx` sebagai manual operasional end-to-end.
+- Manual mencakup master data, IoT/MQTT, receiving dan food probe, storage, produksi, packaging, delivery/live tracking, penerimaan sekolah, traceability, complaint/recall, troubleshooting, serta checklist.
+- Runbook terpisah menjelaskan `FSOS_EXPO` yang dapat di-reset dan `FSOS_EXPO_INCIDENT` yang harus dipertahankan.
+- Generator dependency-free tersedia pada `backend/scripts/generate_user_manual_docx.py`; kredensial rahasia tidak ditanamkan ke dokumen.
