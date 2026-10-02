@@ -9,6 +9,10 @@
   terkait package/produksi dan `signature_evidence` school receiving/complaint.
 - `data.removed` mendapat key baru tersebut. Field lain tidak berubah.
 - `demo_live_flow.py` merilis kemasan (`holding/finish` `RELEASED`) sebelum manifest.
+- `demo_live_flow.py` mengirim GPS armada via `POST /telemetry/gps` (otomatis pada
+  `--stop-after-depart`, atau `--gps-only`/`--gps-follow`) sehingga
+  `GET /deliveries/{id}/tracking` mengisi `latest_gps`, sisa jarak/durasi dan
+  `history` memiliki titik. Tidak ada perubahan kontrak endpoint.
 
 ## 2026-10-02 - Profil grant fsos_runtime untuk head 0039
 

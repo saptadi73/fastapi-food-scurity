@@ -26,6 +26,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import math
 import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -99,6 +100,46 @@ async def login(api: Api, tenant: str, username: str, password: str):
     print(f'Login OK sebagai {username} pada tenant {tenant}')
 
 
+def coordinate(item: dict, label: str) -> tuple[float, float]:
+    if item.get('latitude') is None or item.get('longitude') is None:
+        raise ApiError(f'{label} belum punya latitude/longitude; GPS demo tidak dapat disimulasikan')
+    return float(item['latitude']), float(item['longitude'])
+
+
+async def send_gps(api: Api, vehicle_id: str, origin, target, fraction: float) -> dict:
+    lat = origin[0] + (target[0] - origin[0]) * fraction
+    lng = origin[1] + (target[1] - origin[1]) * fraction
+    heading = round((math.degrees(math.atan2(target[1] - origin[1], target[0] - origin[0])) + 360) % 360, 3) % 360
+    return await api.post('/telemetry/gps', {
+        'vehicle_uuid': vehicle_id, 'latitude': f'{lat:.6f}', 'longitude': f'{lng:.6f}',
+        'speed': '30.000', 'heading': f'{heading:.3f}', 'hdop': '0.900', 'satellite': 9,
+    })
+
+
+async def simulate_gps(api: Api, args, kitchen: dict, vehicle: dict, school: dict) -> None:
+    """Post HTTP GPS samples kitchen -> school so Live Tracking has a vehicle position."""
+    origin, target = coordinate(kitchen, 'Kitchen'), coordinate(school, 'School')
+    points = max(args.gps_points, 1)
+    progress = min(max(args.gps_progress, 0.0), 0.95)
+    fraction = 0.0
+    for index in range(points):
+        fraction = progress * index / max(points - 1, 1)
+        await send_gps(api, vehicle['vehicle_id'], origin, target, fraction)
+    print(f'  GPS awal terkirim: {points} titik, posisi {fraction:.0%} rute dapur -> sekolah')
+    if args.gps_follow <= 0:
+        return
+    print(f'  Mode follow: kirim GPS tiap {args.gps_follow:g} detik sampai 95% rute (Ctrl+C untuk berhenti)')
+    step = max(args.gps_step, 0.01)
+    try:
+        while fraction < 0.95:
+            await asyncio.sleep(args.gps_follow)
+            fraction = min(fraction + step, 0.95)
+            await send_gps(api, vehicle['vehicle_id'], origin, target, fraction)
+            print(f'    GPS {fraction:.0%} rute')
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print('  Follow GPS dihentikan.')
+
+
 async def run(args):
     api = Api(args.base_url, args.timeout)
     tag = args.run_tag or uuid4().hex[:8]
@@ -120,6 +161,11 @@ async def run(args):
         show('kitchen', kitchen['kitchen_id'])
         show('vehicle/driver', {'vehicle': vehicle['vehicle_id'], 'driver': vehicle['driver_id']})
         show('school', school['school_id'])
+
+        if args.gps_only:
+            banner('GPS ARMADA (tanpa membuat transaksi baru)')
+            await simulate_gps(api, args, kitchen, vehicle, school)
+            return
 
         banner('TAHAP 1: Penerimaan bahan baku (QR batch dari dua sumber pemasok)')
         received_at = datetime.now(UTC) - timedelta(minutes=1)
@@ -249,6 +295,8 @@ async def run(args):
         print(f'  Hasil: HTTP {status} - {message}  (benar; paket masih IN_TRANSIT, belum sampai)')
 
         if args.stop_after_depart:
+            banner('GPS ARMADA untuk Live Tracking')
+            await simulate_gps(api, args, kitchen, vehicle, school)
             banner('RINGKASAN DATA DEMO SIAP LIVE TRACKING')
             show('summary', {
                 'run_tag': tag,
@@ -332,6 +380,14 @@ def parse_args():
     parser.add_argument('--run-tag', default=None, help='Suffix for codes; random if omitted so reruns do not collide')
     parser.add_argument('--stop-after-depart', action='store_true',
                         help='Stop with delivery IN_TRANSIT so live tracking and arrival continue from frontend')
+    parser.add_argument('--gps-only', action='store_true',
+                        help='Only post GPS for the vehicle (existing IN_TRANSIT delivery); no new transactions')
+    parser.add_argument('--gps-points', default=3, type=int, help='Initial GPS samples after departure')
+    parser.add_argument('--gps-progress', default=0.3, type=float,
+                        help='Route fraction (0..0.95) reached by the initial samples')
+    parser.add_argument('--gps-follow', default=0.0, type=float,
+                        help='Keep posting GPS every N seconds until 95%% of route; 0 disables')
+    parser.add_argument('--gps-step', default=0.05, type=float, help='Route fraction advanced per follow sample')
     parser.add_argument('--timeout', default=20.0, type=float)
     return parser.parse_args()
 
@@ -342,3 +398,5 @@ if __name__ == '__main__':
     except ApiError as exc:
         print(f'\nGAGAL: {exc}')
         sys.exit(1)
+    except KeyboardInterrupt:
+        print('\nDihentikan oleh pengguna.')

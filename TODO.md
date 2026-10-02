@@ -701,6 +701,8 @@ schema/tabel saja tidak dianggap penyelesaian.
 - Reset demo (`demo_cleanup.py`/`POST /demo/reset`) diperbaiki: holding/sensor/suhu/
   signature ikut dihapus dan guard append-only hanya dinonaktifkan di transaksi reset.
   Diverifikasi lokal: live flow penuh, reset, rerun run-tag sama, reset ulang, trigger aktif.
+- Demo live tracking: `demo_live_flow.py` mengirim GPS simulasi (`--gps-only`,
+  `--gps-follow`); tracking/history terverifikasi lokal berisi latest_gps dan titik.
 
 - Dokumen sumber masih berstatus Draft. Checklist ini tidak menyatakan seluruh
   FSOS sudah siap produksi setelah instalasi FastAPI.

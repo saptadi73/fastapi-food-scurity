@@ -172,6 +172,36 @@ gunakan tag baru atau jalankan cleanup tenant demo terlebih dahulu.
 Tanpa `--stop-after-depart`, skrip mempertahankan perilaku end-to-end lama dan
 melanjutkan delivery sampai penerimaan sekolah serta konsumsi.
 
+### GPS armada untuk Live Tracking
+
+Armada demo tidak punya perangkat GPS fisik, sehingga Live Tracking menampilkan
+"Belum ada GPS" dan peta kosong sampai ada sampel `gps_log`. Mode
+`--stop-after-depart` kini otomatis mengirim 3 titik GPS (dapur -> 30% rute ke
+sekolah) melalui `POST /telemetry/gps` (permission `Telemetry.Ingest`, sudah
+diberikan ke `ADMIN`). Opsi:
+
+| Flag | Default | Fungsi |
+| --- | --- | --- |
+| `--gps-points` | 3 | Jumlah titik awal setelah berangkat |
+| `--gps-progress` | 0.3 | Posisi titik awal terakhir (fraksi rute, maks 0.95) |
+| `--gps-follow` | 0 | Kirim GPS tiap N detik agar armada terlihat bergerak; 0 = mati |
+| `--gps-step` | 0.05 | Pertambahan fraksi rute per titik follow |
+| `--gps-only` | - | Hanya kirim GPS untuk armada yang sudah `IN_TRANSIT`; tidak membuat transaksi baru |
+
+Untuk delivery yang sudah `IN_TRANSIT` tanpa GPS (seperti hasil run lama),
+jalankan mode GPS saja; frontend me-refresh tiap 15 detik:
+
+```bash
+python backend/scripts/demo_live_flow.py \
+  --base-url https://api.foodsecurity.online/api/v1 \
+  --tenant FSOS_EXPO --gps-only --gps-follow 15
+```
+
+Mode follow berhenti di 95% rute (belum masuk geofence sekolah) atau saat
+Ctrl+C. Arrival tetap dilakukan dari frontend (`complete`). GPS dikirim untuk
+kendaraan `--vehicle-code` (default `VH-EXPO-01`) dari koordinat dapur ke
+sekolah `--school-code`; tracking memakai GPS terbaru kendaraan tersebut.
+
 Skrip ini memanggil REST API sungguhan (login lalu POST/GET) sehingga semua
 aturan bisnis nyata ikut teruji dan terlihat:
 
@@ -292,6 +322,7 @@ dll) untuk variasi antar sesi demo.
 | `demo_live_flow.py` gagal `POST /deliveries -> 409 Package must be released and unexpired for dispatch` | Versi skrip lama tidak merilis kemasan (`holding/finish` `RELEASED`) sebelum manifest | Tarik versi terbaru; jalankan `demo_cleanup.py --confirm` atau pakai `--run-tag` baru karena run gagal sudah membuat receiving/produksi/kemasan |
 | `demo_cleanup.py` gagal `IntegrityError ... fk_holding_package` atau `append-only` | Versi cleanup lama tidak menghapus `holding_log` dan tertahan trigger tabel bukti | Tarik versi terbaru lalu jalankan ulang; tidak ada data yang terhapus sebagian karena transaksi di-rollback |
 | `demo_live_flow.py` gagal `POST /receivings -> 409 Batch code or QR already exists` | `--run-tag` sudah dipakai dan cleanup belum berhasil | Jalankan cleanup versi terbaru sampai sukses, atau pakai `--run-tag` baru |
+| Live Tracking `Belum ada GPS`, peta kosong | Tidak ada `gps_log` untuk kendaraan delivery (armada demo tanpa perangkat GPS) | `demo_live_flow.py --gps-only --gps-follow 15` dengan `--base-url` server, lalu klik Perbarui |
 
 Sebelum hari-H, jalankan urutan berikut sekali untuk memastikan lingkungan
 siap tanpa kejutan di atas panggung:
