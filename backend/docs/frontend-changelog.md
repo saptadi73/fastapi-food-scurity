@@ -1023,3 +1023,9 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - Menjalankan ulang `seed_exhibition_incident.py` kini memperbarui metadata complaint deterministik lama agar warning batch aktif tanpa cleanup tenant.
 - Rekonsiliasi hanya menyentuh category, severity, status, dan audit update; evidence foto, signature, serta transaksi lain dipertahankan.
 - Output seed menambahkan penghitung `reconciled`; perubahan ini tidak mengubah kontrak endpoint frontend.
+
+## 2026-10-02 - Persiapan delivery live tenant exhibition
+
+- `demo_live_flow.py --stop-after-depart` menyiapkan transaksi `FSOS_EXPO` sampai delivery berstatus `IN_TRANSIT`.
+- Frontend dapat melanjutkan live tracking, arrival, penerimaan sekolah, dan konsumsi dari data yang ditinggalkan mode ini.
+- Tidak ada perubahan endpoint atau payload; mode persiapan memakai kontrak REST operasional yang sudah aktif.

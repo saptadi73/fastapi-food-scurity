@@ -151,6 +151,27 @@ record lama diperbarui; eksekusi berikutnya menghasilkan `reconciled: 0`.
 .\venv\Scripts\python.exe backend\scripts\demo_live_flow.py --tenant FSOS_EXPO --run-tag sesi1
 ```
 
+Jika `FSOS_EXPO` harus sudah berisi transaksi sampai pengiriman aktif sebelum
+frontend dibuka, gunakan mode persiapan berikut:
+
+```powershell
+.\venv\Scripts\python.exe backend\scripts\demo_live_flow.py `
+  --base-url https://api.foodsecurity.online/api/v1 `
+  --tenant FSOS_EXPO `
+  --run-tag ready1 `
+  --stop-after-depart
+```
+
+Mode ini membuat receiving, putaway, produksi, kemasan, manifest, dan
+keberangkatan armada melalui REST API nyata, lalu berhenti saat delivery
+`IN_TRANSIT`. Data akan muncul pada Penerimaan Bahan, Batch Produksi, Paket & QR,
+Pengiriman Aktif, dan Live Tracking Delivery. Arrival, penerimaan sekolah, dan
+konsumsi dilanjutkan dari frontend. Jangan memakai `run-tag` yang sama dua kali;
+gunakan tag baru atau jalankan cleanup tenant demo terlebih dahulu.
+
+Tanpa `--stop-after-depart`, skrip mempertahankan perilaku end-to-end lama dan
+melanjutkan delivery sampai penerimaan sekolah serta konsumsi.
+
 Skrip ini memanggil REST API sungguhan (login lalu POST/GET) sehingga semua
 aturan bisnis nyata ikut teruji dan terlihat:
 

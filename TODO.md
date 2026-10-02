@@ -694,6 +694,8 @@ schema/tabel saja tidak dianggap penyelesaian.
   sekolah, recall/withdrawal, dan petunjuk batch-impact siap untuk demo.
 - Rerun seed exhibition incident merekonsiliasi complaint demo lama tanpa
   cleanup tenant dan tanpa menimpa evidence foto/signature.
+- Exhibition live flow menyediakan `--stop-after-depart` untuk mengisi tenant
+  `FSOS_EXPO` sampai delivery `IN_TRANSIT`, lalu alur dilanjutkan dari frontend.
 - Runbook reset demo diperbarui: `demo_cleanup.py --confirm` berjalan tanpa
   mengubah `ENVIRONMENT`, hanya untuk tenant `FSOS_EXPO`, dengan contoh Linux/Windows.
 

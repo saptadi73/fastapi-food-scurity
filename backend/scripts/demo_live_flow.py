@@ -5,6 +5,10 @@ Drives receiving (with QR batch) -> production -> packaging/holding -> delivery
 business rule (QR persistence, "package not delivered yet", holding time
 expiry) is exercised exactly as a real operator would trigger it.
 
+Use --stop-after-depart to prepare persistent demo data and stop while the
+delivery is IN_TRANSIT. The frontend can then demonstrate active delivery and
+live tracking before an operator completes the remaining flow.
+
 This script does NOT delete anything; it is safe to run repeatedly against the
 same demo tenant (run_in_terminal a fresh --run-tag each time to avoid unique
 code collisions). To reset the tenant between rehearsals, use
@@ -239,6 +243,21 @@ async def run(args):
         })
         print(f'  Hasil: HTTP {status} - {message}  (benar; paket masih IN_TRANSIT, belum sampai)')
 
+        if args.stop_after_depart:
+            banner('RINGKASAN DATA DEMO SIAP LIVE TRACKING')
+            show('summary', {
+                'run_tag': tag,
+                'production_batch': production['batch_code'],
+                'package_id': package['package_id'],
+                'package_code': f'PKG-EXPO-{tag}-01',
+                'package_qr': package.get('qr_payload'),
+                'delivery_id': delivery['delivery_id'],
+                'delivery_status': delivery['status'],
+                'school': school['school_name'],
+            })
+            print('\nPersiapan selesai pada status IN_TRANSIT. Lanjutkan arrival dan penerimaan dari frontend.')
+            return
+
         banner('TAHAP 6: Armada tiba di sekolah')
         delivery = await api.post(f'/deliveries/{delivery["delivery_id"]}/complete', {
             'expected_version': delivery['version'],
@@ -306,6 +325,8 @@ def parse_args():
     parser.add_argument('--package-type-id', default=None)
     parser.add_argument('--planned-quantity', default=Decimal('50'), type=Decimal)
     parser.add_argument('--run-tag', default=None, help='Suffix for codes; random if omitted so reruns do not collide')
+    parser.add_argument('--stop-after-depart', action='store_true',
+                        help='Stop with delivery IN_TRANSIT so live tracking and arrival continue from frontend')
     parser.add_argument('--timeout', default=20.0, type=float)
     return parser.parse_args()
 
