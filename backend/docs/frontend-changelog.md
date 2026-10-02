@@ -1043,3 +1043,9 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - `demo_live_flow.py --stop-after-depart` menyiapkan transaksi `FSOS_EXPO` sampai delivery berstatus `IN_TRANSIT`.
 - Frontend dapat melanjutkan live tracking, arrival, penerimaan sekolah, dan konsumsi dari data yang ditinggalkan mode ini.
 - Tidak ada perubahan endpoint atau payload; mode persiapan memakai kontrak REST operasional yang sudah aktif.
+
+## 2026-10-02 - Detail marker live tracking frontend
+
+- Marker dapur asal dan sekolah tujuan kini membuka popup nama, kode, alamat, dan koordinat saat diklik.
+- Marker GPS armada memakai ikon mobil serta menampilkan delivery, status, koordinat, dan waktu pembaruan terakhir.
+- Frontend memakai field tracking, kitchen, dan school yang sudah tersedia; tidak ada perubahan kontrak backend atau event.

@@ -696,6 +696,8 @@ schema/tabel saja tidak dianggap penyelesaian.
   cleanup tenant dan tanpa menimpa evidence foto/signature.
 - Exhibition live flow menyediakan `--stop-after-depart` untuk mengisi tenant
   `FSOS_EXPO` sampai delivery `IN_TRANSIT`, lalu alur dilanjutkan dari frontend.
+- Live tracking frontend membedakan marker dapur, sekolah, dan ikon mobil GPS;
+  klik marker menampilkan identitas lokasi serta konteks delivery.
 - Runbook reset demo diperbarui: `demo_cleanup.py --confirm` berjalan tanpa
   mengubah `ENVIRONMENT`, hanya untuk tenant `FSOS_EXPO`, dengan contoh Linux/Windows.
 - Reset demo (`demo_cleanup.py`/`POST /demo/reset`) diperbaiki: holding/sensor/suhu/
