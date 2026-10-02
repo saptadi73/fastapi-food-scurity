@@ -698,6 +698,9 @@ schema/tabel saja tidak dianggap penyelesaian.
   `FSOS_EXPO` sampai delivery `IN_TRANSIT`, lalu alur dilanjutkan dari frontend.
 - Runbook reset demo diperbarui: `demo_cleanup.py --confirm` berjalan tanpa
   mengubah `ENVIRONMENT`, hanya untuk tenant `FSOS_EXPO`, dengan contoh Linux/Windows.
+- Reset demo (`demo_cleanup.py`/`POST /demo/reset`) diperbaiki: holding/sensor/suhu/
+  signature ikut dihapus dan guard append-only hanya dinonaktifkan di transaksi reset.
+  Diverifikasi lokal: live flow penuh, reset, rerun run-tag sama, reset ulang, trigger aktif.
 
 - Dokumen sumber masih berstatus Draft. Checklist ini tidak menyatakan seluruh
   FSOS sudah siap produksi setelah instalasi FastAPI.

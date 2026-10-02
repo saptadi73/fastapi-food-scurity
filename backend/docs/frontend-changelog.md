@@ -1,5 +1,15 @@
 ﻿# Perubahan kontrak frontend
 
+## 2026-10-02 - Perbaikan reset demo FSOS_EXPO
+
+- `POST /demo/reset` dan `demo_cleanup.py` sebelumnya gagal 500/IntegrityError
+  begitu tenant memiliki package dengan holding log, serta akan ditolak trigger
+  append-only (production_item, stock_entry, event_log, asset_movement, dll).
+  Reset kini menghapus juga `holding_log`, `food_sensor_binding`, `temperature_log`
+  terkait package/produksi dan `signature_evidence` school receiving/complaint.
+- `data.removed` mendapat key baru tersebut. Field lain tidak berubah.
+- `demo_live_flow.py` merilis kemasan (`holding/finish` `RELEASED`) sebelum manifest.
+
 ## 2026-10-02 - Profil grant fsos_runtime untuk head 0039
 
 - `provision_runtime_role.py` kini mensyaratkan head `20261001_0039` (sebelumnya

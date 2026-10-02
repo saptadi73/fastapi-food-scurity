@@ -6425,10 +6425,14 @@ tenant dari sesi, bukan dari body atau query, lalu menjalankan cleanup dalam sat
 transaksi menggunakan koneksi admin. Master data, tenant, user, role, assignment
 lokasi, dan login tidak dihapus. Data transaksi yang dihapus mencakup receiving,
 stok, produksi, package, delivery, school receiving, consumption, complaint,
-recall/withdrawal, registry/movement, serta event log terkait.
+recall/withdrawal, registry/movement, serta event log terkait, ditambah holding_log,
+food_sensor_binding, temperature_log yang terikat package/produksi, dan
+signature_evidence untuk school receiving/complaint. Guard append-only DELETE pada
+tabel bukti hanya dinonaktifkan di dalam transaksi reset dan diaktifkan kembali
+sebelum commit; bila gagal, rollback memulihkan data dan guard.
 
 Respons sukses memakai envelope standar. `data` berisi `tenant_code`, `tenant_id`,
-dan `removed` berupa object jumlah baris per tabel. Tidak ada event baru atau
+dan `removed` berupa object jumlah baris per tabel (key selalu ada, nilai 0 jika kosong). Tidak ada event baru atau
 transport/realtime notification; frontend sebaiknya menampilkan dialog konfirmasi,
 menonaktifkan tombol selama request, lalu me-refresh dashboard dan daftar transaksi
 setelah 200. Jangan retry otomatis tanpa konfirmasi ulang karena operasi ini

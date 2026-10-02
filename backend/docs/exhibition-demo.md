@@ -256,7 +256,11 @@ reset another tenant` atau `Tenant FSOS_EXPO not found; nothing to reset`
 
 Menghapus HANYA data transaksi tenant `FSOS_EXPO`:
 receiving, batch, stok, produksi, kemasan, pengiriman, penerimaan sekolah,
-konsumsi, komplain, recall/withdrawal, serta registry/movement/event terkait).
+konsumsi, komplain, recall/withdrawal, holding log, binding sensor makanan,
+log suhu yang terikat kemasan/produksi, signature penerimaan/komplain, serta
+registry/movement/event terkait. Trigger append-only pada tabel bukti hanya
+dinonaktifkan di dalam transaksi reset lalu diaktifkan kembali; jika reset gagal,
+rollback memulihkan semuanya. Koneksi `ADMIN_DATABASE_URL` harus owner tabel.
 Master (dapur, storage, pemasok, bahan, sekolah, armada, menu, resep, login,
 assignment lokasi user) tidak disentuh, sehingga seed master tidak perlu diulang.
 Setelah reset tenant live,
@@ -286,6 +290,8 @@ dll) untuk variasi antar sesi demo.
 | `demo_cleanup.py` menolak karena environment bukan development | Versi skrip lama masih memakai guard `ENVIRONMENT` | Tarik versi terbaru; jangan mengubah `ENVIRONMENT` di `.env` server hanya untuk reset demo |
 | `provision_runtime_role.py` keluar `{"error_type": "ValueError", ...}` | Head database berbeda dari `PROFILE_REVISION` profil grant | `alembic upgrade head`, lalu jalankan ulang; `detail` menampilkan revisi yang diharapkan dan aktual |
 | `demo_live_flow.py` gagal `POST /deliveries -> 409 Package must be released and unexpired for dispatch` | Versi skrip lama tidak merilis kemasan (`holding/finish` `RELEASED`) sebelum manifest | Tarik versi terbaru; jalankan `demo_cleanup.py --confirm` atau pakai `--run-tag` baru karena run gagal sudah membuat receiving/produksi/kemasan |
+| `demo_cleanup.py` gagal `IntegrityError ... fk_holding_package` atau `append-only` | Versi cleanup lama tidak menghapus `holding_log` dan tertahan trigger tabel bukti | Tarik versi terbaru lalu jalankan ulang; tidak ada data yang terhapus sebagian karena transaksi di-rollback |
+| `demo_live_flow.py` gagal `POST /receivings -> 409 Batch code or QR already exists` | `--run-tag` sudah dipakai dan cleanup belum berhasil | Jalankan cleanup versi terbaru sampai sukses, atau pakai `--run-tag` baru |
 
 Sebelum hari-H, jalankan urutan berikut sekali untuk memastikan lingkungan
 siap tanpa kejutan di atas panggung:
