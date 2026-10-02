@@ -36,6 +36,7 @@ class TokensData(BaseModel):
 class IdentityData(BaseModel):
     user_id: UUID
     tenant_id: UUID
+    tenant_code: str
     roles: list[str]
     permissions: list[str]
 

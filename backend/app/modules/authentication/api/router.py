@@ -2,6 +2,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -25,6 +26,7 @@ from app.modules.authentication.schemas.http import (
     RefreshPayload,
     TokensEnvelope,
 )
+from app.modules.master.infrastructure.orm import Tenant
 
 logger = logging.getLogger('fsos')
 router = APIRouter(prefix='/auth', tags=['Authentication'], responses={
@@ -138,9 +140,16 @@ async def current_account(request: Request,
 
 
 @router.get('/me', response_model=IdentityEnvelope, summary='Identitas dan RBAC aktif',
-            description='Requires Bearer access JWT with active sid, account and tenant. Returns current database roles/permissions; no business permission required.')
-async def me(request: Request, account: Annotated[AuthenticatedAccount, Depends(current_account, scope='function')]):
+            description='Requires Bearer access JWT with active sid, account and tenant. Returns current database tenant code, roles and permissions; no business permission required.')
+async def me(request: Request, db: DatabaseDep,
+             account: Annotated[AuthenticatedAccount, Depends(current_account, scope='function')]):
+    tenant_code = await db.scalar(select(Tenant.tenant_code).where(
+        Tenant.tenant_id == account.tenant_id,
+        Tenant.deleted_at.is_(None),
+    ))
+    if tenant_code is None:
+        raise denied()
     return envelope(request, data={
-        'user_id': account.user_id, 'tenant_id': account.tenant_id,
+        'user_id': account.user_id, 'tenant_id': account.tenant_id, 'tenant_code': tenant_code,
         'roles': list(account.roles), 'permissions': list(account.permissions),
     })

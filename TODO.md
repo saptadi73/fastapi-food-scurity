@@ -700,6 +700,8 @@ schema/tabel saja tidak dianggap penyelesaian.
   klik marker menampilkan identitas lokasi serta konteks delivery.
 - Warning scan incident menampilkan alasan, kode batch, dampak delivery/receipt/
   consumption, status recall, tindakan wajib, dan akses laporan complaint.
+- Aksi reset demo frontend dibatasi `tenant_code=FSOS_EXPO` + role `ADMIN`;
+  tenant `FSOS_EXPO_INCIDENT` tidak menampilkan cleanup dan tetap dilindungi backend.
 - Runbook reset demo diperbarui: `demo_cleanup.py --confirm` berjalan tanpa
   mengubah `ENVIRONMENT`, hanya untuk tenant `FSOS_EXPO`, dengan contoh Linux/Windows.
 - Reset demo (`demo_cleanup.py`/`POST /demo/reset`) diperbaiki: holding/sensor/suhu/

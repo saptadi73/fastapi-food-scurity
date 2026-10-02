@@ -6519,6 +6519,8 @@ request, bukan agregat materialized, cache, event stream, alarm, atau indikator 
 
 Semua endpoint berikut memakai Bearer access token dan tenant dari token. Password tidak pernah dikembalikan atau dimasukkan ke event/log.
 
+`GET /api/v1/auth/me` mengembalikan `user_id`, `tenant_id`, `tenant_code`, `roles[]`, dan `permissions[]` dari sesi serta database aktif. Frontend memakai `tenant_code` untuk menyembunyikan aksi khusus tenant, tetapi backend tetap wajib menjadi otoritas. Tombol reset demo hanya boleh ditampilkan bila `tenant_code == FSOS_EXPO` dan role memuat `ADMIN`; `FSOS_EXPO_INCIDENT` tidak pernah menawarkan cleanup. Tanpa body/query; error `401` untuk sesi atau tenant yang tidak lagi aktif.
+
 ### `GET /api/v1/users/roles`
 Permission `User.Read`. Tanpa body. Mengembalikan array `role_id`, `role_code`, `role_name`. Error `401` untuk sesi tidak valid dan `403` jika permission tidak diberikan.
 

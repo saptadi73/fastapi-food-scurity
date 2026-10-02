@@ -1055,3 +1055,9 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - Respons package incident alert kini menyertakan kode batch, complaint utama, detail penyebab, counter dampak, status/reason recall, dan tindakan operasional terstruktur.
 - Perubahan bersifat backward-compatible: field lama dan `alerts[]` tetap tersedia; endpoint tetap read-only dengan permission `Complaint.Read`.
 - Frontend scan menampilkan konteks tersebut agar operator tidak hanya melihat severity generik.
+
+## 2026-10-02 - Visibilitas reset berdasarkan tenant
+
+- `GET /auth/me` menambahkan `tenant_code` agar frontend dapat membedakan tenant live `FSOS_EXPO` dan skenario tetap `FSOS_EXPO_INCIDENT`.
+- Tombol reset hanya ditampilkan untuk role `ADMIN` pada `FSOS_EXPO`; backend tetap menolak request reset dari tenant lain.
+- Perubahan response bersifat additive dan tidak mengubah token, login payload, permission, atau event.
