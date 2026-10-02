@@ -179,7 +179,9 @@ aturan bisnis nyata ikut teruji dan terlihat:
 2. Putaway ke storage sesuai tipe bahan.
 3. Batch produksi dibuat, lalu dimulai dengan "scan" QR batch bahan sebagai
    sumber stok (mengurangi stok otomatis), lalu diselesaikan.
-4. Kemasan dibuat dan holding time dimulai; QR kemasan ditampilkan.
+4. Kemasan dibuat dan holding time dimulai; QR kemasan ditampilkan. Kemasan
+   lalu dirilis (`POST /packages/{id}/holding/finish` dengan `outcome=RELEASED`)
+   karena manifest hanya menerima kemasan `RELEASED` yang belum kedaluwarsa.
 5. Manifest pengiriman ke salah satu sekolah terdaftar.
 6. **Cek "belum sampai"**: script mencoba mencatat penerimaan sekolah SEBELUM
    armada berangkat, lalu SAAT masih `IN_TRANSIT` — keduanya harus ditolak API
@@ -283,6 +285,7 @@ dll) untuk variasi antar sesi demo.
 | `seed_exhibition_incident.py` gagal `Kitchen not found` | Master tenant incident belum dibuat, atau `--tenant-code` berbeda antara dua script | Jalankan `ENVIRONMENT=development python backend/scripts/seed_exhibition_masters.py --tenant-code FSOS_EXPO_INCIDENT`, lalu ulangi seed incident dengan tenant code yang sama |
 | `demo_cleanup.py` menolak karena environment bukan development | Versi skrip lama masih memakai guard `ENVIRONMENT` | Tarik versi terbaru; jangan mengubah `ENVIRONMENT` di `.env` server hanya untuk reset demo |
 | `provision_runtime_role.py` keluar `{"error_type": "ValueError", ...}` | Head database berbeda dari `PROFILE_REVISION` profil grant | `alembic upgrade head`, lalu jalankan ulang; `detail` menampilkan revisi yang diharapkan dan aktual |
+| `demo_live_flow.py` gagal `POST /deliveries -> 409 Package must be released and unexpired for dispatch` | Versi skrip lama tidak merilis kemasan (`holding/finish` `RELEASED`) sebelum manifest | Tarik versi terbaru; jalankan `demo_cleanup.py --confirm` atau pakai `--run-tag` baru karena run gagal sudah membuat receiving/produksi/kemasan |
 
 Sebelum hari-H, jalankan urutan berikut sekali untuk memastikan lingkungan
 siap tanpa kejutan di atas panggung:

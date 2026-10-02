@@ -210,6 +210,11 @@ async def run(args):
         print(f'  QR kemasan: {package["qr_payload"]}  (scan di titik distribusi/sekolah)')
         show('holding aktif', {'status': package['status'], 'remaining_minutes': package['remaining_minutes'],
                                 'timer_status': package['timer_status']})
+        package = await api.post(f'/packages/{package["package_id"]}/holding/finish', {
+            'expected_version': package['version'], 'outcome': 'RELEASED',
+        }, expect=200)
+        show('kemasan dirilis untuk distribusi', {'status': package['status'],
+                                                  'timer_status': package['timer_status']})
 
         banner('TAHAP 4: Manifest pengiriman ke sekolah terdaftar')
         delivery = await api.post('/deliveries', {
