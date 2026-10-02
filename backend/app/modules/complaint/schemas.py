@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.responses.envelope import Envelope
 from app.modules.master.schemas.locations import AuditData, LocationInput, Page
@@ -91,5 +91,40 @@ class BatchIncidentImpactEnvelope(Envelope):
     data: dict[str, Any]
 
 
+class PackageIncidentAlertItem(BaseModel):
+    complaint_id: UUID
+    category: str
+    severity: str
+    status: str
+    description: str
+    reported_at: datetime
+    source_package_id: UUID
+
+
+class IncidentRecommendedAction(BaseModel):
+    code: str
+    label: str
+    required: bool
+
+
+class PackageIncidentAlertData(BaseModel):
+    package_id: UUID
+    production_batch_id: UUID
+    production_batch_code: str
+    has_active_incident: bool
+    highest_severity: str | None
+    primary_complaint_id: UUID | None
+    alerts: list[PackageIncidentAlertItem]
+    affected_package_count: int
+    delivered_count: int
+    received_count: int
+    consumed_count: int
+    recalled_count: int
+    recall_id: UUID | None
+    recall_status: str
+    recall_reason: str | None
+    recommended_actions: list[IncidentRecommendedAction]
+
+
 class PackageIncidentAlertEnvelope(Envelope):
-    data: dict[str, Any]
+    data: PackageIncidentAlertData

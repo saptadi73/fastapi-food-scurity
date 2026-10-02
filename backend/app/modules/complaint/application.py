@@ -14,6 +14,7 @@ from app.modules.master.infrastructure.orm import School
 from app.modules.production.infrastructure.orm import Package, ProductionBatch, ProductionItem
 from app.modules.receiving.application.service import ReceivingService
 from app.modules.receiving.infrastructure.orm import RawMaterialBatch, Receiving, ReceivingItem, StockIssue
+from app.modules.recall.infrastructure.orm import Recall
 from app.modules.signature.infrastructure import SignatureEvidence
 from app.modules.traceability.infrastructure.orm import AssetMovement, AssetRelationship, DigitalAsset
 from app.modules.traceability.infrastructure.registry import sync_source
@@ -38,9 +39,51 @@ class ComplaintService(ReceivingService):
             Complaint.status.in_(['OPEN', 'INVESTIGATING']),
             complaint_package.c.production_batch_id == package['production_batch_id'],
         ).order_by(Complaint.reported_at.desc()))).mappings().all()
-        return {'package_id': package_id, 'production_batch_id': package['production_batch_id'],
-                'has_active_incident': bool(rows), 'highest_severity': self.highest_severity(rows),
-                'alerts': [dict(row) for row in rows]}
+        production = await self.row(ProductionBatch, 'production_batch_id', package['production_batch_id'])
+        impact = await self.batch_impact(rows[0]['complaint_id']) if rows else None
+        impacted_packages = [] if impact is None else impact['packages']
+        recall = (await self.db.execute(select(Recall.__table__).where(
+            *self.visible(Recall), Recall.production_batch_id == package['production_batch_id'],
+        ).order_by(Recall.started_at.desc(), Recall.recall_id.desc()).limit(1))).mappings().one_or_none()
+        recalled_count = sum(row['package_status'] == 'RECALLED' for row in impacted_packages)
+        recall_status = ('NONE' if recall is None else
+                         'COMPLETED' if recall['completed_at'] is not None else
+                         'EXECUTED' if recalled_count else 'OPEN')
+        actions = []
+        if rows:
+            actions = [
+                {'code': 'HOLD_RECEIVING_CONSUMPTION',
+                 'label': 'Tahan penerimaan dan konsumsi sampai investigasi dinyatakan aman.',
+                 'required': True},
+                {'code': 'ISOLATE_PACKAGE',
+                 'label': 'Pisahkan kemasan terdampak dan jangan distribusikan kembali.',
+                 'required': True},
+                {'code': 'OPEN_BATCH_IMPACT',
+                 'label': 'Buka laporan dampak batch untuk memeriksa semua tujuan dan penerima.',
+                 'required': True},
+            ]
+            if recall is not None:
+                actions.append({'code': 'FOLLOW_RECALL',
+                                'label': 'Ikuti instruksi recall dan catat penarikan fisik kemasan.',
+                                'required': True})
+        return {
+            'package_id': package_id,
+            'production_batch_id': package['production_batch_id'],
+            'production_batch_code': production['batch_code'],
+            'has_active_incident': bool(rows),
+            'highest_severity': self.highest_severity(rows),
+            'primary_complaint_id': None if not rows else rows[0]['complaint_id'],
+            'alerts': [dict(row) for row in rows],
+            'affected_package_count': len(impacted_packages),
+            'delivered_count': 0 if impact is None else impact['delivered_count'],
+            'received_count': 0 if impact is None else impact['received_count'],
+            'consumed_count': 0 if impact is None else impact['consumed_count'],
+            'recalled_count': recalled_count,
+            'recall_id': None if recall is None else recall['recall_id'],
+            'recall_status': recall_status,
+            'recall_reason': None if recall is None else recall['reason'],
+            'recommended_actions': actions,
+        }
 
     @staticmethod
     def highest_severity(rows):

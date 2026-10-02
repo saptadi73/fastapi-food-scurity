@@ -77,7 +77,7 @@ async def list_complaint_reports(request: Request, service: ServiceDep, offset: 
 
 
 @router.get('/package/{package_id}/alerts', response_model=PackageIncidentAlertEnvelope,
-    description='Complaint.Read. Active incident alerts from any package in the same production batch; intended for scan and school receiving warning.')
+    description='Complaint.Read. Active same-batch incident details, production code, impact counters, recall state and recommended actions for scan/school warning.')
 async def package_incident_alerts(request: Request, package_id: UUID, service: ServiceDep):
     return envelope(request, data=await service.package_alerts(package_id))
 

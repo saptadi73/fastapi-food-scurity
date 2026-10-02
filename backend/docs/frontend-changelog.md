@@ -1049,3 +1049,9 @@ dibersihkan. Ini pembaruan dokumentasi, tanpa perubahan endpoint/payload/event.
 - Marker dapur asal dan sekolah tujuan kini membuka popup nama, kode, alamat, dan koordinat saat diklik.
 - Marker GPS armada memakai ikon mobil serta menampilkan delivery, status, koordinat, dan waktu pembaruan terakhir.
 - Frontend memakai field tracking, kitchen, dan school yang sudah tersedia; tidak ada perubahan kontrak backend atau event.
+
+## 2026-10-02 - Detail warning incident saat scan
+
+- Respons package incident alert kini menyertakan kode batch, complaint utama, detail penyebab, counter dampak, status/reason recall, dan tindakan operasional terstruktur.
+- Perubahan bersifat backward-compatible: field lama dan `alerts[]` tetap tersedia; endpoint tetap read-only dengan permission `Complaint.Read`.
+- Frontend scan menampilkan konteks tersebut agar operator tidak hanya melihat severity generik.
